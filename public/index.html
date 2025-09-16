@@ -1034,9 +1034,20 @@
         }
 
         function triggerKeyEvent(keyCode) {
+            // Map key codes to the values the game expects
+            const keyMap = {
+                'KeyA': 'a',
+                'KeyD': 'd', 
+                'KeyW': 'w',
+                'KeyS': 's',
+                'Space': 'Shift'  // Space maps to Shift for right rotation
+            };
+            
+            const gameKey = keyMap[keyCode] || keyCode;
+            
             // Create and dispatch keyboard events
             const keydownEvent = new KeyboardEvent('keydown', {
-                key: keyCode,
+                key: gameKey,
                 code: keyCode,
                 keyCode: getKeyCode(keyCode),
                 which: getKeyCode(keyCode),
@@ -1045,7 +1056,7 @@
             });
             
             const keyupEvent = new KeyboardEvent('keyup', {
-                key: keyCode,
+                key: gameKey,
                 code: keyCode,
                 keyCode: getKeyCode(keyCode),
                 which: getKeyCode(keyCode),
