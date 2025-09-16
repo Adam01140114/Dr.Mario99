@@ -241,6 +241,14 @@
             margin-top: 20px;
         }
 
+        @media (max-width: 768px) {
+            .room-section {
+                flex-direction: column;
+                gap: 10px;
+                align-items: center;
+            }
+        }
+
         #roomCodeDisplay {
             font-size: 1.5rem;
             color: #00ffff;
@@ -321,6 +329,99 @@
 
         .game-container:not(.hidden) {
             display: block;
+        }
+
+        /* Touch Controls */
+        .touch-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            border: 3px solid #00ffff;
+            border-radius: 15px;
+            background: linear-gradient(145deg, #1a1a2e, #16213e);
+            color: #00ffff;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(0, 255, 255, 0.3);
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .control-btn:hover {
+            background: linear-gradient(145deg, #2a2a4e, #26214e);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 255, 0.5);
+        }
+
+        .control-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 10px rgba(0, 255, 255, 0.3);
+            background: linear-gradient(145deg, #0a0a1e, #06113e);
+        }
+
+        .move-btn {
+            border-color: #00ff00;
+            color: #00ff00;
+            box-shadow: 0 4px 15px rgba(0, 255, 0, 0.3);
+        }
+
+        .move-btn:hover {
+            box-shadow: 0 6px 20px rgba(0, 255, 0, 0.5);
+        }
+
+        .rotate-btn {
+            border-color: #ff00ff;
+            color: #ff00ff;
+            box-shadow: 0 4px 15px rgba(255, 0, 255, 0.3);
+        }
+
+        .rotate-btn:hover {
+            box-shadow: 0 6px 20px rgba(255, 0, 255, 0.5);
+        }
+
+        .drop-btn {
+            border-color: #ff4444;
+            color: #ff4444;
+            box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3);
+        }
+
+        .drop-btn:hover {
+            box-shadow: 0 6px 20px rgba(255, 68, 68, 0.5);
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .control-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+            
+            .control-row {
+                gap: 10px;
+            }
         }
 
         /* Custom Alert Modal */
@@ -568,6 +669,22 @@
             <div id="score-player2"></div>
             <div id="virusCount-player2"></div>
         </div>
+
+        <!-- Touch Controls -->
+        <div class="touch-controls hidden" id="touchControls">
+            <div class="control-row">
+                <button class="control-btn move-btn" id="moveLeft">←</button>
+                <button class="control-btn rotate-btn" id="rotateLeft">↶</button>
+                <button class="control-btn drop-btn" id="dropFast">↓</button>
+                <button class="control-btn rotate-btn" id="rotateRight">↷</button>
+                <button class="control-btn move-btn" id="moveRight">→</button>
+            </div>
+        </div>
+
+        <br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
+        <br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
+        <br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
+        <br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
     </div>
 
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
@@ -713,6 +830,9 @@
                 
                 // Show Player 2 game container
                 document.getElementById('game2').classList.remove('hidden');
+                
+                // Show touch controls
+                document.getElementById('touchControls').classList.remove('hidden');
             }
 
             if (who == 1) {
@@ -724,6 +844,9 @@
                 
                 // Show Player 1 game container
                 document.getElementById('game1').classList.remove('hidden');
+                
+                // Show touch controls
+                document.getElementById('touchControls').classList.remove('hidden');
             }
         });
 
@@ -789,6 +912,9 @@
             document.getElementById('game1').classList.add('hidden');
             document.getElementById('game2').classList.add('hidden');
             
+            // Hide touch controls
+            document.getElementById('touchControls').classList.add('hidden');
+            
             // Show play buttons
             document.getElementById('playbuttons').classList.remove('hidden');
             
@@ -843,12 +969,114 @@
             setTimeout(() => button.focus(), 100);
         }
 
+        // Touch Controls Functionality
+        function setupTouchControls() {
+            const moveLeft = document.getElementById('moveLeft');
+            const moveRight = document.getElementById('moveRight');
+            const rotateLeft = document.getElementById('rotateLeft');
+            const rotateRight = document.getElementById('rotateRight');
+            const dropFast = document.getElementById('dropFast');
+
+            if (moveLeft) {
+                moveLeft.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyA');
+                });
+                moveLeft.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyA');
+                });
+            }
+
+            if (moveRight) {
+                moveRight.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyD');
+                });
+                moveRight.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyD');
+                });
+            }
+
+            if (rotateLeft) {
+                rotateLeft.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyW');
+                });
+                rotateLeft.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyW');
+                });
+            }
+
+            if (rotateRight) {
+                rotateRight.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('Space');
+                });
+                rotateRight.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('Space');
+                });
+            }
+
+            if (dropFast) {
+                dropFast.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyS');
+                });
+                dropFast.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyS');
+                });
+            }
+        }
+
+        function triggerKeyEvent(keyCode) {
+            // Create and dispatch keyboard events
+            const keydownEvent = new KeyboardEvent('keydown', {
+                key: keyCode,
+                code: keyCode,
+                keyCode: getKeyCode(keyCode),
+                which: getKeyCode(keyCode),
+                bubbles: true,
+                cancelable: true
+            });
+            
+            const keyupEvent = new KeyboardEvent('keyup', {
+                key: keyCode,
+                code: keyCode,
+                keyCode: getKeyCode(keyCode),
+                which: getKeyCode(keyCode),
+                bubbles: true,
+                cancelable: true
+            });
+
+            document.dispatchEvent(keydownEvent);
+            setTimeout(() => document.dispatchEvent(keyupEvent), 100);
+        }
+
+        function getKeyCode(keyCode) {
+            const keyMap = {
+                'KeyA': 65,
+                'KeyD': 68,
+                'KeyW': 87,
+                'KeyS': 83,
+                'Space': 32
+            };
+            return keyMap[keyCode] || 0;
+        }
+
         // Add click sounds to buttons
         document.addEventListener('DOMContentLoaded', function() {
             const buttons = document.querySelectorAll('.menu-button');
             buttons.forEach(button => {
                 button.addEventListener('click', playClickSound);
             });
+            
+            // Setup touch controls
+            setupTouchControls();
         });
     </script>
 </body>
