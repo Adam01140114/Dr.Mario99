@@ -1,0 +1,219 @@
+# RENDER DEPLOYMENT INSTRUCTIONS
+# ================================
+
+## OVERVIEW
+This document explains how to switch between localhost development and Render.com production deployment for the Dr. Mario 99 game.
+
+## CURRENT STATE (LOCALHOST DEVELOPMENT)
+The game is currently configured for localhost development with the following changes:
+
+### Files Modified for Localhost:
+1. **public/index.html** - Line 439
+2. **server.js** - Lines 10 and 16
+3. **public/scripts/Board.js** - Line 59
+4. **public/scripts/Board2.js** - Line 60
+
+## CHANGES MADE FOR LOCALHOST DEVELOPMENT
+
+### 1. Socket.IO Connection (public/index.html)
+**BEFORE (Render):**
+```javascript
+const socket = io('https://dr-mario99.onrender.com/');
+```
+
+**AFTER (Localhost):**
+```javascript
+const socket = io('http://localhost:3000/');
+```
+
+### 2. CORS Configuration (server.js)
+**BEFORE (Render only):**
+```javascript
+const io = socketIo(server, {
+    cors: { origin: "https://dr-mario99.onrender.com/" },
+});
+
+app.use(cors({
+    origin: 'https://dr-mario99.onrender.com/'
+}));
+```
+
+**AFTER (Both localhost and Render):**
+```javascript
+const io = socketIo(server, {
+    cors: { origin: ["https://dr-mario99.onrender.com/", "http://localhost:3000"] },
+});
+
+app.use(cors({
+    origin: ['https://dr-mario99.onrender.com/', 'http://localhost:3000']
+}));
+```
+
+### 3. Game Script Socket Connections
+**BEFORE (Render):**
+```javascript
+// In public/scripts/Board.js and Board2.js
+const socket = io('https://dr-mario99.onrender.com/');
+```
+
+**AFTER (Localhost):**
+```javascript
+// In public/scripts/Board.js and Board2.js
+const socket = io('http://localhost:3000/');
+```
+
+## HOW TO REVERT TO RENDER PRODUCTION
+
+### Step 1: Change Socket Connections Back to Render
+In **public/index.html** on line 439, change:
+```javascript
+// FROM:
+const socket = io('http://localhost:3000/');
+
+// TO:
+const socket = io('https://dr-mario99.onrender.com/');
+```
+
+In **public/scripts/Board.js** on line 59, change:
+```javascript
+// FROM:
+const socket = io('http://localhost:3000/');
+
+// TO:
+const socket = io('https://dr-mario99.onrender.com/');
+```
+
+In **public/scripts/Board2.js** on line 60, change:
+```javascript
+// FROM:
+const socket = io('http://localhost:3000/');
+
+// TO:
+const socket = io('https://dr-mario99.onrender.com/');
+```
+
+### Step 2: Update CORS Configuration for Render Only
+In **server.js** on lines 10 and 16, change:
+
+**Line 10:**
+```javascript
+// FROM:
+cors: { origin: ["https://dr-mario99.onrender.com/", "http://localhost:3000"] },
+
+// TO:
+cors: { origin: "https://dr-mario99.onrender.com/" },
+```
+
+**Line 16:**
+```javascript
+// FROM:
+origin: ['https://dr-mario99.onrender.com/', 'http://localhost:3000']
+
+// TO:
+origin: 'https://dr-mario99.onrender.com/'
+```
+
+## HOW TO SWITCH BACK TO LOCALHOST DEVELOPMENT
+
+### Step 1: Change Socket Connections to Localhost
+In **public/index.html** on line 439, change:
+```javascript
+// FROM:
+const socket = io('https://dr-mario99.onrender.com/');
+
+// TO:
+const socket = io('http://localhost:3000/');
+```
+
+In **public/scripts/Board.js** on line 59, change:
+```javascript
+// FROM:
+const socket = io('https://dr-mario99.onrender.com/');
+
+// TO:
+const socket = io('http://localhost:3000/');
+```
+
+In **public/scripts/Board2.js** on line 60, change:
+```javascript
+// FROM:
+const socket = io('https://dr-mario99.onrender.com/');
+
+// TO:
+const socket = io('http://localhost:3000/');
+```
+
+### Step 2: Update CORS Configuration for Both
+In **server.js** on lines 10 and 16, change:
+
+**Line 10:**
+```javascript
+// FROM:
+cors: { origin: "https://dr-mario99.onrender.com/" },
+
+// TO:
+cors: { origin: ["https://dr-mario99.onrender.com/", "http://localhost:3000"] },
+```
+
+**Line 16:**
+```javascript
+// FROM:
+origin: 'https://dr-mario99.onrender.com/'
+
+// TO:
+origin: ['https://dr-mario99.onrender.com/', 'http://localhost:3000']
+```
+
+## DEPLOYMENT CHECKLIST
+
+### Before Deploying to Render:
+1. ✅ Change socket connection to Render URL
+2. ✅ Update CORS to allow Render origin only
+3. ✅ Test locally with Render URL (if possible)
+4. ✅ Commit and push changes to Git
+5. ✅ Deploy to Render.com
+
+### Before Local Development:
+1. ✅ Change socket connection to localhost
+2. ✅ Update CORS to allow both origins
+3. ✅ Start local server with `node server.js`
+4. ✅ Test at http://localhost:3000
+
+## ADDITIONAL NOTES
+
+### Why These Changes Were Made:
+- **CORS Issue**: The original CORS configuration only allowed connections from the Render domain, blocking localhost development
+- **Socket Connection**: The client was trying to connect to the Render server from localhost, causing CORS errors
+
+### Current Configuration Benefits:
+- Supports both localhost development and Render production
+- No need to change code when switching between environments
+- Maintains security by allowing only specific origins
+
+### Testing:
+- **Localhost**: http://localhost:3000
+- **Render**: https://dr-mario99.onrender.com/
+
+## TROUBLESHOOTING
+
+### Common Issues:
+1. **CORS Errors**: Make sure both origins are in the CORS configuration
+2. **Connection Refused**: Ensure the correct URL is used for the environment
+3. **Socket Not Connecting**: Check that the server is running and accessible
+
+### Quick Fix Commands:
+```bash
+# Start local server
+node server.js
+
+# Check if server is running
+netstat -an | findstr :3000
+
+# Test localhost connection
+start http://localhost:3000
+```
+
+---
+**Last Updated**: $(date)
+**Current Environment**: Localhost Development
+**Next Deployment**: Follow "HOW TO REVERT TO RENDER PRODUCTION" section
