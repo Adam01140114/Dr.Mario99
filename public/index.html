@@ -338,9 +338,16 @@
             left: 50%;
             transform: translateX(-50%);
             z-index: 20;
-            display: flex;
+            display: none; /* Hidden by default */
             justify-content: center;
             align-items: center;
+        }
+
+        /* Show touch controls only on mobile */
+        @media (max-width: 768px) {
+            .touch-controls {
+                display: flex;
+            }
         }
 
         .control-row {
