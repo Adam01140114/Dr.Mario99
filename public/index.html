@@ -974,7 +974,7 @@
             if (scanlines) scanlines.style.display = 'none';
             
             const script = document.createElement('script');
-            script.src = './scripts/script.js';
+            script.src = './scripts/unified_script.js';
             script.type = 'module';
             document.head.appendChild(script);
             
@@ -1016,7 +1016,7 @@
             
             if (data.player === 1) {
                 const script = document.createElement('script');
-                script.src = './scripts/script.js';
+                script.src = './scripts/unified_script.js';
                 script.type = 'module';
                 document.head.appendChild(script);
                 
@@ -1029,7 +1029,7 @@
                 console.log('Free Play: You are Player 1');
             } else if (data.player === 2) {
                 const script = document.createElement('script');
-                script.src = './scripts/script2.js';
+                script.src = './scripts/unified_script.js';
                 script.type = 'module';
                 document.head.appendChild(script);
                 
@@ -1093,7 +1093,7 @@
                 
                 if (who == 2) {
                     const script = document.createElement('script');
-                    script.src = './scripts/script2.js';
+                    script.src = './scripts/unified_script.js';
                     script.type = 'module';
                     document.head.appendChild(script);
                     console.log('🔍 [Player 2] Game script loaded, showing canvas');
@@ -1106,7 +1106,7 @@
                 } else if (who == 1) {
                     // Player 1 also loads game when Player 2 joins
                     const script = document.createElement('script');
-                    script.src = './scripts/script.js';
+                    script.src = './scripts/unified_script.js';
                     script.type = 'module';
                     document.head.appendChild(script);
                     console.log('🔍 [Player 1] Game script loaded, showing canvas');
