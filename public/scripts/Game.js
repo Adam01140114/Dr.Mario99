@@ -48,15 +48,15 @@ export default class Game extends HTMLElement {
         if (this.playerNumber === 1) {
             const boardModule = await import("./Board.js")
             const componentsModule = await import("./components.js")
-            PlayingBoard = boardModule.PlayingBoard
-            Color = componentsModule.Color
-            DELAY = componentsModule.DELAY
+            this.PlayingBoard = boardModule.PlayingBoard
+            this.Color = componentsModule.Color
+            this.DELAY = componentsModule.DELAY
         } else {
             const boardModule = await import("./Board2.js")
             const componentsModule = await import("./components2.js")
-            PlayingBoard = boardModule.PlayingBoard
-            Color = componentsModule.Color
-            DELAY = componentsModule.DELAY
+            this.PlayingBoard = boardModule.PlayingBoard
+            this.Color = componentsModule.Color
+            this.DELAY = componentsModule.DELAY
         }
     }
 
@@ -77,19 +77,19 @@ export default class Game extends HTMLElement {
     }
 
     createBoard(level, score) {
-        this.board = new PlayingBoard(this, level, score)
+        this.board = new this.PlayingBoard(this, level, score)
         this.append(this.board)
     }
     createDancingViruses() {
         if (this.dancingViruses)
             this.dancingViruses.destroy()
-        this.dancingViruses = new DancingViruses(this)
+        this.dancingViruses = new DancingViruses(this, this.Color, this.DELAY)
     }
 
     startInterval() {
         this.interval = setInterval(() => {
             this.board.nextFrame()
-        }, DELAY.frame)
+        }, this.DELAY.frame)
     }
 
     stopInterval() {
@@ -129,7 +129,7 @@ export default class Game extends HTMLElement {
                     this.createDancingViruses()
                     this.startInterval()
                 }, { once: true })
-            }, DELAY.nextStageListener)
+            }, this.DELAY.nextStageListener)
         }
     }
 
@@ -169,7 +169,7 @@ export default class Game extends HTMLElement {
                 this.createDancingViruses()
                 this.gameOverMario.remove()
             }, { once: true })
-        }, DELAY.endGameListener)
+        }, this.DELAY.endGameListener)
     }
 
     showWinScreen() {
@@ -199,7 +199,7 @@ export default class Game extends HTMLElement {
                     this.winImg.remove()
                     window.location.reload()
                 }, { once: true })
-            }, DELAY.nextStageListener)
+            }, this.DELAY.nextStageListener)
         }
     }
 
@@ -221,7 +221,7 @@ export default class Game extends HTMLElement {
                     this.opponentWinImg.remove()
                     window.location.reload()
                 }, { once: true })
-            }, DELAY.endGameListener)
+            }, this.DELAY.endGameListener)
         }
     }
 
@@ -249,12 +249,14 @@ const DancingMode = {
 }
 
 class DancingViruses {
-    constructor(game) {
+    constructor(game, Color, DELAY) {
         this.game = game
+        this.Color = Color
+        this.DELAY = DELAY
         this.list = [
-            new DancingVirus(this.game, Color.THIRD, 0),
-            new DancingVirus(this.game, Color.SECOND, 6),
-            new DancingVirus(this.game, Color.FIRST, 12),
+            new DancingVirus(this.game, this.Color.THIRD, 0, this.Color),
+            new DancingVirus(this.game, this.Color.SECOND, 6, this.Color),
+            new DancingVirus(this.game, this.Color.FIRST, 12, this.Color),
         ]
         this.appendToGame()
         this.startAnimation()
@@ -315,11 +317,12 @@ class DancingViruses {
 }
 
 class DancingVirus extends HTMLElement {
-    constructor(game, color, currentStep) {
+    constructor(game, color, currentStep, Color) {
         super()
         this.game = game
         this.color = color
         this.currentStep = currentStep
+        this.Color = Color
         this.currentAnimation = 0
         this.currentModeCount = 0
         this.mode = DancingMode.NORMAL
