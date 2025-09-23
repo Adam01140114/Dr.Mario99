@@ -1,40 +1,14 @@
 "use strict"
-// Dynamic imports will be handled in connectedCallback
-let PlayingBoard, Color, DELAY
+import { PlayingBoard } from "./Board.js"
+import { Color, DELAY } from "./components.js"
+
 
 export default class Game extends HTMLElement {
     constructor() {
         super()
-        this.playerNumber = this.detectPlayerNumber()
     }
 
-    detectPlayerNumber() {
-        // Check which game container this game instance is in
-        const gameContainer = this.closest('[id^="game"]')
-        if (gameContainer) {
-            const containerId = gameContainer.id
-            if (containerId === 'game1') return 1
-            if (containerId === 'game2') return 2
-            // Extract number from game3, game4, etc.
-            const match = containerId.match(/game(\d+)/)
-            if (match) return parseInt(match[1])
-        }
-        
-        // Fallback: check which game container is visible
-        const game1 = document.getElementById("game1")
-        const game2 = document.getElementById("game2")
-        
-        if (game1 && !game1.classList.contains('hidden')) return 1
-        if (game2 && !game2.classList.contains('hidden')) return 2
-        
-        // Default to player 1
-        return 1
-    }
-
-    async connectedCallback() {
-        // Dynamically import the correct Board and components based on player number
-        await this.loadPlayerSpecificModules()
-        
+    connectedCallback() {
         this.createBoard()
         this.setBg()
         this.createDancingViruses()
@@ -44,33 +18,17 @@ export default class Game extends HTMLElement {
         this.setupSocketListeners()
     }
 
-    async loadPlayerSpecificModules() {
-        if (this.playerNumber === 1) {
-            const boardModule = await import("./Board.js")
-            const componentsModule = await import("./components.js")
-            PlayingBoard = boardModule.PlayingBoard
-            Color = componentsModule.Color
-            DELAY = componentsModule.DELAY
-        } else {
-            const boardModule = await import("./Board2.js")
-            const componentsModule = await import("./components2.js")
-            PlayingBoard = boardModule.PlayingBoard
-            Color = componentsModule.Color
-            DELAY = componentsModule.DELAY
-        }
-    }
-
     setupSocketListeners() {
         // Listen for opponent game over (opponent lost, you won)
         socket.on('opponentGameOver', (data) => {
-            if (data.roomCode === roomCode && data.playerNumber !== this.playerNumber) {
+            if (data.roomCode === roomCode && data.playerNumber === 2) {
                 this.showWinScreen()
             }
         });
 
         // Listen for opponent win (opponent won, you lost)
         socket.on('opponentWin', (data) => {
-            if (data.roomCode === roomCode && data.playerNumber !== this.playerNumber) {
+            if (data.roomCode === roomCode && data.playerNumber === 2) {
                 this.showOpponentWinScreen()
             }
         });
@@ -107,7 +65,7 @@ export default class Game extends HTMLElement {
             // Emit win event to server
             socket.emit('playerWin', { 
                 roomCode: roomCode, 
-                playerNumber: this.playerNumber 
+                playerNumber: 1 
             });
         } else {
             // Single player mode - proceed to next level
@@ -153,7 +111,7 @@ export default class Game extends HTMLElement {
         if (typeof roomCode !== 'undefined' && roomCode) {
             socket.emit('playerGameOver', { 
                 roomCode: roomCode, 
-                playerNumber: this.playerNumber 
+                playerNumber: 1 
             });
         }
         
@@ -173,17 +131,8 @@ export default class Game extends HTMLElement {
     }
 
     showWinScreen() {
-        // Check if this is tournament mode (more than 2 players)
-        const isTournamentMode = typeof roomCode !== 'undefined' && roomCode && 
-                                 typeof activeRooms !== 'undefined' && 
-                                 activeRooms[roomCode] && 
-                                 activeRooms[roomCode].players.length > 2;
-        
-        if (isTournamentMode && typeof showQuickWinAlert === 'function') {
-            // Show quick win alert for tournament mode
-            showQuickWinAlert('🎉 VICTORY!', 'You cleared all the viruses first!', true);
-        } else if (typeof showGameAlert === 'function') {
-            // Show regular win alert for 2-player mode
+        // Show custom win alert
+        if (typeof showGameAlert === 'function') {
             showGameAlert('🎉 VICTORY!', 'You cleared all the viruses first!', true);
         } else {
             // Fallback to old method
