@@ -1,14 +1,40 @@
 "use strict"
-import { PlayingBoard } from "./Board.js"
-import { Color, DELAY } from "./components.js"
-
+// Dynamic imports will be handled in connectedCallback
+let PlayingBoard, Color, DELAY
 
 export default class Game extends HTMLElement {
     constructor() {
         super()
+        this.playerNumber = this.detectPlayerNumber()
     }
 
-    connectedCallback() {
+    detectPlayerNumber() {
+        // Check which game container this game instance is in
+        const gameContainer = this.closest('[id^="game"]')
+        if (gameContainer) {
+            const containerId = gameContainer.id
+            if (containerId === 'game1') return 1
+            if (containerId === 'game2') return 2
+            // Extract number from game3, game4, etc.
+            const match = containerId.match(/game(\d+)/)
+            if (match) return parseInt(match[1])
+        }
+        
+        // Fallback: check which game container is visible
+        const game1 = document.getElementById("game1")
+        const game2 = document.getElementById("game2")
+        
+        if (game1 && !game1.classList.contains('hidden')) return 1
+        if (game2 && !game2.classList.contains('hidden')) return 2
+        
+        // Default to player 1
+        return 1
+    }
+
+    async connectedCallback() {
+        // Dynamically import the correct Board and components based on player number
+        await this.loadPlayerSpecificModules()
+        
         this.createBoard()
         this.setBg()
         this.createDancingViruses()
@@ -18,17 +44,33 @@ export default class Game extends HTMLElement {
         this.setupSocketListeners()
     }
 
+    async loadPlayerSpecificModules() {
+        if (this.playerNumber === 1) {
+            const boardModule = await import("./Board.js")
+            const componentsModule = await import("./components.js")
+            PlayingBoard = boardModule.PlayingBoard
+            Color = componentsModule.Color
+            DELAY = componentsModule.DELAY
+        } else {
+            const boardModule = await import("./Board2.js")
+            const componentsModule = await import("./components2.js")
+            PlayingBoard = boardModule.PlayingBoard
+            Color = componentsModule.Color
+            DELAY = componentsModule.DELAY
+        }
+    }
+
     setupSocketListeners() {
         // Listen for opponent game over (opponent lost, you won)
         socket.on('opponentGameOver', (data) => {
-            if (data.roomCode === roomCode && data.playerNumber === 2) {
+            if (data.roomCode === roomCode && data.playerNumber !== this.playerNumber) {
                 this.showWinScreen()
             }
         });
 
         // Listen for opponent win (opponent won, you lost)
         socket.on('opponentWin', (data) => {
-            if (data.roomCode === roomCode && data.playerNumber === 2) {
+            if (data.roomCode === roomCode && data.playerNumber !== this.playerNumber) {
                 this.showOpponentWinScreen()
             }
         });
@@ -65,7 +107,7 @@ export default class Game extends HTMLElement {
             // Emit win event to server
             socket.emit('playerWin', { 
                 roomCode: roomCode, 
-                playerNumber: 1 
+                playerNumber: this.playerNumber 
             });
         } else {
             // Single player mode - proceed to next level
@@ -111,7 +153,7 @@ export default class Game extends HTMLElement {
         if (typeof roomCode !== 'undefined' && roomCode) {
             socket.emit('playerGameOver', { 
                 roomCode: roomCode, 
-                playerNumber: 1 
+                playerNumber: this.playerNumber 
             });
         }
         
