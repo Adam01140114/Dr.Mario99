@@ -7,13 +7,13 @@ const cors = require('cors');
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-    cors: { origin: ["https://dr-mario99.onrender.com/", "http://localhost:3000"] },
+    cors: { origin: "https://dr-mario99.onrender.com/" },
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use(cors({
-    origin: ['https://dr-mario99.onrender.com/', 'http://localhost:3000']
+    origin: 'https://dr-mario99.onrender.com/'
 }));
 
 const activeRooms = {};
