@@ -31,6 +31,7 @@ function generateVirusPositions() {
     return positions;
 }
 
+
 // Function to generate a random list
 function generateRandomList() {
     return Array.from({ length: 20 }, () => Math.floor(Math.random() * 3));
