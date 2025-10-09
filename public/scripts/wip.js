@@ -63,7 +63,7 @@ var randcolor4 = 'bl';
 
 
 //import { io } from 'socket.io-client';
-const socket = io('https://dr-mario99.onrender.com/');
+const socket = io('localhost:3000/');
 
 function requestRandomNumber(max) {
     return new Promise((resolve) => {
