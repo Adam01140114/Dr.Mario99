@@ -118,6 +118,7 @@ export class PlayingBoard extends Board {
         this.virusList = []
         this.game.append(this.throwingBoard)
         this.gameStarted = false; // Flag to track if game has started (viruses spawned)
+        this.gameStartTime = Date.now(); // Track when game started
 		
 		
 		this.virusPositions = [];
@@ -613,8 +614,10 @@ if (randy4 != 0 && hurting4 == 1) {
     }
 
     stageCompleted() {
-        // Don't allow victory until game has started (viruses have been spawned)
-        if (!this.gameStarted) {
+        // Wait 7 seconds before allowing victory to ensure game is fully loaded
+        const currentTime = Date.now();
+        const timeSinceStart = currentTime - this.gameStartTime;
+        if (timeSinceStart < 7000) { // 7 seconds
             return false;
         }
         
