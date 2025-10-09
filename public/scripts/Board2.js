@@ -126,6 +126,7 @@ export class PlayingBoard extends Board {
         this.score = score
         this.virusList = []
         this.game.append(this.throwingBoard)
+        this.gameStarted = false; // Flag to track if game has started (viruses spawned)
 		
 		
 		this.virusPositions = [];
@@ -357,6 +358,9 @@ export class PlayingBoard extends Board {
                 this.virusList.push(new Virus(this, x, y, color));
             }
         }
+        
+        // Mark game as started after viruses are spawned
+        this.gameStarted = true;
     }
 	
 	
@@ -590,6 +594,11 @@ if (randy4 != 0 && hurting4 == 1) {
     }
 
     stageCompleted() {
+        // Don't allow victory until game has started (viruses have been spawned)
+        if (!this.gameStarted) {
+            return false;
+        }
+        
         // Count all actual viruses currently on the board
         let actualVirusCount = 0;
         for (let x = 0; x < this.width; x++) {
