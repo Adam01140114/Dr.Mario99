@@ -570,6 +570,211 @@
             }
         }
 
+        /* Admission Request Modal */
+        .admission-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        .admission-modal {
+            background: linear-gradient(145deg, #1a1a2e, #16213e);
+            border: 3px solid #ffd700;
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 0 40px rgba(255, 215, 0, 0.6);
+            animation: slideIn 0.4s ease-out;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .admission-modal::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 215, 0, 0.1) 50%, transparent 70%);
+            animation: shimmer 3s infinite;
+        }
+
+        .admission-title {
+            font-size: 2.2rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #ffd700;
+            text-shadow: 0 0 15px #ffd700;
+            position: relative;
+            z-index: 1;
+            animation: goldPulse 2s ease-in-out infinite alternate;
+        }
+
+        .admission-message {
+            font-size: 1.4rem;
+            color: #ffffff;
+            margin-bottom: 30px;
+            line-height: 1.5;
+            position: relative;
+            z-index: 1;
+        }
+
+        .admission-buttons {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .admission-btn {
+            padding: 15px 30px;
+            border: 2px solid;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            min-width: 120px;
+        }
+
+        .admission-btn.yes {
+            background: linear-gradient(145deg, #00ff00, #00cc00);
+            border-color: #00ff00;
+            color: #000;
+            box-shadow: 0 4px 15px rgba(0, 255, 0, 0.4);
+        }
+
+        .admission-btn.yes:hover {
+            background: linear-gradient(145deg, #00cc00, #009900);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 0, 0.6);
+        }
+
+        .admission-btn.no {
+            background: linear-gradient(145deg, #ff4444, #cc0000);
+            border-color: #ff4444;
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(255, 68, 68, 0.4);
+        }
+
+        .admission-btn.no:hover {
+            background: linear-gradient(145deg, #cc0000, #990000);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 68, 68, 0.6);
+        }
+
+        /* Final Victory Modal */
+        .victory-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 3000;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        .victory-modal {
+            background: linear-gradient(145deg, #2a1a1a, #3e2a2a);
+            border: 4px solid #ffd700;
+            border-radius: 25px;
+            padding: 50px;
+            text-align: center;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 0 50px rgba(255, 215, 0, 0.8);
+            animation: victoryGlow 0.6s ease-out;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .victory-modal::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 20%, rgba(255, 215, 0, 0.2) 50%, transparent 80%);
+            animation: victoryShimmer 2s infinite;
+        }
+
+        .victory-title {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #ffd700;
+            text-shadow: 0 0 20px #ffd700, 0 0 40px #ffd700;
+            position: relative;
+            z-index: 1;
+            animation: victoryPulse 1.5s ease-in-out infinite alternate;
+        }
+
+        .victory-message {
+            font-size: 1.6rem;
+            color: #ffffff;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            position: relative;
+            z-index: 1;
+        }
+
+        @keyframes goldPulse {
+            from { 
+                color: #ffd700;
+                text-shadow: 0 0 15px #ffd700;
+            }
+            to { 
+                color: #ffff88;
+                text-shadow: 0 0 25px #ffd700, 0 0 35px #ffd700;
+            }
+        }
+
+        @keyframes victoryGlow {
+            from { 
+                opacity: 0;
+                transform: scale(0.5) rotate(10deg);
+            }
+            to { 
+                opacity: 1;
+                transform: scale(1) rotate(0deg);
+            }
+        }
+
+        @keyframes victoryShimmer {
+            0% { transform: translateX(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) rotate(45deg); }
+        }
+
+        @keyframes victoryPulse {
+            from { 
+                color: #ffd700;
+                text-shadow: 0 0 20px #ffd700, 0 0 40px #ffd700;
+            }
+            to { 
+                color: #ffff88;
+                text-shadow: 0 0 30px #ffd700, 0 0 60px #ffd700, 0 0 80px #ffd700;
+            }
+        }
+
         /* Retro scanlines effect */
         .scanlines {
             position: fixed;
@@ -697,7 +902,7 @@
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <script>
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-        const socket = io('https://dr-mario99.onrender.com/');
+        const socket = io('http://localhost:3000/');
 
         let player = 0; // Default player number
         let who = 0;
@@ -757,10 +962,28 @@
             socket.emit('single');
             hideRoomCode();
             document.getElementById('playbuttons').classList.add('hidden');
+            
+            // Hide all homepage elements except logo and particles
+            const titleElement = document.querySelector('.title');
+            if (titleElement) titleElement.style.display = 'none';
+            
+            const menuContainer = document.querySelector('.menu-container');
+            if (menuContainer) menuContainer.style.display = 'none';
+            
+            const scanlines = document.querySelector('.scanlines');
+            if (scanlines) scanlines.style.display = 'none';
+            
             const script = document.createElement('script');
-            script.src = './scripts/script.js';
+            script.src = './scripts/unified_script.js';
             script.type = 'module';
             document.head.appendChild(script);
+            
+            // Show Player 1 game container
+            document.getElementById('game1').classList.remove('hidden');
+            
+            // Show touch controls
+            document.getElementById('touchControls').classList.remove('hidden');
+            
             console.log('Single Player: Starting game');
         };
 
@@ -781,17 +1004,41 @@
             hideRoomCode();
             document.getElementById('playbuttons').classList.add('hidden');
             
+            // Hide all homepage elements except logo and particles
+            const titleElement = document.querySelector('.title');
+            if (titleElement) titleElement.style.display = 'none';
+            
+            const menuContainer = document.querySelector('.menu-container');
+            if (menuContainer) menuContainer.style.display = 'none';
+            
+            const scanlines = document.querySelector('.scanlines');
+            if (scanlines) scanlines.style.display = 'none';
+            
             if (data.player === 1) {
                 const script = document.createElement('script');
-                script.src = './scripts/script.js';
+                script.src = './scripts/unified_script.js';
                 script.type = 'module';
                 document.head.appendChild(script);
+                
+                // Show Player 1 game container
+                document.getElementById('game1').classList.remove('hidden');
+                
+                // Show touch controls
+                document.getElementById('touchControls').classList.remove('hidden');
+                
                 console.log('Free Play: You are Player 1');
             } else if (data.player === 2) {
                 const script = document.createElement('script');
-                script.src = './scripts/script2.js';
+                script.src = './scripts/unified_script.js';
                 script.type = 'module';
                 document.head.appendChild(script);
+                
+                // Show Player 2 game container
+                document.getElementById('game2').classList.remove('hidden');
+                
+                // Show touch controls
+                document.getElementById('touchControls').classList.remove('hidden');
+                
                 console.log('Free Play: You are Player 2');
             }
         });
@@ -813,47 +1060,65 @@
                 });
         };
 
-        socket.on('roomJoined', (roomCode) => {
-            hideRoomCode();
-            document.getElementById('playbuttons').classList.add('hidden');
-            
-            // Hide all homepage elements except logo and particles
-            const titleElement = document.querySelector('.title');
-            if (titleElement) titleElement.style.display = 'none';
-            
-            const menuContainer = document.querySelector('.menu-container');
-            if (menuContainer) menuContainer.style.display = 'none';
-            
-            const scanlines = document.querySelector('.scanlines');
-            if (scanlines) scanlines.style.display = 'none';
-            // Keep particles visible for starry background during gameplay
-            
-            if (who == 2) {
-                const script = document.createElement('script');
-                script.src = './scripts/script2.js';
-                script.type = 'module';
-                document.head.appendChild(script);
-                console.log('Room Joined: You are Player 2');
-                
-                // Show Player 2 game container
-                document.getElementById('game2').classList.remove('hidden');
-                
-                // Show touch controls
-                document.getElementById('touchControls').classList.remove('hidden');
-            }
+        socket.on('roomCreated', (roomCode) => {
+            // Just show room code, don't load game yet
+            console.log('Room Created: You are Player 1');
+            // Game will be loaded when Player 2 joins
+        });
 
-            if (who == 1) {
-                const script = document.createElement('script');
-                script.src = './scripts/script.js';
-                script.type = 'module';
-                document.head.appendChild(script);
-                console.log('Room Joined: You are Player 1');
+        // Handle player number assignment
+        socket.on('playerNumber', (playerNumber) => {
+            console.log('🔍 [All Players] Got playerNumber:', playerNumber);
+            who = playerNumber;
+        });
+
+        socket.on('roomJoined', (roomCode) => {
+            console.log('🔍 [All Players] Got roomJoined event. who =', who, 'roomCode =', roomCode);
+            // Only load game if we're actually a player (who == 1 or who == 2)
+            if (who == 1 || who == 2) {
+                console.log('🔍 [Player', who, '] Loading game...');
+                hideRoomCode();
+                document.getElementById('playbuttons').classList.add('hidden');
                 
-                // Show Player 1 game container
-                document.getElementById('game1').classList.remove('hidden');
+                // Hide all homepage elements except logo and particles
+                const titleElement = document.querySelector('.title');
+                if (titleElement) titleElement.style.display = 'none';
                 
-                // Show touch controls
-                document.getElementById('touchControls').classList.remove('hidden');
+                const menuContainer = document.querySelector('.menu-container');
+                if (menuContainer) menuContainer.style.display = 'none';
+                
+                const scanlines = document.querySelector('.scanlines');
+                if (scanlines) scanlines.style.display = 'none';
+                // Keep particles visible for starry background during gameplay
+                
+                if (who == 2) {
+                    const script = document.createElement('script');
+                    script.src = './scripts/unified_script.js';
+                    script.type = 'module';
+                    document.head.appendChild(script);
+                    console.log('🔍 [Player 2] Game script loaded, showing canvas');
+                    
+                    // Show Player 2 game container
+                    document.getElementById('game2').classList.remove('hidden');
+                    
+                    // Show touch controls
+                    document.getElementById('touchControls').classList.remove('hidden');
+                } else if (who == 1) {
+                    // Player 1 also loads game when Player 2 joins
+                    const script = document.createElement('script');
+                    script.src = './scripts/unified_script.js';
+                    script.type = 'module';
+                    document.head.appendChild(script);
+                    console.log('🔍 [Player 1] Game script loaded, showing canvas');
+                    
+                    // Show Player 1 game container
+                    document.getElementById('game1').classList.remove('hidden');
+                    
+                    // Show touch controls
+                    document.getElementById('touchControls').classList.remove('hidden');
+                }
+            } else {
+                console.log('🔍 [Player 3+] Ignoring roomJoined event - not a player');
             }
         });
 
@@ -861,13 +1126,89 @@
             showRoomCode(`❌ Error: ${message}`, true);
         });
 
+        // New spectator system events
+        socket.on('admissionRequest', (data) => {
+            showAdmissionRequest(data.playerName, data.socketId, data.roomCode);
+        });
+
+        socket.on('admissionResult', (data) => {
+            console.log('🔍 [Player 3] Got admissionResult:', data);
+            if (data.success) {
+                console.log('🔍 [Player 3] Admission successful, showing alert');
+                showGameAlert('✅ ADMITTED!', data.message, true);
+            } else {
+                console.log('🔍 [Player 3] Admission denied, showing alert');
+                showGameAlert('❌ DENIED', data.message, false);
+            }
+        });
+
+        socket.on('spectatorStatus', (data) => {
+            console.log('🔍 [Player 3] Got spectatorStatus:', data);
+            // Update the spectator waiting screen with new status
+            const waitingDiv = document.getElementById('spectatorWaiting');
+            if (waitingDiv) {
+                const messageElement = waitingDiv.querySelector('p');
+                if (messageElement) {
+                    messageElement.textContent = data.message;
+                }
+                
+                // Add position info if available
+                if (data.position) {
+                    const positionElement = waitingDiv.querySelector('p:last-child');
+                    if (positionElement) {
+                        positionElement.textContent = `Position in queue: ${data.position}`;
+                    }
+                }
+            }
+        });
+
+        socket.on('joinResult', (data) => {
+            if (data.success) {
+                if (data.isSpectator) {
+                    showSpectatorWaiting(data.message);
+                } else {
+                    // Regular room join
+                    hideRoomCode();
+                    document.getElementById('playbuttons').classList.add('hidden');
+                    // ... existing room join logic
+                }
+            } else {
+                showRoomCode(`❌ ${data.message}`, true);
+            }
+        });
+
+        socket.on('finalVictory', (data) => {
+            showFinalVictory(data.message);
+        });
+
+        socket.on('nextMatch', (data) => {
+            showQuickWinAlert('🎮 NEXT MATCH', 'Get ready for your next opponent!', true);
+            // Reset game for next match
+            setTimeout(() => {
+                // Reload the game for next match
+                window.location.reload();
+            }, 2000);
+        });
+
+        // Handle name request for 3rd+ players
+        socket.on('requestPlayerName', (data) => {
+            console.log('🔍 [Player 3] Got requestPlayerName event:', data);
+            const playerName = prompt('Enter your name:') || 'Anonymous';
+            console.log('🔍 [Player 3] Submitting name:', playerName);
+            socket.emit('submitPlayerName', { 
+                roomCode: data.roomCode, 
+                playerName: playerName 
+            });
+        });
+
         // Join Room
         document.getElementById('joinRoom').onclick = function() {
             const inputCode = prompt('Enter the 4-letter room code:');
             if (inputCode && inputCode.length === 4) {
                 roomCode = inputCode.toUpperCase();
+                
+                // Don't set who yet - wait for server to tell us our player number
                 socket.emit('joinRoom', roomCode);
-                who = 2;
                 showRoomCode(`🚪 Joining room: ${roomCode}...`);
                 console.log('Joining room:', roomCode);
             } else if (inputCode) {
@@ -974,6 +1315,163 @@
 
             // Focus button for keyboard navigation
             setTimeout(() => button.focus(), 100);
+        }
+
+        // Show admission request popup for room creator
+        function showAdmissionRequest(playerName, socketId, roomCode) {
+            const overlay = document.createElement('div');
+            overlay.className = 'admission-overlay';
+
+            const modal = document.createElement('div');
+            modal.className = 'admission-modal';
+
+            const title = document.createElement('div');
+            title.className = 'admission-title';
+            title.textContent = '🎮 ROOM ADMISSION REQUEST';
+
+            const message = document.createElement('div');
+            message.className = 'admission-message';
+            message.textContent = `Would you like to admit "${playerName}" into the room?`;
+
+            const buttons = document.createElement('div');
+            buttons.className = 'admission-buttons';
+
+            const yesBtn = document.createElement('button');
+            yesBtn.className = 'admission-btn yes';
+            yesBtn.textContent = 'YES';
+            yesBtn.onclick = () => {
+                socket.emit('admissionDecision', { socketId, approved: true, roomCode });
+                overlay.remove();
+            };
+
+            const noBtn = document.createElement('button');
+            noBtn.className = 'admission-btn no';
+            noBtn.textContent = 'NO';
+            noBtn.onclick = () => {
+                socket.emit('admissionDecision', { socketId, approved: false, roomCode });
+                overlay.remove();
+            };
+
+            buttons.appendChild(yesBtn);
+            buttons.appendChild(noBtn);
+
+            modal.appendChild(title);
+            modal.appendChild(message);
+            modal.appendChild(buttons);
+            overlay.appendChild(modal);
+
+            document.body.appendChild(overlay);
+
+            // Auto-focus yes button
+            setTimeout(() => yesBtn.focus(), 100);
+        }
+
+        // Show final victory popup
+        function showFinalVictory(message) {
+            const overlay = document.createElement('div');
+            overlay.className = 'victory-overlay';
+
+            const modal = document.createElement('div');
+            modal.className = 'victory-modal';
+
+            const title = document.createElement('div');
+            title.className = 'victory-title';
+            title.textContent = '🏆 YOU WON! 🏆';
+
+            const messageElement = document.createElement('div');
+            messageElement.className = 'victory-message';
+            messageElement.textContent = message;
+
+            modal.appendChild(title);
+            modal.appendChild(messageElement);
+            overlay.appendChild(modal);
+
+            document.body.appendChild(overlay);
+
+            // Auto-close after 5 seconds
+            setTimeout(() => {
+                overlay.remove();
+                returnToHomepage();
+            }, 5000);
+        }
+
+        // Show spectator waiting screen
+        function showSpectatorWaiting(message) {
+            // Hide homepage elements
+            document.getElementById('playbuttons').classList.add('hidden');
+            const titleElement = document.querySelector('.title');
+            if (titleElement) titleElement.style.display = 'none';
+            const menuContainer = document.querySelector('.menu-container');
+            if (menuContainer) menuContainer.style.display = 'none';
+            const scanlines = document.querySelector('.scanlines');
+            if (scanlines) scanlines.style.display = 'none';
+            
+            // Show spectator waiting screen
+            const waitingDiv = document.createElement('div');
+            waitingDiv.id = 'spectatorWaiting';
+            waitingDiv.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: linear-gradient(135deg, #1a1a2e, #16213e);
+                border: 3px solid #00ffff;
+                border-radius: 15px;
+                padding: 30px;
+                text-align: center;
+                color: #00ffff;
+                font-family: 'Courier New', monospace;
+                box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+                z-index: 1000;
+            `;
+            waitingDiv.innerHTML = `
+                <h2 style="margin: 0 0 20px 0; font-size: 24px;">⏳ SPECTATOR MODE ⏳</h2>
+                <p style="margin: 0 0 15px 0; font-size: 16px;">${message}</p>
+                <div style="margin: 20px 0;">
+                    <div style="width: 40px; height: 40px; border: 3px solid #00ffff; border-top: 3px solid transparent; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+                </div>
+                <p style="margin: 0; font-size: 14px; color: #888;">Waiting for your turn to play...</p>
+            `;
+            
+            // Add spinning animation
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            document.body.appendChild(waitingDiv);
+        }
+
+        // Show quick win alert (for tournament mode)
+        function showQuickWinAlert(title, message, isWin = false) {
+            const overlay = document.createElement('div');
+            overlay.className = 'alert-overlay';
+
+            const modal = document.createElement('div');
+            modal.className = 'alert-modal';
+
+            const titleElement = document.createElement('div');
+            titleElement.className = `alert-title ${isWin ? 'win' : 'lose'}`;
+            titleElement.textContent = title;
+
+            const messageElement = document.createElement('div');
+            messageElement.className = 'alert-message';
+            messageElement.textContent = message;
+
+            modal.appendChild(titleElement);
+            modal.appendChild(messageElement);
+            overlay.appendChild(modal);
+
+            document.body.appendChild(overlay);
+
+            // Auto-close after 3 seconds
+            setTimeout(() => {
+                overlay.remove();
+            }, 3000);
         }
 
         // Touch Controls Functionality

@@ -131,8 +131,17 @@ export default class Game extends HTMLElement {
     }
 
     showWinScreen() {
-        // Show custom win alert
-        if (typeof showGameAlert === 'function') {
+        // Check if this is tournament mode (more than 2 players)
+        const isTournamentMode = typeof roomCode !== 'undefined' && roomCode && 
+                                 typeof activeRooms !== 'undefined' && 
+                                 activeRooms[roomCode] && 
+                                 activeRooms[roomCode].players.length > 2;
+        
+        if (isTournamentMode && typeof showQuickWinAlert === 'function') {
+            // Show quick win alert for tournament mode
+            showQuickWinAlert('🎉 VICTORY!', 'You cleared all the viruses first!', true);
+        } else if (typeof showGameAlert === 'function') {
+            // Show regular win alert for 2-player mode
             showGameAlert('🎉 VICTORY!', 'You cleared all the viruses first!', true);
         } else {
             // Fallback to old method
