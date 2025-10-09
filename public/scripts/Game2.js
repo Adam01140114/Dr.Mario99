@@ -60,8 +60,8 @@ export default class Game extends HTMLElement {
         
         // Check if this is multiplayer mode
         if (typeof roomCode !== 'undefined' && roomCode) {
-            // In multiplayer, show win screen instead of next level
-            this.showWinScreen()
+            // In multiplayer, show victory alert and notify opponent
+            this.showVictoryAlert()
             // Emit win event to server
             socket.emit('playerWin', { 
                 roomCode: roomCode, 
@@ -185,6 +185,139 @@ export default class Game extends HTMLElement {
     }
     getScSrc() {
         return "./img/sc" + this.board.level % 5 + ".png"
+    }
+
+    showVictoryAlert() {
+        // Create victory overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 3000;
+            animation: fadeIn 0.5s ease-in-out;
+        `;
+
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            background: linear-gradient(145deg, #1a1a2e, #16213e);
+            border: 4px solid #00ff00;
+            border-radius: 25px;
+            padding: 50px;
+            text-align: center;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 0 50px rgba(0, 255, 0, 0.8);
+            animation: victoryGlow 0.6s ease-out;
+            position: relative;
+            overflow: hidden;
+        `;
+
+        const title = document.createElement('div');
+        title.style.cssText = `
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #00ff00;
+            text-shadow: 0 0 20px #00ff00, 0 0 40px #00ff00;
+            animation: victoryPulse 1.5s ease-in-out infinite alternate;
+        `;
+        title.textContent = '🏆 VICTORY! 🏆';
+
+        const message = document.createElement('div');
+        message.style.cssText = `
+            font-size: 1.6rem;
+            color: #ffffff;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        `;
+        message.textContent = 'You cleared all viruses! Your opponent has lost.';
+
+        modal.appendChild(title);
+        modal.appendChild(message);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Auto-close after 5 seconds and return to homepage
+        setTimeout(() => {
+            overlay.remove();
+            this.returnToHomepage();
+        }, 5000);
+    }
+
+    showOpponentWinScreen() {
+        // Create loss overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 3000;
+            animation: fadeIn 0.5s ease-in-out;
+        `;
+
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            background: linear-gradient(145deg, #2a1a1a, #3e2a2a);
+            border: 4px solid #ff4444;
+            border-radius: 25px;
+            padding: 50px;
+            text-align: center;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 0 50px rgba(255, 68, 68, 0.8);
+            animation: defeatGlow 0.6s ease-out;
+            position: relative;
+            overflow: hidden;
+        `;
+
+        const title = document.createElement('div');
+        title.style.cssText = `
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #ff4444;
+            text-shadow: 0 0 20px #ff4444, 0 0 40px #ff4444;
+            animation: defeatPulse 1.5s ease-in-out infinite alternate;
+        `;
+        title.textContent = '💀 DEFEAT! 💀';
+
+        const message = document.createElement('div');
+        message.style.cssText = `
+            font-size: 1.6rem;
+            color: #ffffff;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        `;
+        message.textContent = 'Your opponent cleared all their viruses first. You lost!';
+
+        modal.appendChild(title);
+        modal.appendChild(message);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        // Auto-close after 5 seconds and return to homepage
+        setTimeout(() => {
+            overlay.remove();
+            this.returnToHomepage();
+        }, 5000);
+    }
+
+    returnToHomepage() {
+        // Reload the page to return to homepage
+        window.location.reload();
     }
 }
 customElements.define("game-element", Game)

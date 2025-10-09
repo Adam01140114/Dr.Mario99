@@ -590,7 +590,17 @@ if (randy4 != 0 && hurting4 == 1) {
     }
 
     stageCompleted() {
-        return this.virusCount <= 0
+        // Count all actual viruses currently on the board
+        let actualVirusCount = 0;
+        for (let x = 0; x < this.width; x++) {
+            for (let y = 0; y < this.height; y++) {
+                const field = this.fields[x][y];
+                if (field.shapePiece && field.shapePiece.shape instanceof Virus) {
+                    actualVirusCount++;
+                }
+            }
+        }
+        return actualVirusCount <= 0;
     }
 
     spawnPill() {
