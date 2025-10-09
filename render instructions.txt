@@ -4,14 +4,16 @@
 ## OVERVIEW
 This document explains how to switch between localhost development and Render.com production deployment for the Dr. Mario 99 game.
 
-## CURRENT STATE (LOCALHOST DEVELOPMENT)
-The game is currently configured for localhost development with the following changes:
+## CURRENT STATE (RENDER PRODUCTION)
+The game is currently configured for Render production deployment with the following changes:
 
-### Files Modified for Localhost:
-1. **public/index.html** - Line 439
+### Files Modified for Render:
+1. **public/index.html** - Line 700
 2. **server.js** - Lines 10 and 16
 3. **public/scripts/Board.js** - Line 59
 4. **public/scripts/Board2.js** - Line 60
+5. **new.js** - Line 13
+6. **public/scripts/wip.js** - Line 66
 
 ## CHANGES MADE FOR LOCALHOST DEVELOPMENT
 
@@ -164,17 +166,66 @@ origin: 'https://dr-mario99.onrender.com/'
 origin: ['https://dr-mario99.onrender.com/', 'http://localhost:3000']
 ```
 
-## DEPLOYMENT CHECKLIST
+## COMPREHENSIVE RENDER DEPLOYMENT CHECKLIST
 
-### Before Deploying to Render:
-1. ✅ Change socket connection to Render URL
-2. ✅ Update CORS to allow Render origin only
-3. ✅ Test locally with Render URL (if possible)
-4. ✅ Commit and push changes to Git
-5. ✅ Deploy to Render.com
+### ✅ CRITICAL FILES TO CHECK FOR RENDER DEPLOYMENT:
 
-### Before Local Development:
-1. ✅ Change socket connection to localhost
+#### Socket Connections (MUST be `https://dr-mario99.onrender.com/`):
+1. **public/index.html** (line ~700): `const socket = io('https://dr-mario99.onrender.com/');`
+2. **public/scripts/Board.js** (line 59): `const socket = io('https://dr-mario99.onrender.com/');`
+3. **public/scripts/Board2.js** (line 60): `const socket = io('https://dr-mario99.onrender.com/');`
+4. **new.js** (line 13): `const socket = io('https://dr-mario99.onrender.com/');`
+5. **public/scripts/wip.js** (line 66): `const socket = io('https://dr-mario99.onrender.com/');`
+
+#### CORS Configuration (MUST be Render only):
+6. **server.js** (line 10): `cors: { origin: "https://dr-mario99.onrender.com/" }`
+7. **server.js** (line 16): `origin: 'https://dr-mario99.onrender.com/'`
+
+### 🔍 VERIFICATION COMMANDS:
+```bash
+# Check for any remaining localhost references
+grep -r "localhost:3000" . --exclude-dir=node_modules --exclude-dir=public/node_modules
+
+# Check for any remaining http://localhost references  
+grep -r "http://localhost" . --exclude-dir=node_modules --exclude-dir=public/node_modules
+
+# Verify all socket connections
+grep -r "const socket = io" . --exclude-dir=node_modules --exclude-dir=public/node_modules
+```
+
+### 🚨 COMMON ISSUES ENCOUNTERED:
+
+#### Issue 1: Mixed Socket Connections
+- **Problem**: Some files have Render URL, others have localhost
+- **Solution**: Check ALL files listed above, not just the main ones
+- **Files to check**: `new.js`, `public/scripts/wip.js` (often forgotten)
+
+#### Issue 2: CORS Configuration
+- **Problem**: CORS allows both localhost and Render origins
+- **Solution**: For Render deployment, CORS should ONLY allow Render origin
+- **Check**: `server.js` lines 10 and 16
+
+#### Issue 3: Browser Console Errors
+- **Error**: `GET http://localhost:3000/socket.io/?EIO=4&transport=polling 404 (Not Found)`
+- **Cause**: Socket connections still pointing to localhost
+- **Solution**: Update ALL socket connections to Render URL
+
+### 📋 PRE-DEPLOYMENT CHECKLIST:
+
+#### Before Deploying to Render:
+1. ✅ **public/index.html** - Socket connection to Render URL
+2. ✅ **public/scripts/Board.js** - Socket connection to Render URL  
+3. ✅ **public/scripts/Board2.js** - Socket connection to Render URL
+4. ✅ **new.js** - Socket connection to Render URL
+5. ✅ **public/scripts/wip.js** - Socket connection to Render URL
+6. ✅ **server.js** - CORS configured for Render only (lines 10 & 16)
+7. ✅ Run verification commands to check for localhost references
+8. ✅ Test locally with Render URL (if possible)
+9. ✅ Commit and push changes to Git
+10. ✅ Deploy to Render.com
+
+#### Before Local Development:
+1. ✅ Change ALL socket connections to localhost
 2. ✅ Update CORS to allow both origins
 3. ✅ Start local server with `node server.js`
 4. ✅ Test at http://localhost:3000

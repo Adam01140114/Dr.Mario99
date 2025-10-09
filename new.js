@@ -10,7 +10,7 @@ var localpoints = 0;
 var enemy = 0;
 var player = 2;
 //import { io } from 'socket.io-client';
-const socket = io('localhost:3000/');
+const socket = io('https://dr-mario99.onrender.com/');
 
 function requestRandomNumber(max) {
     return new Promise((resolve) => {
