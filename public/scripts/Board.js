@@ -1003,12 +1003,10 @@ class ThrowingBoard extends Board {
 
 					localpoints = 0;
 					if(realdamage > 0){
-					for (let i = 0; i < realdamage; i++) {
-						console.log('hurt');
-						console.log('i = ' + i);
-						this.playingBoard.hurt();
-						spawn = spawn + 1;
-					}
+					// Only send one virus regardless of damage amount
+					console.log('hurt - damage limited to 1 virus');
+					this.playingBoard.hurt();
+					spawn = spawn + 1;
 					realdamage = 0
 					console.log('reset real damage');
 					}
