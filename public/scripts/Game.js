@@ -23,15 +23,31 @@ export default class Game extends HTMLElement {
     setupSocketListeners() {
         // Listen for opponent game over (opponent lost, you won)
         socket.on('opponentGameOver', (data) => {
+            console.log(`Player ${this.playerNumber}: Received opponentGameOver event`);
+            console.log(`Player ${this.playerNumber}: Data:`, data);
+            console.log(`Player ${this.playerNumber}: Room code check - received: ${data.roomCode}, expected: ${roomCode}`);
+            console.log(`Player ${this.playerNumber}: Player number check - received: ${data.playerNumber}, expected: ${this.playerNumber === 1 ? 2 : 1}`);
+            
             if (data.roomCode === roomCode && data.playerNumber === (this.playerNumber === 1 ? 2 : 1)) {
+                console.log(`Player ${this.playerNumber}: Conditions met! Showing win screen`);
                 this.showWinScreen()
+            } else {
+                console.log(`Player ${this.playerNumber}: Conditions not met, ignoring event`);
             }
         });
 
         // Listen for opponent win (opponent won, you lost)
         socket.on('opponentWin', (data) => {
+            console.log(`Player ${this.playerNumber}: Received opponentWin event`);
+            console.log(`Player ${this.playerNumber}: Data:`, data);
+            console.log(`Player ${this.playerNumber}: Room code check - received: ${data.roomCode}, expected: ${roomCode}`);
+            console.log(`Player ${this.playerNumber}: Player number check - received: ${data.playerNumber}, expected: ${this.playerNumber === 1 ? 2 : 1}`);
+            
             if (data.roomCode === roomCode && data.playerNumber === (this.playerNumber === 1 ? 2 : 1)) {
+                console.log(`Player ${this.playerNumber}: Conditions met! Showing opponent win screen`);
                 this.showOpponentWinScreen()
+            } else {
+                console.log(`Player ${this.playerNumber}: Conditions not met, ignoring event`);
             }
         });
     }
@@ -94,42 +110,56 @@ export default class Game extends HTMLElement {
     }
 
     endGame() {
+        console.log(`Player ${this.playerNumber}: endGame() METHOD CALLED!`);
         this.board.blockInput = true
         clearInterval(this.interval)
-        this.gameOverMario = document.createElement("img")
-        this.gameOverMario.src = './img/go_dr.png'
-        this.gameOverMario.id = 'goMario'
-        this.appendChild(this.gameOverMario)
-        this.gameOverImg = document.createElement("img")
-        this.gameOverImg.src = this.getGoSrc()
-        this.gameOverImg.id = 'go'
-        this.appendChild(this.gameOverImg)
-        let clickedOnce = false
-        if (this.board.score > this.board.topScore)
-            this.board.newTopScore()
-        this.dancingViruses.setMode(DancingMode.LAUGHING)
+        
+        // Show defeat alert immediately
+        if (typeof showGameAlert === 'function') {
+            console.log(`Player ${this.playerNumber}: Showing defeat alert`);
+            showGameAlert('💀 GAME OVER!', 'You have been defeated!', false);
+        } else {
+            // Fallback to old method
+            this.gameOverMario = document.createElement("img")
+            this.gameOverMario.src = './img/go_dr.png'
+            this.gameOverMario.id = 'goMario'
+            this.appendChild(this.gameOverMario)
+            this.gameOverImg = document.createElement("img")
+            this.gameOverImg.src = this.getGoSrc()
+            this.gameOverImg.id = 'go'
+            this.appendChild(this.gameOverImg)
+            let clickedOnce = false
+            if (this.board.score > this.board.topScore)
+                this.board.newTopScore()
+            this.dancingViruses.setMode(DancingMode.LAUGHING)
+            
+            setTimeout(() => {
+                this.gameOverListener = document.addEventListener("keydown", () => {
+                    if (clickedOnce) return
+                    clickedOnce = true
+                    this.gameOverImg.remove()
+                    this.board.destroy()
+                    this.createBoard()
+                    this.setBg()
+                    this.startInterval()
+                    this.createDancingViruses()
+                    this.gameOverMario.remove()
+                }, { once: true })
+            }, DELAY.endGameListener)
+        }
         
         // Emit game over event to server for multiplayer
         if (typeof roomCode !== 'undefined' && roomCode) {
+            console.log(`Player ${this.playerNumber}: Emitting playerGameOver event to server`);
+            console.log(`Player ${this.playerNumber}: Room code: ${roomCode}, Player number: ${this.playerNumber}`);
             socket.emit('playerGameOver', { 
                 roomCode: roomCode, 
                 playerNumber: this.playerNumber 
             });
+            console.log(`Player ${this.playerNumber}: playerGameOver event emitted successfully`);
+        } else {
+            console.log(`Player ${this.playerNumber}: Not emitting playerGameOver - roomCode: ${typeof roomCode !== 'undefined' ? roomCode : 'undefined'}`);
         }
-        
-        setTimeout(() => {
-            this.gameOverListener = document.addEventListener("keydown", () => {
-                if (clickedOnce) return
-                clickedOnce = true
-                this.gameOverImg.remove()
-                this.board.destroy()
-                this.createBoard()
-                this.setBg()
-                this.startInterval()
-                this.createDancingViruses()
-                this.gameOverMario.remove()
-            }, { once: true })
-        }, DELAY.endGameListener)
     }
 
     showWinScreen() {

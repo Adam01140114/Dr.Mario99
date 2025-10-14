@@ -801,11 +801,29 @@
             socket.emit('single');
             hideRoomCode();
             document.getElementById('playbuttons').classList.add('hidden');
+            
+            // Hide all homepage elements except logo and particles
+            const titleElement = document.querySelector('.title');
+            if (titleElement) titleElement.style.display = 'none';
+            
+            const menuContainer = document.querySelector('.menu-container');
+            if (menuContainer) menuContainer.style.display = 'none';
+            
+            const scanlines = document.querySelector('.scanlines');
+            if (scanlines) scanlines.style.display = 'none';
+            // Keep particles visible for starry background during gameplay
+            
             const script = document.createElement('script');
             script.src = './scripts/script.js';
             script.type = 'module';
             document.head.appendChild(script);
             console.log('Single Player: Starting game');
+            
+            // Show Player 1 game container (single player uses Player 1)
+            document.getElementById('game1').classList.remove('hidden');
+            
+            // Show touch controls
+            document.getElementById('touchControls').classList.remove('hidden');
         };
 
         // Free Play (Multiplayer Lobby)
@@ -825,18 +843,41 @@
             hideRoomCode();
             document.getElementById('playbuttons').classList.add('hidden');
             
+            // Hide all homepage elements except logo and particles
+            const titleElement = document.querySelector('.title');
+            if (titleElement) titleElement.style.display = 'none';
+            
+            const menuContainer = document.querySelector('.menu-container');
+            if (menuContainer) menuContainer.style.display = 'none';
+            
+            const scanlines = document.querySelector('.scanlines');
+            if (scanlines) scanlines.style.display = 'none';
+            // Keep particles visible for starry background during gameplay
+            
             if (data.player === 1) {
                 const script = document.createElement('script');
                 script.src = './scripts/script.js';
                 script.type = 'module';
                 document.head.appendChild(script);
                 console.log('Free Play: You are Player 1');
+                
+                // Show Player 1 game container
+                document.getElementById('game1').classList.remove('hidden');
+                
+                // Show touch controls
+                document.getElementById('touchControls').classList.remove('hidden');
             } else if (data.player === 2) {
                 const script = document.createElement('script');
                 script.src = './scripts/script.js';
                 script.type = 'module';
                 document.head.appendChild(script);
                 console.log('Free Play: You are Player 2');
+                
+                // Show Player 2 game container
+                document.getElementById('game2').classList.remove('hidden');
+                
+                // Show touch controls
+                document.getElementById('touchControls').classList.remove('hidden');
             }
         });
 

@@ -197,9 +197,10 @@ export class PlayingBoard extends Board {
                     console.log(`Player ${this.playerNumber}: Calculated realdamage: ${calculatedDamage} (from ${data[`p${this.playerNumber}damage`]} / 4)`);
                     
                     if (calculatedDamage > 0) {
-                        this.realdamage = calculatedDamage;
+                        // Cap damage at 1 virus maximum
+                        this.realdamage = Math.min(calculatedDamage, 1);
                         this.damageProcessed = false;
-                        console.log(`Player ${this.playerNumber}: DAMAGE STORED - realdamage set to ${this.realdamage} in PlayingBoard`);
+                        console.log(`Player ${this.playerNumber}: DAMAGE STORED - realdamage set to ${this.realdamage} in PlayingBoard (capped at 1)`);
                         console.log(`Player ${this.playerNumber}: VERIFICATION - this.realdamage is now: ${this.realdamage}`);
                         console.log(`Player ${this.playerNumber}: DAMAGE STORED in PlayingBoard instance with playerNumber: ${this.playerNumber}`);
                         console.log(`Player ${this.playerNumber}: DAMAGE STORED in PlayingBoard instance ID: ${this.constructor.name}-${this.playerNumber}-${Date.now()}`);
