@@ -1,65 +1,82 @@
+/**
+ * DR. MARIO 99 - CORE GAME LOGIC AND BOARD MANAGEMENT
+ * ===================================================
+ * 
+ * This file contains the core game logic that was consolidated from separate
+ * Board.js and Board2.js files. It now handles both Player 1 and Player 2
+ * dynamically based on the playerNumber parameter.
+ * 
+ * KEY SYSTEMS:
+ * - Game board management (8x17 grid)
+ * - Pill movement and rotation
+ * - Virus spawning and management
+ * - Damage system (sending/receiving viruses)
+ * - Point accumulation and clearing logic
+ * - Multiplayer synchronization
+ * 
+ * DAMAGE SYSTEM:
+ * - Players accumulate points by clearing 4+ in a row
+ * - Points are sent to opponent as damage
+ * - Damage spawns viruses on opponent's board
+ * - Damage is capped at 1 virus maximum per clear
+ * 
+ * MULTIPLAYER FEATURES:
+ * - Player-specific board positioning
+ * - Socket-based damage communication
+ * - Shared game state synchronization
+ */
+
 "use strict"
 import { Pill, Virus, randomColor } from "./Shape.js"
 import { Color, Direction, Rotation, DELAY } from "./components.js"
 
-
-var pillnum = 1;
-var second = 0;
-// var realdamage = 0; // Moved to instance variable
-// var localpoints = 0; // Moved to instance variable
-var enemy = 0;
-// var player = 1; // Moved to instance variable
+// Global game state variables
+var pillnum = 1;        // Current pill number
+var second = 0;         // Timer for game events
+var enemy = 0;          // Enemy player reference
 
 
 
 
-// var falling = 0; // Moved to instance variable
+// Pill positioning (global constants)
+var pillx1 = 3;  // Left pill X position
+var pillx2 = 4;  // Right pill X position
 
-// var spawn = 0; // Moved to instance variable
-
-
-
-var pillx1 = 3;
-var pillx2 = 4;
-
-
-// var hurting1 = 0; // Moved to instance variables
-// var hurting2 = 0; // Moved to instance variables
-// var hurting3 = 0; // Moved to instance variables
-// var hurting4 = 0; // Moved to instance variables
-
-
-// var pilly = 15; // Moved to instance variables
-// var pilly2 = 15; // Moved to instance variables
-// var pilly3 = 15; // Moved to instance variables
-// var pilly4 = 15; // Moved to instance variables
-
-// undery values will be set dynamically based on player number
-
-// var randy = 15; // Moved to instance variables
-// var randy2 = 15; // Moved to instance variables
-// var randy3 = 15; // Moved to instance variables
-// var randy4 = 15; // Moved to instance variables
-
-// var this.randx = 2; // Moved to instance variables
-// var this.randx2 = 2; // Moved to instance variables
-// var this.randx3 = 2; // Moved to instance variables
-// var this.randx4 = 2; // Moved to instance variables
-
-// var this.randcolor = 'bl'; // Moved to instance variables
-// var this.randcolor2 = 'bl'; // Moved to instance variables
+/**
+ * CONSOLIDATION NOTES:
+ * ====================
+ * 
+ * The following variables were moved from global scope to instance variables
+ * to prevent conflicts between Player 1 and Player 2 instances:
+ * 
+ * MOVED TO INSTANCE VARIABLES:
+ * - realdamage: Damage received from opponent
+ * - localpoints: Points accumulated for current clear
+ * - player: Player number (1 or 2)
+ * - falling: Falling state for pills
+ * - spawn: Spawn counter for viruses
+ * - hurting1-4: Hurt animation states
+ * - pilly, pilly2-4: Pill Y positions
+ * - randy, randy2-4: Random Y positions for virus spawning
+ * - randx, randx2-4: Random X positions for virus spawning
+ * - randcolor, randcolor2-4: Random colors for virus spawning
+ * 
+ * This consolidation allows the same Board.js file to handle both players
+ * without variable conflicts, as each instance maintains its own state.
+ */
 // var this.randcolor3 = 'bl'; // Moved to instance variables
 // var this.randcolor4 = 'bl'; // Moved to instance variables
 
 
-//import { io } from 'socket.io-client';
+// Socket.IO connection for multiplayer communication
 const socket = io(window.location.origin);
 
-
-//alert(roomCode);
-
-
-//flawless exc
+/**
+ * Utility function to convert digits to image elements
+ * Used for displaying score numbers
+ * @param {number} digit - The digit to convert
+ * @returns {HTMLElement} Image element with the digit
+ */
 function digitToImg(digit) {
     digit = parseInt(digit)
     const img = document.createElement("img")
@@ -67,13 +84,26 @@ function digitToImg(digit) {
     return img
 }
 
+/**
+ * Base Board Class
+ * Handles the fundamental grid system and field management
+ * Extended by PlayingBoard and ThrowingBoard
+ */
 class Board extends HTMLElement {
+    /**
+     * Creates a new board instance
+     * @param {Game} game - The game instance this board belongs to
+     */
     constructor(game) {
         super()
         this.game = game
-        this.fieldSize = 24
+        this.fieldSize = 24  // Size of each field in pixels
     }
 
+    /**
+     * Creates the grid of fields for the board
+     * Builds a 2D array of Field objects
+     */
     createGrid() {
         this.fields = []
         for (let x = 0; x < this.width; x++) {
@@ -83,17 +113,31 @@ class Board extends HTMLElement {
         }
     }
 
+    /**
+     * Creates a new field at the specified coordinates
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     */
     createNewField(x, y) {
         const field = new Field(this, x, y)
         this.fields[x][y] = field
         this.append(field)
     }
 
+    /**
+     * Sets the board dimensions based on field size
+     */
     setStyles() {
         this.style.width = this.width * this.fieldSize + "px"
         this.style.height = this.height * this.fieldSize + "px"
     }
 
+    /**
+     * Checks if coordinates are outside the board boundaries
+     * @param {number} x - X coordinate
+     * @param {number} y - Y coordinate
+     * @returns {boolean} True if coordinates are out of bounds
+     */
     outOfBounds(x, y) {
         if (x < 0 || x >= this.width) return true
         else if (y < 0 || y >= this.height) return true
@@ -103,7 +147,29 @@ class Board extends HTMLElement {
 
 
 
+/**
+ * MAIN PLAYING BOARD CLASS
+ * =======================
+ * 
+ * This is the core game board where all the action happens.
+ * Handles pill movement, virus spawning, damage system, and multiplayer logic.
+ * 
+ * KEY FEATURES:
+ * - 8x17 grid for game pieces
+ * - Pill movement and rotation
+ * - Virus spawning and management
+ * - Damage system (sending/receiving)
+ * - Point accumulation and clearing
+ * - Player-specific positioning
+ */
 export class PlayingBoard extends Board {
+    /**
+     * Creates the main playing board
+     * @param {Game} game - The game instance
+     * @param {number} level - Starting level (default: 0)
+     * @param {number} score - Starting score (default: 0)
+     * @param {number} playerNumber - Player number (1 or 2)
+     */
     constructor(game, level = 0, score = 0, playerNumber = 1) {
         console.log(`Player ${playerNumber}: PlayingBoard CONSTRUCTOR CALLED!`);
         super(game)
@@ -122,51 +188,66 @@ export class PlayingBoard extends Board {
         
         console.log('Player', this.playerNumber, 'undery:', this.playerNumber === 1 ? 14 : 6)
         
-        // Set player-specific undery values as instance variables
+        // Set player-specific undery values for virus spawning
+        // Player 1: undery = 14 (bottom of board)
+        // Player 2: undery = 6 (middle of board for visual balance)
         this.undery = this.playerNumber === 1 ? 14 : 6;
         this.undery2 = this.playerNumber === 1 ? 14 : 6;
         this.undery3 = this.playerNumber === 1 ? 14 : 6;
         this.undery4 = this.playerNumber === 1 ? 14 : 6;
         
         // Initialize instance variables to avoid conflicts between players
-        this.localpoints = 0;
-        this.realdamage = 0;
-        this.damageProcessed = false; // Flag to track if damage has been processed
-        this.spawn = 0;
-        this.falling = 0;
-        this.hurting1 = 0;
-        this.hurting2 = 0;
-        this.hurting3 = 0;
-        this.hurting4 = 0;
-        this.randy = 15;
-        this.randy2 = 15;
-        this.randy3 = 15;
-        this.randy4 = 15;
-        this.randx = 2;
-        this.randx2 = 2;
-        this.randx3 = 2;
-        this.randx4 = 2;
-        this.randcolor = 'bl';
-        this.randcolor2 = 'bl';
-        this.randcolor3 = 'bl';
-        this.randcolor4 = 'bl';
+        // DAMAGE SYSTEM VARIABLES
+        this.localpoints = 0;              // Points accumulated for current clear
+        this.realdamage = 0;               // Damage received from opponent
+        this.damageProcessed = false;      // Flag to track if damage has been processed
+        
+        // GAME STATE VARIABLES
+        this.spawn = 0;                    // Spawn counter for viruses
+        this.falling = 0;                  // Falling state for pills
+        
+        // ANIMATION STATE VARIABLES
+        this.hurting1 = 0;                 // Hurt animation state 1
+        this.hurting2 = 0;                 // Hurt animation state 2
+        this.hurting3 = 0;                 // Hurt animation state 3
+        this.hurting4 = 0;                 // Hurt animation state 4
+        
+        // VIRUS SPAWNING VARIABLES
+        this.randy = 15;                   // Random Y position for virus spawning
+        this.randy2 = 15;                  // Random Y position for virus spawning 2
+        this.randy3 = 15;                  // Random Y position for virus spawning 3
+        this.randy4 = 15;                  // Random Y position for virus spawning 4
+        this.randx = 2;                    // Random X position for virus spawning
+        this.randx2 = 2;                   // Random X position for virus spawning 2
+        this.randx3 = 2;                   // Random X position for virus spawning 3
+        this.randx4 = 2;                   // Random X position for virus spawning 4
+        this.randcolor = 'bl';             // Random color for virus spawning
+        this.randcolor2 = 'bl';            // Random color for virus spawning 2
+        this.randcolor3 = 'bl';            // Random color for virus spawning 3
+        this.randcolor4 = 'bl';            // Random color for virus spawning 4
+        
+        // PILL POSITIONING VARIABLES
         this.pilly = 15;
         this.pilly2 = 15;
         this.pilly3 = 15;
         this.pilly4 = 15;
         
+        // Create the throwing board (where new pills appear)
         this.throwingBoard = new ThrowingBoard(this.game, this, this.playerNumber);
 		
+        // Board dimensions (8x17 grid)
         this.width = 8
         this.height = 17
         this.level = level
         this.score = score
         this.virusList = []
         this.game.append(this.throwingBoard)
+        
+        // Game state tracking
         this.gameStarted = false; // Flag to track if game has started (viruses spawned)
         this.gameStartTime = Date.now(); // Track when game started
 		
-		
+		// Virus positions for multiplayer synchronization
 		this.virusPositions = [];
         socket.on('virusPositions', (positions) => {
             this.virusPositions = positions;
@@ -174,6 +255,10 @@ export class PlayingBoard extends Board {
         });
     }
 
+    /**
+     * Called when the board is connected to the DOM
+     * Initializes the game board, sets up listeners, and spawns initial viruses
+     */
     connectedCallback() {
         this.createGrid()
         this.setStyles()
@@ -188,19 +273,30 @@ export class PlayingBoard extends Board {
             console.log(`Player ${this.playerNumber}: Adding damage listener to PlayingBoard instance`);
             this.isDamageListenerAdded = true;
             
+            /**
+             * DAMAGE LISTENER SYSTEM
+             * ======================
+             * 
+             * Listens for damage events from the opponent and processes them.
+             * Damage is calculated as: floor(opponent_points / 4)
+             * Damage is capped at 1 virus maximum per clear.
+             */
             socket.on(`p${this.playerNumber}damage`, (data) => {
                 console.log(`Player ${this.playerNumber}: DAMAGE EVENT RECEIVED!`);
                 console.log(`Player ${this.playerNumber}: Raw damage data:`, data);
                 console.log(`Player ${this.playerNumber}: Room code check - received: ${data.roomCode}, expected: ${roomCode}`);
                 
+                // Validate room code to ensure damage is for the correct game
                 if (data.roomCode === roomCode) {
                     console.log(`Player ${this.playerNumber}: Room code matches! Processing damage...`);
                     console.log(`Player ${this.playerNumber}: Damage received: ${data[`p${this.playerNumber}damage`]}`);
+                    
+                    // Calculate damage: every 4 points = 1 virus
                     const calculatedDamage = Math.floor(data[`p${this.playerNumber}damage`] / 4);
                     console.log(`Player ${this.playerNumber}: Calculated realdamage: ${calculatedDamage} (from ${data[`p${this.playerNumber}damage`]} / 4)`);
                     
                     if (calculatedDamage > 0) {
-                        // Cap damage at 1 virus maximum
+                        // Cap damage at 1 virus maximum per clear
                         this.realdamage = Math.min(calculatedDamage, 1);
                         this.damageProcessed = false;
                         console.log(`Player ${this.playerNumber}: DAMAGE STORED - realdamage set to ${this.realdamage} in PlayingBoard (capped at 1)`);
@@ -222,6 +318,10 @@ export class PlayingBoard extends Board {
     }
 	
 
+    /**
+     * Advances to the next level
+     * Clears the board and spawns new viruses
+     */
     nextLevel() {
         this.level++
         for (let row of this.fields)
@@ -231,6 +331,9 @@ export class PlayingBoard extends Board {
         this.initImageCounters()
     }
 
+    /**
+     * Initializes all UI counters and spawns the first pill
+     */
     initImageCounters() {
         this.initScore()
         this.initTopScore()
@@ -381,33 +484,45 @@ export class PlayingBoard extends Board {
     }
 
 
+	/**
+	 * VIRUS SPAWNING SYSTEM - HURT METHOD
+	 * ====================================
+	 * 
+	 * This method spawns viruses on the player's board when they receive damage.
+	 * It's called when the opponent clears 4+ in a row and sends damage.
+	 * 
+	 * VIRUS SPAWNING LOGIC:
+	 * 1. Spawn a random virus at a random position
+	 * 2. Set hurt animation states for visual feedback
+	 * 3. Track spawn count for multiple damage instances
+	 * 
+	 * @param {number} realdamage - The amount of damage received (capped at 1)
+	 */
 	hurt(realdamage = null) {
-		
-
-		//alert("spawning pill");
+		// Use provided damage or fall back to stored damage
 		const actualDamage = realdamage !== null ? realdamage : this.realdamage;
 		console.log(`Player ${this.playerNumber}: HURT() METHOD CALLED!`);
 		console.log(`Player ${this.playerNumber}: hurt() called - spawn: ${this.spawn}, realdamage: ${actualDamage}`);
 		console.log(`Player ${this.playerNumber}: About to call spawnRandomDot()...`);
-		this.spawnRandomDot();
-			
-			
-			
 		
-					
-						this.hurting1 = 1;
-			
-			if (this.spawn > 1){
-						this.hurting2 = 1;
-			}
-			
-			if (this.spawn > 2){
-						this.hurting3 = 1;
-			}
-			
-			if (this.spawn > 3){
-						this.hurting4 = 1;
-			}
+		// Spawn a random virus on the board
+		this.spawnRandomDot();
+		
+		// Set hurt animation states for visual feedback
+		this.hurting1 = 1;
+		
+		// Additional hurt animations for multiple spawns
+		if (this.spawn > 1){
+			this.hurting2 = 1;
+		}
+		
+		if (this.spawn > 2){
+			this.hurting3 = 1;
+		}
+		
+		if (this.spawn > 3){
+			this.hurting4 = 1;
+		}
 			
 	
 
@@ -527,63 +642,86 @@ export class PlayingBoard extends Board {
 	
 	
 	
+    /**
+     * VIRUS SPAWNING IMPLEMENTATION - SPAWN RANDOM DOT
+     * ================================================
+     * 
+     * This method spawns random viruses on the board when damage is received.
+     * It creates viruses at random positions with random colors.
+     * 
+     * SPAWNING LOGIC:
+     * 1. Select random X position from available slots
+     * 2. Select random color from available colors
+     * 3. Spawn virus at the selected position
+     * 4. Handle multiple virus spawning for multiple damage
+     */
     spawnRandomDot() {
         console.log(`Player ${this.playerNumber}: SPAWNRANDOMDOT() METHOD CALLED!`);
         console.log(`Player ${this.playerNumber}: spawnRandomDot() called`);
+        
+        // Available colors for virus spawning
         let colors = ['yl', 'bl', 'br'];
         let availableX = [1, 2, 3, 4, 5, 6, 7];
         console.log(`Player ${this.playerNumber}: Available colors: ${colors.join(', ')}`);
         console.log(`Player ${this.playerNumber}: Available X positions: ${availableX.join(', ')}`);
 
+        /**
+         * Helper function to get random X position
+         * Removes selected position to avoid duplicates
+         */
         function getRandomX() {
             let randomIndex = Math.floor(Math.random() * availableX.length);
             return availableX.splice(randomIndex, 1)[0];
         }
 	
-	this.randy = 15;
-	this.undery = 14;
-	console.log(`Player ${this.playerNumber}: randy set to ${this.randy}, undery set to ${this.undery}`);
-	
-	this.randy2 = 15;
-	this.undery2 = 14;
-	
-	this.randy3 = 15;
-	this.undery3 = 14;
-	
-	this.randy4 = 15;
-	this.undery4 = 14;
+		// Set Y positions for virus spawning (bottom of board)
+		this.randy = 15;
+		this.undery = 14;
+		console.log(`Player ${this.playerNumber}: randy set to ${this.randy}, undery set to ${this.undery}`);
+		
+		// Set Y positions for additional viruses
+		this.randy2 = 15;
+		this.undery2 = 14;
+		
+		this.randy3 = 15;
+		this.undery3 = 14;
+		
+		this.randy4 = 15;
+		this.undery4 = 14;
 	
    
 
-    this.randx = getRandomX();
-    this.randcolor = colors[Math.floor(Math.random() * colors.length)];
-    console.log(`Player ${this.playerNumber}: VIRUS SPAWNING ATTEMPT!`);
-    console.log(`Player ${this.playerNumber}: Spawning virus at position (${this.randx}, ${this.randy}) with color ${this.randcolor}`);
-    console.log(`Player ${this.playerNumber}: Board dimensions - width: ${this.width}, height: ${this.height}`);
-    console.log(`Player ${this.playerNumber}: Field exists check - fields[${this.randx}][${this.randy}] exists: ${this.fields[this.randx] && this.fields[this.randx][this.randy] ? 'YES' : 'NO'}`);
-    console.log(`Player ${this.playerNumber}: About to call setColor() on field...`);
-    this.fields[this.randx][this.randy].setColor(this.randcolor);
-    console.log(`Player ${this.playerNumber}: VIRUS SPAWNED SUCCESSFULLY!`);
-    console.log(`Player ${this.playerNumber}: Virus spawned successfully`);
+		// Spawn the first virus
+		this.randx = getRandomX();
+		this.randcolor = colors[Math.floor(Math.random() * colors.length)];
+		console.log(`Player ${this.playerNumber}: VIRUS SPAWNING ATTEMPT!`);
+		console.log(`Player ${this.playerNumber}: Spawning virus at position (${this.randx}, ${this.randy}) with color ${this.randcolor}`);
+		console.log(`Player ${this.playerNumber}: Board dimensions - width: ${this.width}, height: ${this.height}`);
+		console.log(`Player ${this.playerNumber}: Field exists check - fields[${this.randx}][${this.randy}] exists: ${this.fields[this.randx] && this.fields[this.randx][this.randy] ? 'YES' : 'NO'}`);
+		console.log(`Player ${this.playerNumber}: About to call setColor() on field...`);
+		this.fields[this.randx][this.randy].setColor(this.randcolor);
+		console.log(`Player ${this.playerNumber}: VIRUS SPAWNED SUCCESSFULLY!`);
+		console.log(`Player ${this.playerNumber}: Virus spawned successfully`);
     
 	
+		// Spawn additional viruses for multiple damage
 		if(this.hurting2 == 1){
-    this.randx2 = getRandomX();
-    this.randcolor2 = colors[Math.floor(Math.random() * colors.length)];
-    this.fields[this.randx2][this.randy2].setColor(this.randcolor2);
-    }
-	
-	if(this.hurting3 == 1){
-    this.randx3 = getRandomX();
-    this.randcolor3 = colors[Math.floor(Math.random() * colors.length)];
-    this.fields[this.randx3][this.randy3].setColor(this.randcolor3);
-    }
-	
-	if(this.hurting4 == 1){
-    this.randx4 = getRandomX();
-    this.randcolor4 = colors[Math.floor(Math.random() * colors.length)];
-    this.fields[this.randx4][this.randy4].setColor(this.randcolor4);
-	}
+			this.randx2 = getRandomX();
+			this.randcolor2 = colors[Math.floor(Math.random() * colors.length)];
+			this.fields[this.randx2][this.randy2].setColor(this.randcolor2);
+		}
+		
+		if(this.hurting3 == 1){
+			this.randx3 = getRandomX();
+			this.randcolor3 = colors[Math.floor(Math.random() * colors.length)];
+			this.fields[this.randx3][this.randy3].setColor(this.randcolor3);
+		}
+		
+		if(this.hurting4 == 1){
+			this.randx4 = getRandomX();
+			this.randcolor4 = colors[Math.floor(Math.random() * colors.length)];
+			this.fields[this.randx4][this.randy4].setColor(this.randcolor4);
+		}
 	
 }
 
@@ -864,24 +1002,44 @@ class Field extends HTMLElement {
         this.style.left = this.x * this.board.fieldSize + "px"
         this.style.top = this.board.fieldSize * (this.board.height - 1 - this.y) + 'px'
     }
+   /**
+    * CORE DAMAGE SYSTEM - CLEAR ANIMATED
+    * ===================================
+    * 
+    * This is the heart of the damage system. When a field is cleared:
+    * 1. Points are accumulated for each piece cleared
+    * 2. When 4+ points are reached, damage is sent to opponent
+    * 3. Points are reset after sending damage
+    * 
+    * DAMAGE CALCULATION:
+    * - Every 4 points = 1 virus sent to opponent
+    * - Damage is capped at 1 virus maximum per clear
+    * - Points are sent immediately when threshold is reached
+    */
    clearAnimated() {
     console.log(`Player ${this.board.playerNumber}: clearAnimated() called`);
+    
+    // Determine what type of piece is being cleared
     const x = this.shapePiece.shape instanceof Virus;
     const o = this.shapePiece.shape instanceof Pill;
-    const color = this.shapePiece.color; // Assuming this.shapePiece.color contains values like Color.FIRST, etc.
-    this.clear();
-                if (x) {
-                    this.board.localpoints += 1;
-                    console.log(`Player ${this.board.playerNumber}: Virus cleared, points: ${this.board.localpoints}`);
-                    this.style.backgroundImage = "url('./img/" + color + "_x.png')";
-                }
-                if (o) {
-                    this.board.localpoints += 1;
-                    console.log(`Player ${this.board.playerNumber}: Pill cleared, points: ${this.board.localpoints}`);
-                    this.style.backgroundImage = "url('./img/" + color + "_o.png')";
-                }
+    const color = this.shapePiece.color;
     
-    // Alert when 4 in a row is cleared
+    // Clear the field
+    this.clear();
+    
+    // Accumulate points for each piece cleared
+    if (x) {
+        this.board.localpoints += 1;
+        console.log(`Player ${this.board.playerNumber}: Virus cleared, points: ${this.board.localpoints}`);
+        this.style.backgroundImage = "url('./img/" + color + "_x.png')";
+    }
+    if (o) {
+        this.board.localpoints += 1;
+        console.log(`Player ${this.board.playerNumber}: Pill cleared, points: ${this.board.localpoints}`);
+        this.style.backgroundImage = "url('./img/" + color + "_o.png')";
+    }
+    
+    // DAMAGE THRESHOLD: Send damage when 4+ points are reached
     if (this.board.localpoints >= 4) {
         console.log(`Player ${this.board.playerNumber}: 4 in a row cleared! Points: ${this.board.localpoints}`);
         console.log(`Player ${this.board.playerNumber}: DAMAGE SHOULD BE SENT NOW!`);
@@ -1114,29 +1272,48 @@ class ThrowingBoard extends Board {
 	
 	//balls drop
 	
+    /**
+     * DAMAGE PROCESSING SYSTEM - SET FRAMES
+     * =====================================
+     * 
+     * This method handles the damage processing when a new pill is spawned.
+     * It checks for received damage and spawns viruses accordingly.
+     * 
+     * DAMAGE PROCESSING LOGIC:
+     * 1. Check if damage was received (realdamage > 0)
+     * 2. Check if damage hasn't been processed yet (damageProcessed = false)
+     * 3. If both conditions are met, spawn virus and mark as processed
+     * 4. Reset damage after processing
+     */
     setFrames() {
         console.log(`Player ${this.playerNumber}: setFrames() METHOD CALLED!`);
         this.currentFrame = 0
         this.frames = [
             {
-				
+                /**
+                 * FRAME 0: New pill spawn and damage processing
+                 * This is where damage from the opponent is processed
+                 */
                 action: (pill) => {
                     pill.rotate(Direction.LEFT)
 					console.log('new pill');
 					
+					// Reset pill positioning
 					pillx1 = 3;
 					pillx2 = 4;
 					this.pilly = 15;
 					this.pilly2 = 15;
 
-
-					// When sending points update
+					// Send points update to opponent
 					console.log(`Player ${this.playerNumber}: setFrames() - Sending points update. Current localpoints: ${this.localpoints}`);
 					socket.emit(`updatePoints${this.playerNumber === 1 ? 2 : 1}`, { [`player${this.playerNumber === 1 ? 2 : 1}points`]: this.localpoints, roomCode: roomCode });
 					console.log(`Player ${this.playerNumber}: setFrames() - Points update sent to Player ${this.playerNumber === 1 ? 2 : 1}`);
 
+					// Reset local points
 					this.localpoints = 0;
 					console.log(`Player ${this.playerNumber}: setFrames() - Points reset to 0`);
+					
+					// DAMAGE PROCESSING: Check for received damage
 					console.log(`Player ${this.playerNumber}: setFrames() - CHECKING DAMAGE - this.playingBoard.realdamage = ${this.playingBoard.realdamage}`);
 					console.log(`Player ${this.playerNumber}: setFrames() - damageProcessed flag = ${this.playingBoard.damageProcessed}`);
 					console.log(`Player ${this.playerNumber}: setFrames() - PlayingBoard instance playerNumber: ${this.playingBoard.playerNumber}`);
@@ -1144,19 +1321,21 @@ class ThrowingBoard extends Board {
 					console.log(`Player ${this.playerNumber}: setFrames() - PlayingBoard instance reference: ${this.playingBoard}`);
 					console.log(`Player ${this.playerNumber}: setFrames() - VERIFICATION: this.playingBoard === this.playingBoard: ${this.playingBoard === this.playingBoard}`);
 					console.log(`Player ${this.playerNumber}: setFrames() - CRITICAL CHECK: Is this the same PlayingBoard that stored damage?`);
+					
+					// Process damage if available and not already processed
 					if(this.playingBoard.realdamage > 0 && !this.playingBoard.damageProcessed){
-					// Only send one virus regardless of damage amount
-					console.log(`Player ${this.playerNumber}: setFrames() - DAMAGE FOUND! Calling hurt() with realdamage: ${this.playingBoard.realdamage}`);
-					console.log(`Player ${this.playerNumber}: setFrames() - hurt - damage limited to 1 virus`);
-					this.playingBoard.hurt(this.playingBoard.realdamage);
-					this.spawn = this.spawn + 1;
-					this.playingBoard.damageProcessed = true; // Mark damage as processed
-					this.playingBoard.realdamage = 0
-					console.log(`Player ${this.playerNumber}: setFrames() - reset real damage and marked as processed`);
+						// Only send one virus regardless of damage amount
+						console.log(`Player ${this.playerNumber}: setFrames() - DAMAGE FOUND! Calling hurt() with realdamage: ${this.playingBoard.realdamage}`);
+						console.log(`Player ${this.playerNumber}: setFrames() - hurt - damage limited to 1 virus`);
+						this.playingBoard.hurt(this.playingBoard.realdamage);
+						this.spawn = this.spawn + 1;
+						this.playingBoard.damageProcessed = true; // Mark damage as processed
+						this.playingBoard.realdamage = 0
+						console.log(`Player ${this.playerNumber}: setFrames() - reset real damage and marked as processed`);
 					} else if (this.playingBoard.realdamage > 0 && this.playingBoard.damageProcessed) {
-					console.log(`Player ${this.playerNumber}: setFrames() - Damage already processed, skipping`);
+						console.log(`Player ${this.playerNumber}: setFrames() - Damage already processed, skipping`);
 					} else {
-					console.log(`Player ${this.playerNumber}: setFrames() - No real damage to send (realdamage: ${this.playingBoard.realdamage})`);
+						console.log(`Player ${this.playerNumber}: setFrames() - No real damage to send (realdamage: ${this.playingBoard.realdamage})`);
 					}
 					
                 }

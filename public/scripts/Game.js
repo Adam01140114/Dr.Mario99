@@ -1,15 +1,48 @@
+/**
+ * DR. MARIO 99 - MAIN GAME CONTROLLER
+ * ===================================
+ * 
+ * This is the main game controller that manages the entire game instance.
+ * It has been consolidated from separate Game.js and Game2.js files to handle
+ * both Player 1 and Player 2 dynamically based on the playerNumber parameter.
+ * 
+ * KEY FEATURES:
+ * - Dynamic player assignment (Player 1 or Player 2)
+ * - Multiplayer socket communication
+ * - Game state management (victory/defeat)
+ * - Board creation and management
+ * - Dancing virus animations
+ * 
+ * MULTIPLAYER SYSTEM:
+ * - Listens for opponent game events (game over, victory)
+ * - Emits player events to server (game over, victory)
+ * - Handles room-based communication
+ * - Manages win/lose screens for multiplayer
+ */
+
 "use strict"
 import { PlayingBoard } from "./Board.js"
 import { Color, DELAY } from "./components.js"
 
-
+/**
+ * Main Game Controller Class
+ * Handles the entire game instance for a single player
+ */
 export default class Game extends HTMLElement {
+    /**
+     * Constructor - Creates a new game instance for a specific player
+     * @param {number} playerNumber - The player number (1 or 2) for multiplayer games
+     */
     constructor(playerNumber = 1) {
         super()
         this.playerNumber = playerNumber
         console.log('Player Number:', this.playerNumber)
     }
 
+    /**
+     * Called when the game element is connected to the DOM
+     * Initializes the game board, background, animations, and multiplayer listeners
+     */
     connectedCallback() {
         this.createBoard()
         this.setBg()
@@ -20,6 +53,10 @@ export default class Game extends HTMLElement {
         this.setupSocketListeners()
     }
 
+    /**
+     * Sets up Socket.IO listeners for multiplayer communication
+     * Handles opponent game events (victory/defeat) and validates room/player data
+     */
     setupSocketListeners() {
         // Listen for opponent game over (opponent lost, you won)
         socket.on('opponentGameOver', (data) => {
@@ -28,6 +65,7 @@ export default class Game extends HTMLElement {
             console.log(`Player ${this.playerNumber}: Room code check - received: ${data.roomCode}, expected: ${roomCode}`);
             console.log(`Player ${this.playerNumber}: Player number check - received: ${data.playerNumber}, expected: ${this.playerNumber === 1 ? 2 : 1}`);
             
+            // Validate that the event is for our room and from the correct opponent
             if (data.roomCode === roomCode && data.playerNumber === (this.playerNumber === 1 ? 2 : 1)) {
                 console.log(`Player ${this.playerNumber}: Conditions met! Showing win screen`);
                 this.showWinScreen()
@@ -43,6 +81,7 @@ export default class Game extends HTMLElement {
             console.log(`Player ${this.playerNumber}: Room code check - received: ${data.roomCode}, expected: ${roomCode}`);
             console.log(`Player ${this.playerNumber}: Player number check - received: ${data.playerNumber}, expected: ${this.playerNumber === 1 ? 2 : 1}`);
             
+            // Validate that the event is for our room and from the correct opponent
             if (data.roomCode === roomCode && data.playerNumber === (this.playerNumber === 1 ? 2 : 1)) {
                 console.log(`Player ${this.playerNumber}: Conditions met! Showing opponent win screen`);
                 this.showOpponentWinScreen()
@@ -52,7 +91,14 @@ export default class Game extends HTMLElement {
         });
     }
 
+    /**
+     * Creates a new game board instance
+     * Handles both single player and multiplayer game initialization
+     * @param {number} level - The starting level (defaults to 0)
+     * @param {number} score - The starting score (defaults to 0)
+     */
     createBoard(level, score) {
+        // Create the main game board with player-specific configuration
         this.board = new PlayingBoard(this, level, score, this.playerNumber)
         this.append(this.board)
         
@@ -68,22 +114,38 @@ export default class Game extends HTMLElement {
             socket.emit('requestNewGameData');
         }
     }
+    /**
+     * Creates the dancing virus animations at the bottom of the screen
+     * These viruses dance and react to game events (laying down when cleared, etc.)
+     */
     createDancingViruses() {
         if (this.dancingViruses)
             this.dancingViruses.destroy()
         this.dancingViruses = new DancingViruses(this)
     }
 
+    /**
+     * Starts the main game loop that updates the board every frame
+     */
     startInterval() {
         this.interval = setInterval(() => {
             this.board.nextFrame()
         }, DELAY.frame)
     }
 
+    /**
+     * Stops the main game loop
+     */
     stopInterval() {
         clearInterval(this.interval)
     }
 
+    /**
+     * Handles stage completion (all viruses cleared)
+     * Different behavior for single player vs multiplayer:
+     * - Single player: Shows stage complete screen and advances to next level
+     * - Multiplayer: Shows victory screen and notifies opponent
+     */
     nextStage() {
         this.board.blockInput = true
         clearInterval(this.interval)
@@ -121,6 +183,11 @@ export default class Game extends HTMLElement {
         }
     }
 
+    /**
+     * Handles game over (player lost)
+     * Shows defeat screen and notifies opponent in multiplayer mode
+     * In single player, allows restarting the game
+     */
     endGame() {
         console.log(`Player ${this.playerNumber}: endGame() METHOD CALLED!`);
         this.board.blockInput = true
@@ -174,6 +241,10 @@ export default class Game extends HTMLElement {
         }
     }
 
+    /**
+     * Shows victory screen when player wins in multiplayer
+     * Called when opponent loses (opponentGameOver event received)
+     */
     showWinScreen() {
         // Show custom win alert
         if (typeof showGameAlert === 'function') {
@@ -196,6 +267,10 @@ export default class Game extends HTMLElement {
         }
     }
 
+    /**
+     * Shows defeat screen when opponent wins in multiplayer
+     * Called when opponent wins (opponentWin event received)
+     */
     showOpponentWinScreen() {
         // Show custom lose alert
         if (typeof showGameAlert === 'function') {
@@ -218,19 +293,43 @@ export default class Game extends HTMLElement {
         }
     }
 
+    /**
+     * Sets the background image based on the current level
+     * @param {number} level - The level number (defaults to current board level)
+     */
     setBg(level = this.board.level) {
         this.style.backgroundImage = "url('./img/bg" + level % 5 + ".png')"
     }
+    
+    /**
+     * Gets the background image source for a given level
+     * @param {number} level - The level number
+     * @returns {string} The background image path
+     */
     getBgSrc(level) {
         return "./img/bg" + (level || this.board.level) % 5 + ".png"
     }
+    
+    /**
+     * Gets the game over image source for the current level
+     * @returns {string} The game over image path
+     */
     getGoSrc() {
         return "./img/go" + this.board.level % 5 + ".png"
     }
+    
+    /**
+     * Gets the stage complete image source for the current level
+     * @returns {string} The stage complete image path
+     */
     getScSrc() {
         return "./img/sc" + this.board.level % 5 + ".png"
     }
 
+    /**
+     * Shows a custom victory alert for multiplayer wins
+     * Creates a styled overlay with victory message and auto-returns to homepage
+     */
     showVictoryAlert() {
         // Create victory overlay
         const overlay = document.createElement('div');
@@ -359,6 +458,9 @@ export default class Game extends HTMLElement {
         }, 5000);
     }
 
+    /**
+     * Returns to the homepage by reloading the page
+     */
     returnToHomepage() {
         // Reload the page to return to homepage
         window.location.reload();
@@ -366,31 +468,61 @@ export default class Game extends HTMLElement {
 }
 customElements.define("game-element", Game)
 
+/**
+ * DANCING VIRUS ANIMATION SYSTEM
+ * ==============================
+ * 
+ * The dancing viruses at the bottom of the screen provide visual feedback
+ * and entertainment. They react to game events:
+ * - NORMAL: Dancing around the screen
+ * - LAYING: Laying down when their color is cleared
+ * - LAUGHING: Laughing when player loses
+ * - DEAD: Disappearing when all viruses of their color are cleared
+ */
 
+/**
+ * Animation modes for dancing viruses
+ */
 const DancingMode = {
-    NORMAL: 0,
-    LAYING: 1,
-    LAUGHING: 2,
-    DEAD: 3,
+    NORMAL: 0,    // Normal dancing animation
+    LAYING: 1,    // Laying down when color is cleared
+    LAUGHING: 2,  // Laughing when player loses
+    DEAD: 3,      // Dead/disappeared when all of color cleared
 }
 
+/**
+ * Manages the collection of dancing viruses
+ * Handles their animations and reactions to game events
+ */
 class DancingViruses {
+    /**
+     * Creates the dancing virus system
+     * @param {Game} game - The game instance
+     */
     constructor(game) {
         this.game = game
+        // Create three dancing viruses, one for each color
         this.list = [
-            new DancingVirus(this.game, Color.THIRD, 0),
-            new DancingVirus(this.game, Color.SECOND, 6),
-            new DancingVirus(this.game, Color.FIRST, 12),
+            new DancingVirus(this.game, Color.THIRD, 0),   // Yellow virus
+            new DancingVirus(this.game, Color.SECOND, 6),  // Brown virus  
+            new DancingVirus(this.game, Color.FIRST, 12),  // Blue virus
         ]
         this.appendToGame()
         this.startAnimation()
     }
 
+    /**
+     * Starts the animation system for all dancing viruses
+     * Sets up movement and animation intervals
+     */
     startAnimation() {
+        // Move viruses every second (unless one is laying down)
         setInterval(() => {
             if (this.anyVirusLaying()) return
             this.nextMove()
         }, 1000);
+        
+        // Animate viruses every 250ms (with slight delay)
         setTimeout(() => {
             setInterval(() => {
                 this.nextAnimation()
@@ -398,10 +530,19 @@ class DancingViruses {
         }, 125)
     }
 
+    /**
+     * Makes a virus of the specified color lay down
+     * Called when that color is cleared from the board
+     * @param {string} color - The color of the virus to lay down
+     */
     lay(color) {
         this.list.filter(el => el.color == color)[0].setMode(DancingMode.LAYING)
     }
 
+    /**
+     * Checks if any virus is currently laying down
+     * @returns {boolean} True if any virus is laying down
+     */
     anyVirusLaying() {
         for (let virus of this.list)
             if (virus.mode == DancingMode.LAYING)
@@ -409,38 +550,67 @@ class DancingViruses {
         return false
     }
 
+    /**
+     * Adds all dancing viruses to the game element
+     */
     appendToGame() {
         for (let virus of this.list)
             this.game.append(virus)
     }
 
+    /**
+     * Moves all viruses to their next position
+     */
     nextMove() {
         for (let virus of this.list)
             virus.nextMove()
     }
 
+    /**
+     * Advances animation for all viruses
+     */
     nextAnimation() {
         for (let virus of this.list)
             virus.nextAnimation()
     }
 
+    /**
+     * Advances laying animation for all viruses
+     */
     nextAnimationLaying() {
         for (let virus of this.list)
             virus.nextAnimationLaying()
     }
 
+    /**
+     * Removes all dancing viruses from the game
+     */
     destroy() {
         for (let virus of this.list)
             virus.remove()
     }
 
+    /**
+     * Sets the animation mode for all viruses
+     * @param {number} mode - The animation mode to set
+     */
     setMode(mode) {
         for (let virus of this.list)
             virus.setMode(mode)
     }
 }
 
+/**
+ * Individual dancing virus element
+ * Handles movement, animation, and reactions to game events
+ */
 class DancingVirus extends HTMLElement {
+    /**
+     * Creates a dancing virus
+     * @param {Game} game - The game instance
+     * @param {string} color - The virus color (bl, br, yl)
+     * @param {number} currentStep - Starting position in the dance path
+     */
     constructor(game, color, currentStep) {
         super()
         this.game = game
@@ -449,14 +619,18 @@ class DancingVirus extends HTMLElement {
         this.currentAnimation = 0
         this.currentModeCount = 0
         this.mode = DancingMode.NORMAL
+        
+        // Animation frames for each mode
         this.animations = {
-            0: [2, 1, 2, 3],
-            1: [5, 6],
-            2: [2, 4],
-            3: [],
+            0: [2, 1, 2, 3],  // NORMAL: dancing sequence
+            1: [5, 6],        // LAYING: laying down sequence
+            2: [2, 4],        // LAUGHING: laughing sequence
+            3: [],            // DEAD: no animation (invisible)
         }
+        
+        // Dance path - the virus follows this circular path
         this.steps = [
-            { x: 5, y: 0 },
+            { x: 5, y: 0 },  // Start position
             { x: 4, y: 0 },
             { x: 3, y: 0 },
             { x: 2, y: 0 },
@@ -473,29 +647,47 @@ class DancingVirus extends HTMLElement {
             { x: 6, y: 4 },
             { x: 6, y: 3 },
             { x: 6, y: 2 },
-            { x: 6, y: 1 },
+            { x: 6, y: 1 },  // End position (loops back to start)
         ]
     }
 
+    /**
+     * Called when the virus element is connected to the DOM
+     */
     connectedCallback() {
         this.display()
     }
 
+    /**
+     * Updates the virus position and appearance
+     */
     display() {
         this.style.left = 2 * 24 + this.getPosition().x * 24 + 'px'
         this.style.top = 14 * 24 + this.getPosition().y * 24 + 'px'
         this.style.backgroundImage = "url('" + this.getImage() + "')"
     }
 
+    /**
+     * Gets the current position in the dance path
+     * @returns {Object} The current position {x, y}
+     */
     getPosition() {
         return this.steps[this.currentStep]
     }
 
+    /**
+     * Gets the current animation image path
+     * @returns {string} The image path for the current animation frame
+     */
     getImage() {
         if (this.mode == DancingMode.DEAD) return ''
         return "./img/lupa/" + this.color + "/" + this.animations[this.mode][this.currentAnimation] + ".png"
     }
 
+    /**
+     * Moves the virus to the next position in the dance path
+     * Only moves in NORMAL mode
+     */
     nextMove() {
         if (this.mode != DancingMode.NORMAL) return
         if (++this.currentStep == this.steps.length) this.currentStep = 0
@@ -503,13 +695,22 @@ class DancingVirus extends HTMLElement {
         this.style.top = 14 * 24 + this.getPosition().y * 24 + 'px'
     }
 
+    /**
+     * Advances the animation frame
+     * Handles special logic for laying down and checking if color is cleared
+     */
     nextAnimation() {
         this.currentModeCount++
+        
+        // Special handling for laying down mode
         if (this.mode == DancingMode.LAYING && this.currentModeCount >= 10) {
+            // Check if any viruses of this color still exist on the board
             let anyVirusInColor = false
             for (let virus of this.game.board.virusList.filter(el => el.pieces.length != 0))
                 if (virus.color == this.color)
                     anyVirusInColor = true
+            
+            // If no viruses of this color remain, virus dies; otherwise returns to normal
             if (anyVirusInColor)
                 this.setMode(DancingMode.NORMAL)
             else
@@ -517,15 +718,25 @@ class DancingVirus extends HTMLElement {
 
             return
         }
+        
+        // Advance to next animation frame
         if (++this.currentAnimation == this.animations[this.mode].length) this.currentAnimation = 0
         this.style.backgroundImage = "url('" + this.getImage() + "')"
     }
 
+    /**
+     * Sets the animation mode for the virus
+     * @param {number} mode - The new animation mode
+     */
     setMode(mode) {
+        // Dead viruses can't be made to laugh
         if (this.mode == DancingMode.DEAD && mode == DancingMode.LAUGHING) return
+        
         this.mode = mode
         this.currentAnimation = 0
         this.currentModeCount = 0
+        
+        // Special setup for laying down mode
         if (mode == DancingMode.LAYING)
             this.currentAnimationLaying = 0
     }

@@ -1,25 +1,63 @@
+/**
+ * DR. MARIO 99 - MULTIPLAYER SERVER
+ * =================================
+ * 
+ * This server handles all multiplayer communication and game state management.
+ * It manages room creation, player matching, game data synchronization,
+ * and damage system communication between players.
+ * 
+ * KEY FEATURES:
+ * - Socket.IO real-time communication
+ * - Room-based multiplayer system
+ * - Shared game data generation
+ * - Damage system coordination
+ * - Fair pill color synchronization
+ * 
+ * MULTIPLAYER SYSTEMS:
+ * - Lobby system for player matching
+ * - Room-based game sessions
+ * - Shared virus positions
+ * - Synchronized pill color lists
+ * - Damage communication between players
+ */
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const cors = require('cors');
 
+// Initialize Express server
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: { origin: "*" },
 });
 
+// Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Enable CORS for all origins
 app.use(cors({
     origin: "*"
 }));
 
-const activeRooms = {};
-const lobby = [];
+// Multiplayer state management
+const activeRooms = {};  // Track active game rooms
+const lobby = [];        // Players waiting for matches
 
-// Function to generate random virus positions
+/**
+ * GAME DATA GENERATION SYSTEM
+ * ===========================
+ * 
+ * These functions generate shared game data that ensures fairness
+ * between players in multiplayer games.
+ */
+
+/**
+ * Generates random virus positions for the game board
+ * @returns {Array} Array of {x, y} position objects
+ */
 function generateVirusPositions() {
     const positions = [];
     for (let i = 0; i < 10; i++) {
@@ -31,15 +69,27 @@ function generateVirusPositions() {
     return positions;
 }
 
-// Function to generate a random list (increased to 100 for longer games)
+/**
+ * Generates a random pill color list for fair multiplayer games
+ * @returns {Array} Array of 100 random numbers (0, 1, or 2)
+ */
 function generateRandomList() {
     return Array.from({ length: 100 }, () => Math.floor(Math.random() * 3));
 }
 
-// Store shared pill colors per room
+// Store shared pill colors per room for multiplayer synchronization
 const roomPillColors = {};
 
-// Function to generate new game data (virus positions and pill colors)
+/**
+ * SHARED GAME DATA GENERATION
+ * ===========================
+ * 
+ * Generates new game data including virus positions and pill colors.
+ * Ensures both players receive the same data for fair gameplay.
+ * 
+ * @param {string} roomCode - The room code for the game
+ * @returns {Object} Game data with virus positions and pill colors
+ */
 function generateNewGameData(roomCode) {
     virusPositions = generateVirusPositions();
     
@@ -61,7 +111,13 @@ function generateNewGameData(roomCode) {
 // Generate initial virus positions (will be regenerated for each game)
 let virusPositions = generateVirusPositions();
 
-// Function to broadcast server logs to debug console
+/**
+ * DEBUG LOGGING SYSTEM
+ * ====================
+ * 
+ * Broadcasts server logs to connected clients for debugging purposes.
+ * This helps with multiplayer synchronization debugging.
+ */
 function broadcastServerLog(type, message) {
     io.emit('serverLog', { type, message, timestamp: new Date().toISOString() });
 }
@@ -76,9 +132,22 @@ console.log = function(...args) {
     broadcastServerLog('log', message);
 };
 
+/**
+ * SOCKET.IO CONNECTION HANDLER
+ * =============================
+ * 
+ * Handles all client connections and multiplayer events.
+ * Manages room creation, player matching, and game synchronization.
+ */
 io.on('connection', (socket) => {
     broadcastServerLog('connect', `Client connected: ${socket.id}`);
     
+    /**
+     * ROOM MANAGEMENT SYSTEM
+     * ======================
+     * 
+     * Handles room creation and joining for multiplayer games.
+     */
     socket.on('createRoom', (roomCode) => {
         if (!activeRooms[roomCode]) {
             activeRooms[roomCode] = { players: [socket.id] };
@@ -124,6 +193,13 @@ io.on('connection', (socket) => {
 
 
 
+	/**
+	 * DAMAGE SYSTEM - POINT UPDATES
+	 * =============================
+	 * 
+	 * Handles damage communication between players.
+	 * When a player clears 4+ in a row, they send damage to their opponent.
+	 */
 	socket.on('updatePoints1', (data) => {
         // Player 2 is sending damage to Player 1
         console.log('Server received updatePoints1:', data);
@@ -142,7 +218,13 @@ io.on('connection', (socket) => {
         broadcastServerLog('info', `Player 2 damage update: ${data.player2points} points in room ${data.roomCode}`);
     });
 
-    // Handle player game over (lose) events
+    /**
+     * GAME STATE MANAGEMENT
+     * =====================
+     * 
+     * Handles game over and victory events between players.
+     * Notifies opponents when a player loses or wins.
+     */
     socket.on('playerGameOver', (data) => {
         io.to(data.roomCode).emit('opponentGameOver', { 
             roomCode: data.roomCode, 
@@ -151,7 +233,6 @@ io.on('connection', (socket) => {
         broadcastServerLog('info', `Player ${data.playerNumber} game over in room ${data.roomCode}`);
     });
 
-    // Handle player win events
     socket.on('playerWin', (data) => {
         io.to(data.roomCode).emit('opponentWin', { 
             roomCode: data.roomCode, 

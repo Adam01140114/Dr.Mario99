@@ -1,23 +1,58 @@
+/**
+ * DR. MARIO 99 - PILL COLOR SYSTEM AND SHARED RANDOMIZATION
+ * =========================================================
+ * 
+ * This file handles the pill color system that was consolidated from separate
+ * Shape.js and Shape2.js files. It now manages pill color generation for both
+ * players using a shared randomization system.
+ * 
+ * KEY FEATURES:
+ * - Shared pill color lists for fair multiplayer games
+ * - Server-synchronized randomization
+ * - Dynamic pill color generation
+ * - Deep copy protection against mutation
+ * 
+ * MULTIPLAYER SYNCHRONIZATION:
+ * - Both players receive the same random pill color list from server
+ * - Colors are consumed in the same order for fairness
+ * - Deep copy prevents accidental mutation of shared data
+ * - Position tracking ensures synchronized consumption
+ */
+
 "use strict"
 import { PlayingBoard } from "./Board.js"
 import { Color, Direction, Rotation } from "./components.js"
 
+// Global pill counter
 var pill = 0;
 
+/**
+ * PILL COLOR SYNCHRONIZATION SYSTEM
+ * =================================
+ * 
+ * These variables manage the shared pill color system:
+ * - numberPosition: Current position in the shared color list
+ * - number: Current color value being used
+ * - myRandomList: The shared color list from the server
+ */
+let numberPosition = 1;  // Position in the shared color list
+let number;              // Current color value
+let myRandomList = [];   // Shared color list from server
 
-
-let numberPosition = 1;
-let number;
-let myRandomList = []; // Start with empty list, will be populated by server
-
-// Add a global tracker to monitor myRandomList changes
+/**
+ * Global tracker to monitor myRandomList changes
+ * Helps debug synchronization issues between players
+ */
 window.trackMyRandomList = function() {
     console.log('🔍 GLOBAL TRACKER - myRandomList changed to:', myRandomList.slice(0, 10));
     console.log('🔍 GLOBAL TRACKER - myRandomList length:', myRandomList.length);
     console.log('🔍 GLOBAL TRACKER - myRandomList reference:', myRandomList);
 };
 
-// Check for multiple script instances
+/**
+ * Multiple script instance detection
+ * Prevents duplicate loading that could cause synchronization issues
+ */
 if (window.shapeScriptLoaded) {
     console.log('🚨 WARNING: Shape.js already loaded! Multiple instances detected!');
 } else {
@@ -29,6 +64,20 @@ if (window.shapeScriptLoaded) {
 
 
 
+/**
+ * SHARED GAME DATA SYSTEM
+ * =======================
+ * 
+ * This system handles receiving shared game data from the server,
+ * including virus positions and pill color lists for multiplayer games.
+ * 
+ * KEY FEATURES:
+ * - Deep copy protection against mutation
+ * - Synchronized pill color lists for fairness
+ * - Virus position synchronization
+ * - Position reset for new games
+ */
+
 // Request new game data (virus positions and pill colors) for each new game
 socket.emit('requestNewGameData');
 socket.on('receiveNewGameData', (gameData) => {
@@ -36,7 +85,11 @@ socket.on('receiveNewGameData', (gameData) => {
     console.log('🟢 CLIENT: BEFORE assignment - myRandomList:', myRandomList);
     console.log('🟢 CLIENT: BEFORE assignment - gameData.randomList:', gameData.randomList);
     
-    // Create a DEEP COPY to prevent mutation
+    /**
+     * CRITICAL: Create a DEEP COPY to prevent mutation
+     * This ensures both players have independent copies of the color list
+     * and prevents one player from affecting the other's list
+     */
     myRandomList = [...gameData.randomList];
     window.trackMyRandomList(); // Track the change
     
@@ -44,7 +97,7 @@ socket.on('receiveNewGameData', (gameData) => {
     console.log('🟢 CLIENT: VERIFICATION - myRandomList === gameData.randomList:', myRandomList === gameData.randomList);
     console.log('🟢 CLIENT: VERIFICATION - myRandomList[0]:', myRandomList[0], 'gameData.randomList[0]:', gameData.randomList[0]);
     
-    // Reset pill color position for new game
+    // Reset pill color position for new game to ensure synchronization
     numberPosition = 1;
     console.log('🟢 CLIENT: Reset pill color position to 1 for new game');
     console.log(`🟢 CLIENT: Using shared pill color list with ${myRandomList.length} colors:`, myRandomList.slice(0, 20));
@@ -70,15 +123,34 @@ socket.on('receiveNewGameData', (gameData) => {
 //start time
 
 
+/**
+ * POSITION TRACKING SYSTEM - UPDATE NUMBER
+ * ========================================
+ * 
+ * This function manages the position in the shared color list.
+ * It ensures both players consume colors in the same order.
+ * 
+ * KEY FEATURES:
+ * - Position tracking for synchronized consumption
+ * - Bounds checking to prevent errors
+ * - Circular list behavior (loops back to start)
+ * - Extensive logging for debugging synchronization
+ */
 function updateNumber() {
     console.log(`🟠 updateNumber() called - numberPosition: ${numberPosition}, myRandomList.length: ${myRandomList.length}`);
     console.log(`🟠 updateNumber() - myRandomList BEFORE access:`, myRandomList.slice(0, 10));
     
+    // Check if position is within bounds
     if (numberPosition > 0 && numberPosition <= myRandomList.length) {
+        // Get the color value at the current position
         number = myRandomList[numberPosition - 1];
         console.log(`🟠 updateNumber() - got number: ${number} from myRandomList[${numberPosition - 1}]`);
         console.log(`🟠 updateNumber() - myRandomList AFTER access:`, myRandomList.slice(0, 10));
+        
+        // Advance to next position
 		numberPosition = numberPosition + 1;
+		
+		// Loop back to start when reaching end of list
 		if(numberPosition > 100){ // Updated to match new list size
 			numberPosition = 1;
 		}
@@ -95,6 +167,25 @@ function updateNumber() {
 
 
 
+/**
+ * PILL COLOR GENERATION SYSTEM
+ * ============================
+ * 
+ * This is the core function that generates pill colors for both players.
+ * It uses the shared random list from the server to ensure fairness.
+ * 
+ * COLOR MAPPING:
+ * - 0 = Color.FIRST (blue)
+ * - 1 = Color.SECOND (brown) 
+ * - 2 = Color.THIRD (yellow)
+ * 
+ * SYNCHRONIZATION:
+ * - Both players use the same shared list
+ * - Colors are consumed in the same order
+ * - Position tracking ensures fairness
+ * 
+ * @returns {string} The color constant for the pill
+ */
 export function randomColor() {
 	// If myRandomList is empty (before server data is received), wait for server data
 	if (myRandomList.length === 0) {
@@ -109,27 +200,21 @@ export function randomColor() {
 	console.log(`🟡 randomColor() called - numberPosition: ${numberPosition}, pill: ${pill}, myRandomList[${numberPosition-1}]: ${myRandomList[numberPosition-1]}`);
 	console.log(`🟡 randomColor() - current myRandomList:`, myRandomList.slice(0, 10), '...');
 
+	// Map number values to color constants
 	if(pill == 0){	
-	//pill = pill + 1;
-    console.log(`🟡 randomColor() returning Color.FIRST (bl/blue)`);
-    return Color.FIRST
+		console.log(`🟡 randomColor() returning Color.FIRST (bl/blue)`);
+		return Color.FIRST
 	}
 	
 	if(pill == 1){	
-	//pill = pill + 1;
-    console.log(`🟡 randomColor() returning Color.SECOND (br/brown)`);
-    return Color.SECOND
+		console.log(`🟡 randomColor() returning Color.SECOND (br/brown)`);
+		return Color.SECOND
 	}
 	
 	if(pill == 2){	
-	//pill = 0;
-    console.log(`🟡 randomColor() returning Color.THIRD (yl/yellow)`);
-    return Color.THIRD
+		console.log(`🟡 randomColor() returning Color.THIRD (yl/yellow)`);
+		return Color.THIRD
 	}
-	
-	
-	
-	
 }
 
 class Shape {
@@ -156,9 +241,29 @@ export class Virus extends Shape {
     }
 }
 
+/**
+ * PILL CLASS - DYNAMIC POSITIONING SYSTEM
+ * =======================================
+ * 
+ * This class handles pill creation with dynamic positioning based on board type.
+ * It was consolidated from separate Pill classes to handle both PlayingBoard and ThrowingBoard.
+ * 
+ * KEY FEATURES:
+ * - Dynamic positioning based on board dimensions
+ * - Fallback color generation using shared random system
+ * - Bounds checking for field placement
+ * - Support for both game boards (PlayingBoard and ThrowingBoard)
+ */
 export class Pill extends Shape {
+    /**
+     * Creates a new pill with dynamic positioning
+     * @param {Board} board - The board instance (PlayingBoard or ThrowingBoard)
+     * @param {string} color1 - First color (optional, will use random if not provided)
+     * @param {string} color2 - Second color (optional, will use random if not provided)
+     */
     constructor(board, color1, color2) {
         super(board)
+        
         // Determine if this is a PlayingBoard (8x17) or ThrowingBoard (12x8)
         if (board.width === 8 && board.height === 17) {
             // This is a PlayingBoard - use position (3, 15)
@@ -171,8 +276,14 @@ export class Pill extends Shape {
         this.createPieces(color1, color2)
     }
 
+    /**
+     * Creates the two pieces that make up a pill
+     * Handles fallback color generation and bounds checking
+     * @param {string} color1 - First color (optional)
+     * @param {string} color2 - Second color (optional)
+     */
     createPieces(color1, color2) {
-        // Use random colors if not provided
+        // Use random colors if not provided (fallback to shared random system)
         const actualColor1 = color1 || randomColor();
         const actualColor2 = color2 || randomColor();
         
@@ -192,10 +303,17 @@ export class Pill extends Shape {
             ]
         }
         
+        // Set the visual colors on the board
         this.pieces[0].field.setColor(this.pieces[0].color)
         this.pieces[1].field.setColor(this.pieces[1].color)
     }
 
+    /**
+     * Gets the field in a specific direction from the center field
+     * Includes bounds checking to prevent out-of-bounds errors
+     * @param {Object} direction - Direction object with x, y offsets
+     * @returns {Field|false} The target field or false if out of bounds
+     */
     fieldTo(direction) {
         if (!this.centerField) {
             console.log('Warning: centerField is undefined in fieldTo method');
