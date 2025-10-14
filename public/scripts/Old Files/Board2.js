@@ -10,12 +10,6 @@ var localpoints = 0;
 var enemy = 0;
 var player = 2;
 
-
-
-
-
-
-
 var falling = 0;
 
 var spawn = 0;
@@ -64,6 +58,11 @@ var randcolor4 = 'bl';
 
 //import { io } from 'socket.io-client';
 const socket = io('https://dr-mario99.onrender.com/');
+
+
+
+//alert(roomCode);
+
 
 function requestRandomNumber(max) {
     return new Promise((resolve) => {
@@ -301,13 +300,20 @@ export class PlayingBoard extends Board {
 
 		//alert("spawning pill");
 			this.spawnRandomDot();
-			spawn = 1;
 			
 			
 			hurting1 = 1;
+			if (spawn > 1){
 			hurting2 = 1;
+			}
+			
+			if (spawn > 2){
 			hurting3 = 1;
+			}
+			
+			if (spawn > 3){
 			hurting4 = 1;
+			}
 	
 
     }
@@ -325,7 +331,7 @@ export class PlayingBoard extends Board {
 	
 	
 	spawnViruses() {
-        this.virusCount = this.level * 4 + 4;
+        this.virusCount = 5;
         this.maxVirusHeight = 10
         if (this.level >= 15) this.maxVirusHeight++
         if (this.level >= 17) this.maxVirusHeight++
@@ -348,9 +354,7 @@ export class PlayingBoard extends Board {
             if (position) {
                 const { x, y } = position;
 				
-				if(x == randx){
-					alert("hey");
-				}
+				
                 //const color = this.lastColor === Color.FIRST ? Color.SECOND : (this.lastColor === Color.SECOND ? Color.THIRD : Color.FIRST);
                 this.virusList.push(new Virus(this, x, y, color));
             }
@@ -359,13 +363,6 @@ export class PlayingBoard extends Board {
         // Mark game as started after viruses are spawned
         this.gameStarted = true;
     }
-	
-	
-	
-		
-		
-	
-	
 	
 	
 	
@@ -384,8 +381,6 @@ export class PlayingBoard extends Board {
 	
 	
 
-	
-	
 
    movementFromKey(key) {
         if (this.blockInput){
@@ -435,51 +430,78 @@ export class PlayingBoard extends Board {
         return availableX.splice(randomIndex, 1)[0];
     }
     
+	
+	randy = 15;
+	undery = 14;
+	
+	randy2 = 15;
+	undery2 = 14;
+	
+	randy3 = 15;
+	undery3 = 14;
+	
+	randy4 = 15;
+	undery4 = 14;
+	
+	
     randx = getRandomX();
     randcolor = colors[Math.floor(Math.random() * colors.length)];
     this.fields[randx][randy].setColor(randcolor);
     
+	if(hurting2 == 1){
     randx2 = getRandomX();
     randcolor2 = colors[Math.floor(Math.random() * colors.length)];
     this.fields[randx2][randy2].setColor(randcolor2);
-    
+    }
+	
+	if(hurting3 == 1){
     randx3 = getRandomX();
     randcolor3 = colors[Math.floor(Math.random() * colors.length)];
     this.fields[randx3][randy3].setColor(randcolor3);
-    
+    }
+	
+	if(hurting4 == 1){
     randx4 = getRandomX();
     randcolor4 = colors[Math.floor(Math.random() * colors.length)];
     this.fields[randx4][randy4].setColor(randcolor4);
+	}
 }
-
-
-
-
-
-
-    nextFrame() {
+ nextFrame() {
 		
 		//where the magic happens
 		
 		if (randy != 0 && hurting1 == 1) {
 			if((this.fields[randx][(undery)].color) == Color.NONE){
+				
+			//this.virusList.pop(new Virus(this, randx, randy, randcolor))
+			
 			this.fields[randx][(randy)].setColor(Color.NONE);
+			
+			//this.virusList.push(new Virus(this, randx, randy-1, randcolor))
+			//this.virusList.pop(new Virus(this, randx, randy-1, randcolor))
+			
+			
+			
 			this.fields[randx][(randy-1)].setColor(randcolor);	
+			
 			randy = randy - 1;
 			undery = randy - 1;
 			}
 			
 			if(undery == -1){
 			hurting1 = 0;
+			
 			this.virusList.push(new Virus(this, randx, randy, randcolor))
+			this.virusCount = this.virusCount + 1;
 			
 			} else if((this.fields[randx][(undery)].color) != Color.NONE) {
 			this.virusList.push(new Virus(this, randx, randy, randcolor))
 			hurting1 = 0;
+			
+			this.virusCount = this.virusCount + 1;
 			}
 			
         } 
-		
 		
 		if (randy2 != 0 && hurting2 == 1) {
 			if((this.fields[randx2][(undery2)].color) == Color.NONE){
@@ -491,11 +513,13 @@ export class PlayingBoard extends Board {
 			
 			if(undery2 == -1){
 			hurting2 = 0;
+			spawn = spawn - 1;
 			this.virusList.push(new Virus(this, randx2, randy2, randcolor2))
 			
 			} else if((this.fields[randx2][(undery2)].color) != Color.NONE) {
 			this.virusList.push(new Virus(this, randx2, randy2, randcolor2))
 			hurting2 = 0;
+			spawn = spawn - 1;
 			}
 			
         } 
@@ -512,10 +536,12 @@ export class PlayingBoard extends Board {
 
     if(undery3 == -1){
         hurting3 = 0;
+		spawn = spawn - 1;
         this.virusList.push(new Virus(this, randx3, randy3, randcolor3));
     } else if((this.fields[randx3][(undery3)].color) != Color.NONE) {
         this.virusList.push(new Virus(this, randx3, randy3, randcolor3));
         hurting3 = 0;
+		spawn = spawn - 1;
     }
 }
 
@@ -529,14 +555,14 @@ if (randy4 != 0 && hurting4 == 1) {
 
     if(undery4 == -1){
         hurting4 = 0;
+		spawn = spawn - 1;
         this.virusList.push(new Virus(this, randx4, randy4, randcolor4));
     } else if((this.fields[randx4][(undery4)].color) != Color.NONE) {
         this.virusList.push(new Virus(this, randx4, randy4, randcolor4));
         hurting4 = 0;
+		spawn = spawn - 1;
     }
 }
-		
-		
 		
 		 
 		
@@ -545,15 +571,10 @@ if (randy4 != 0 && hurting4 == 1) {
 			
 			//console.log('pilly: '+ pilly + ' randy: ' + randy + " hurting: " + hurting);
             let moved = this.currentPill.move(Direction.DOWN)
-			if(moved){
-			pilly = pilly - 1;
-			pilly2 = pilly2 - 1;
-			}
+
 				
             if (!moved) {
-				pilly = pilly - 1;
-				pilly2 = pilly2 - 1;
-				console.log('pilly: '+ pilly + ' randy: ' + randy);(pilly + " not moved");
+
                 this.blockInput = true
                 this.currentPill.place()
                 this.clearIfNeeded()
@@ -573,7 +594,7 @@ if (randy4 != 0 && hurting4 == 1) {
 		
     }
 
-   stageCompleted() {
+    stageCompleted() {
         // Wait 7 seconds before allowing victory to ensure game is fully loaded
         const currentTime = Date.now();
         const timeSinceStart = currentTime - this.gameStartTime;
@@ -635,7 +656,7 @@ if (randy4 != 0 && hurting4 == 1) {
                 field.clearAnimated()
     }
 
-    useGravitation() {
+     useGravitation() {
     if (this.gravitationInterval) return;
     this.gravitationInterval = setInterval(() => {
         let moved = false;
@@ -677,6 +698,7 @@ if (randy4 != 0 && hurting4 == 1) {
     }, DELAY.gravitation);
 }
 }
+
 customElements.define("game-board", PlayingBoard)
 
 class Field extends HTMLElement {
@@ -695,7 +717,8 @@ class Field extends HTMLElement {
         if (this.y == 16 && this.x != 3 && this.x != 4) this.locked = true
     }
 
-    isTaken() {
+
+     isTaken() {
         return this.shapePiece != null
     }
 
@@ -715,50 +738,33 @@ class Field extends HTMLElement {
     clearAnimated() {
 		
 		
+	
+    const x = this.shapePiece.shape instanceof Virus;
+    const o = this.shapePiece.shape instanceof Pill;
+    const color = this.shapePiece.color; // Assuming this.shapePiece.color contains values like Color.FIRST, etc.
+    this.clear();
+    if (x)
 		
-    let isVirus = false;
-    let color = this.color; // Use the field's color since shapePiece might be null.
-
-    // If shapePiece exists and is a Virus, handle it accordingly.
-    if (this.shapePiece) {
-        isVirus = this.shapePiece.shape instanceof Virus;
-        // Continue with your existing code for a non-null shapePiece.
-        this.clear(); // This will handle clearing and score updating for shapes.
-    } else {
-        // Handle the case where shapePiece is null (e.g., for dots).
-        console.log('Clearing a dot as if it was a virus.');
-        // Assume dots are treated similarly to viruses for scoring and clearing.
-        isVirus = true; // Treat the dot as a virus for this context.
-        this.setColor(Color.NONE); // Clear the dot visually.
-        // Directly manipulate score and virus count as needed.
-        // For example, increase score and decrease virus count:
-        // Note: Adjust these as necessary to fit how your game tracks score and virus count.
-         // Example of increasing points.
-        this.board.decreaseVirusCount(); // Example of decreasing the virus count.
-    }
-
-    // Visual feedback for clearing, adjust as necessary.
-    if (isVirus) {
-		
-
-		
-		if(this.x == randx && this.y == randy 
-		|| this.x == randx2 && this.y == randy2){
-			//alert("hey");
-		} else {
-		localpoints += 4;	
-		alert("points");
+		localpoints += 1;	
+		//alert("points");
         this.style.backgroundImage = "url('./img/" + color + "_x.png')";
-		}
-		
-    } else {
+    if (o)
+		localpoints += 1;
         this.style.backgroundImage = "url('./img/" + color + "_o.png')";
-    }
-
-    // Set a timeout to remove the visual feedback.
+		
     setTimeout(() => {
         this.setColor(Color.NONE);
     }, DELAY.oxDisappear);
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 }
 
 
@@ -844,18 +850,24 @@ setColor(color = this.color) {
         // If the shape is a Virus, use a specific image.
         if (this.shapePiece && this.shapePiece.shape instanceof Virus) {			
 			
+			
+			/*
 			//turns fallen pills into pills instead of viruses
 			if(this.x == randx && this.y == randy){
-			console.log("x position of virus: " + this.x);
 			this.style.backgroundImage = "url('./img/" + color + "_dot.png')";
-			//alert("got the first");
 			} else if(this.x == randx2 && this.y == randy2){
-			console.log("x position of virus: " + this.x);
 			this.style.backgroundImage = "url('./img/" + color + "_dot.png')";
-			//alert("got the second");
+			} else if(this.x == randx3 && this.y == randy3){
+			this.style.backgroundImage = "url('./img/" + color + "_dot.png')";
+			} else if(this.x == randx4 && this.y == randy4){
+			this.style.backgroundImage = "url('./img/" + color + "_dot.png')";
 			} else {
-            this.style.backgroundImage = "url('./img/" + color + "_covid.png')";
+				
 			}
+			
+			*/
+            this.style.backgroundImage = "url('./img/" + color + "_covid.png')";
+			
 			
 			
 			
@@ -885,6 +897,7 @@ setColor(color = this.color) {
         return this.color
     }
 }
+
 
 customElements.define("game-board-field", Field)
 
@@ -922,15 +935,21 @@ class ThrowingBoard extends Board {
 		
 		
 		
+		
 		if (!this.isDamageListenerAdded) {
-            socket.on('p2damage', (data) => {
-				console.log(`Damage received: ${data.p2damage}`);
-				realdamage = Math.floor(data.p2damage / 4);
-				
-			});
-        this.isDamageListenerAdded = true;
-
+    socket.on('p2damage', (data) => {
+        console.log('p2damage data received:', data); // Log received data
+        console.log("p2damage data received " + data.roomCode);
+        if (data.roomCode === roomCode) {  // Verify the room code
+            console.log(`Damage received: ${data.p2damage}`);
+            realdamage = Math.floor(data.p2damage / 4);
         }
+    });
+
+    this.isDamageListenerAdded = true;
+}
+
+		
 		
     }
 	//hurt drops
@@ -950,13 +969,16 @@ class ThrowingBoard extends Board {
 					pillx2 = 4;
 					pilly = 15;
 					pilly2 = 15;
-
-					socket.emit('updatePoints1', { player2points: localpoints });
+					
+					socket.emit('updatePoints1', { player2points: localpoints, roomCode: roomCode });	
 					localpoints = 0;
 					if(realdamage > 0){
-					// Only send one virus regardless of damage amount
-					console.log('hurt - damage limited to 1 virus');
-					this.playingBoard.hurt();
+					for (let i = 0; i < realdamage; i++) {
+						console.log('hurt');
+						console.log('i = ' + i);
+						this.playingBoard.hurt();
+						spawn = spawn + 1;
+					}
 					realdamage = 0
 					console.log('reset real damage');
 					}

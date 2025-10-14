@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Console - Dr. Mario 99</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            background-size: 400% 400%;
+            animation: gradientShift 8s ease infinite;
+            color: #00ff00;
+            min-height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Animated background particles */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #00ffff;
+            border-radius: 50%;
+            animation: float 6s infinite linear;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100px) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        /* Retro scanlines effect */
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 255, 255, 0.03) 2px,
+                rgba(0, 255, 255, 0.03) 4px
+            );
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .header {
+            background: linear-gradient(145deg, #1a1a2e, #16213e);
+            padding: 15px 25px;
+            border-bottom: 3px solid #00ffff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            z-index: 10;
+            box-shadow: 0 4px 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            text-shadow: 0 0 20px #00ffff;
+            color: #00ffff;
+            animation: titlePulse 2s ease-in-out infinite;
+        }
+
+        @keyframes titlePulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .clear-all-btn {
+            background: linear-gradient(145deg, #ff4444, #cc0000);
+            color: white;
+            border: 2px solid #ff4444;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3);
+        }
+
+        .clear-all-btn:hover {
+            background: linear-gradient(145deg, #ff6666, #ff0000);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 68, 68, 0.5);
+        }
+
+        .clear-all-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 10px rgba(255, 68, 68, 0.3);
+        }
+
+        .main-container {
+            display: flex;
+            gap: 20px;
+            min-height: calc(100vh - 80px);
+            position: relative;
+            z-index: 10;
+        }
+
+        .debug-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .panel-header {
+            background: linear-gradient(145deg, #1a1a2e, #16213e);
+            padding: 12px 18px;
+            border-bottom: 2px solid #00ffff;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 255, 255, 0.2);
+        }
+
+        .panel-title {
+            font-weight: bold;
+            color: #00ffff;
+            font-size: 0.9rem;
+            text-shadow: 0 0 10px #00ffff;
+            min-width: 100px;
+        }
+
+        .url-input {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.6);
+            color: #00ff00;
+            border: 2px solid #00ffff;
+            padding: 8px 12px;
+            font-family: inherit;
+            font-size: 0.7rem;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .url-input:focus {
+            outline: none;
+            border-color: #ff00ff;
+            box-shadow: 0 0 15px rgba(255, 0, 255, 0.5);
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            background: linear-gradient(145deg, #444, #333);
+            color: #00ff00;
+            border: 2px solid #00ffff;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.6rem;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 2px 8px rgba(0, 255, 255, 0.2);
+        }
+
+        .btn:hover {
+            background: linear-gradient(145deg, #555, #444);
+            border-color: #ff00ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 255, 255, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 4px rgba(0, 255, 255, 0.2);
+        }
+
+        .btn.primary {
+            background: linear-gradient(145deg, #0066cc, #004499);
+            border-color: #00aaff;
+            color: white;
+            box-shadow: 0 2px 8px rgba(0, 170, 255, 0.3);
+        }
+
+        .btn.primary:hover {
+            background: linear-gradient(145deg, #0088ff, #0066cc);
+            border-color: #00ccff;
+            box-shadow: 0 4px 12px rgba(0, 170, 255, 0.5);
+        }
+
+        .btn.danger {
+            background: linear-gradient(145deg, #cc0000, #990000);
+            border-color: #ff4444;
+            color: white;
+            box-shadow: 0 2px 8px rgba(255, 68, 68, 0.3);
+        }
+
+        .btn.danger:hover {
+            background: linear-gradient(145deg, #ff0000, #cc0000);
+            border-color: #ff6666;
+            box-shadow: 0 4px 12px rgba(255, 68, 68, 0.5);
+        }
+
+        .iframe-container {
+            height: 80vh;
+            position: relative;
+            background: #000;
+            border: 2px solid #00ffff;
+            margin: 10px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+
+        .debug-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #000;
+        }
+
+        .console-container {
+            height: 300px;
+            background: linear-gradient(145deg, #0a0a0a, #1a1a1a);
+            border-top: 2px solid #00ffff;
+            display: flex;
+            flex-direction: column;
+            margin: 0 10px 10px 10px;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
+        }
+
+        .console-header {
+            background: linear-gradient(145deg, #1a1a2e, #16213e);
+            padding: 8px 12px;
+            border-bottom: 1px solid #00ffff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.6rem;
+        }
+
+        .console-title {
+            color: #00ffff;
+            font-weight: bold;
+            text-shadow: 0 0 8px #00ffff;
+        }
+
+        .console-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .console-output {
+            flex: 1;
+            padding: 12px;
+            overflow-y: auto;
+            font-size: 0.6rem;
+            line-height: 1.4;
+            background: rgba(0, 0, 0, 0.8);
+            font-family: 'Courier New', monospace;
+        }
+
+        .console-line {
+            margin-bottom: 3px;
+            word-wrap: break-word;
+            padding: 2px 0;
+        }
+
+        .console-line.error {
+            color: #ff4444;
+            text-shadow: 0 0 5px #ff4444;
+        }
+
+        .console-line.warn {
+            color: #ffaa00;
+            text-shadow: 0 0 5px #ffaa00;
+        }
+
+        .console-line.info {
+            color: #00aaff;
+            text-shadow: 0 0 5px #00aaff;
+        }
+
+        .console-line.log {
+            color: #00ff00;
+            text-shadow: 0 0 5px #00ff00;
+        }
+
+        .console-line.debug {
+            color: #888;
+        }
+
+        .timestamp {
+            color: #666;
+            font-size: 0.5rem;
+        }
+
+        .loading {
+            display: none !important;
+        }
+
+        .error-message {
+            display: none !important;
+        }
+
+        /* Scrollbar styling */
+        .console-output::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .console-output::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .console-output::-webkit-scrollbar-thumb {
+            background: linear-gradient(145deg, #00ffff, #0099cc);
+            border-radius: 4px;
+        }
+
+        .console-output::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(145deg, #00cccc, #0077aa);
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .debug-panel {
+                border-right: none;
+                border-bottom: 3px solid #00ffff;
+            }
+            
+            .debug-panel:last-child {
+                border-bottom: none;
+            }
+            
+            .console-container {
+                height: 120px;
+            }
+            
+            .iframe-container {
+                flex: 1.5;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="particles" id="particles"></div>
+    <div class="scanlines"></div>
+    
+    <div class="header">
+        <div class="title">🔧 Debug Console</div>
+        <button class="clear-all-btn" onclick="clearAllConsoles()">Clear All</button>
+    </div>
+
+    <div class="main-container">
+        <!-- Player 1 Panel -->
+        <div class="debug-panel">
+            <div class="panel-header">
+                <div class="panel-title">Player 1</div>
+                <input type="text" class="url-input" id="leftUrl" placeholder="Enter URL (e.g., http://localhost:6767)" value="">
+                <div class="control-buttons">
+                    <button class="btn primary" onclick="loadIframe('left')">Load</button>
+                    <button class="btn" onclick="reloadIframe('left')">Reload</button>
+                    <button class="btn danger" onclick="clearConsole('left')">Clear</button>
+                </div>
+            </div>
+            <div class="iframe-container">
+                <iframe id="leftIframe" class="debug-iframe" src="about:blank"></iframe>
+                <div id="leftLoading" class="loading hidden">Loading...</div>
+                <div id="leftError" class="error-message hidden"></div>
+            </div>
+            <div class="console-container">
+                <div class="console-header">
+                    <div class="console-title">Console Output</div>
+                    <div class="console-controls">
+                        <button class="btn" onclick="copyConsole('left')">Copy Console</button>
+                    </div>
+                </div>
+                <div id="leftConsole" class="console-output"></div>
+            </div>
+        </div>
+
+        <!-- Player 2 Panel -->
+        <div class="debug-panel">
+            <div class="panel-header">
+                <div class="panel-title">Player 2</div>
+                <input type="text" class="url-input" id="rightUrl" placeholder="Enter URL (e.g., http://localhost:6767)" value="">
+                <div class="control-buttons">
+                    <button class="btn primary" onclick="loadIframe('right')">Load</button>
+                    <button class="btn" onclick="reloadIframe('right')">Reload</button>
+                    <button class="btn danger" onclick="clearConsole('right')">Clear</button>
+                </div>
+            </div>
+            <div class="iframe-container">
+                <iframe id="rightIframe" class="debug-iframe" src="about:blank"></iframe>
+                <div id="rightLoading" class="loading hidden">Loading...</div>
+                <div id="rightError" class="error-message hidden"></div>
+            </div>
+            <div class="console-container">
+                <div class="console-header">
+                    <div class="console-title">Console Output</div>
+                    <div class="console-controls">
+                        <button class="btn" onclick="copyConsole('right')">Copy Console</button>
+                    </div>
+                </div>
+                <div id="rightConsole" class="console-output"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Copy All Button -->
+    <div style="text-align: center; padding: 20px; background: rgba(0, 0, 0, 0.3); border-top: 2px solid #00ffff; position: relative; z-index: 10;">
+        <button class="btn primary" onclick="copyAllLogs()" style="font-size: 1.2rem; padding: 15px 30px; min-width: 200px;">Copy All</button>
+    </div>
+
+    <!-- Server Output Section -->
+    <div style="background: linear-gradient(145deg, #0a0a0a, #1a1a1a); border-top: 2px solid #ff00ff; margin: 0 10px 10px 10px; border-radius: 8px; box-shadow: 0 0 15px rgba(255, 0, 255, 0.2);">
+        <div style="background: linear-gradient(145deg, #1a1a2e, #16213e); padding: 8px 12px; border-bottom: 1px solid #ff00ff; display: flex; justify-content: space-between; align-items: center; font-size: 0.6rem;">
+            <div style="color: #ff00ff; font-weight: bold; text-shadow: 0 0 8px #ff00ff;">Server Output</div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn" onclick="clearServerOutput()" style="font-size: 0.5rem; padding: 4px 8px;">Clear</button>
+                <button class="btn" onclick="copyServerOutput()" style="font-size: 0.5rem; padding: 4px 8px;">Copy</button>
+            </div>
+        </div>
+        <div id="serverOutput" style="height: 150px; padding: 12px; overflow-y: auto; font-size: 0.6rem; line-height: 1.4; background: rgba(0, 0, 0, 0.8); font-family: 'Courier New', monospace; color: #00ff00;"></div>
+    </div>
+
+    <script>
+        // Console capture for both iframes
+        const consoleLogs = {
+            left: [],
+            right: []
+        };
+
+        // Server output logs
+        const serverLogs = [];
+        window.serverLogs = serverLogs; // Make it globally accessible
+
+        // Initialize console capture
+        function setupConsoleCapture(side) {
+            const iframe = document.getElementById(side + 'Iframe');
+            
+            iframe.addEventListener('load', function() {
+                try {
+                    const iframeWindow = iframe.contentWindow;
+                    const iframeDocument = iframe.contentDocument;
+                    
+                    if (iframeWindow && iframeDocument) {
+                        // Override console methods
+                        const originalLog = iframeWindow.console.log;
+                        const originalError = iframeWindow.console.error;
+                        const originalWarn = iframeWindow.console.warn;
+                        const originalInfo = iframeWindow.console.info;
+                        const originalDebug = iframeWindow.console.debug;
+
+                        function addToConsole(type, ...args) {
+                            const timestamp = new Date().toLocaleTimeString();
+                            const message = args.map(arg => 
+                                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                            ).join(' ');
+                            
+                            const logEntry = {
+                                type,
+                                message,
+                                timestamp,
+                                args
+                            };
+                            
+                            consoleLogs[side].push(logEntry);
+                            displayConsoleLog(side, logEntry);
+                        }
+
+                        iframeWindow.console.log = function(...args) {
+                            originalLog.apply(iframeWindow.console, args);
+                            addToConsole('log', ...args);
+                        };
+
+                        iframeWindow.console.error = function(...args) {
+                            originalError.apply(iframeWindow.console, args);
+                            addToConsole('error', ...args);
+                        };
+
+                        iframeWindow.console.warn = function(...args) {
+                            originalWarn.apply(iframeWindow.console, args);
+                            addToConsole('warn', ...args);
+                        };
+
+                        iframeWindow.console.info = function(...args) {
+                            originalInfo.apply(iframeWindow.console, args);
+                            addToConsole('info', ...args);
+                        };
+
+                        iframeWindow.console.debug = function(...args) {
+                            originalDebug.apply(iframeWindow.console, args);
+                            addToConsole('debug', ...args);
+                        };
+
+                        // Capture uncaught errors
+                        iframeWindow.addEventListener('error', function(event) {
+                            addToConsole('error', `Uncaught Error: ${event.message} at ${event.filename}:${event.lineno}:${event.colno}`);
+                        });
+
+                        // Capture unhandled promise rejections
+                        iframeWindow.addEventListener('unhandledrejection', function(event) {
+                            addToConsole('error', `Unhandled Promise Rejection: ${event.reason}`);
+                        });
+
+                        // Add a test log to verify console capture is working
+                        setTimeout(() => {
+                            const playerName = side === 'left' ? 'Player 1' : 'Player 2';
+                            addToConsole('info', `Console capture initialized for ${playerName}`);
+                        }, 1000);
+                    }
+                } catch (error) {
+                    console.error('Error setting up console capture:', error);
+                    // Add error to console display
+                    const timestamp = new Date().toLocaleTimeString();
+                    const logEntry = {
+                        type: 'error',
+                        message: `Console capture failed: ${error.message}`,
+                        timestamp,
+                        args: [error]
+                    };
+                    consoleLogs[side].push(logEntry);
+                    displayConsoleLog(side, logEntry);
+                }
+            });
+        }
+
+        // Listen for postMessage from iframes
+        window.addEventListener('message', function(event) {
+            // Check if message is from our iframes
+            if (event.data && event.data.type === 'console') {
+                const side = event.data.side || 'left';
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = {
+                    type: event.data.level || 'log',
+                    message: event.data.message || 'Unknown message',
+                    timestamp,
+                    args: event.data.args || []
+                };
+                
+                consoleLogs[side].push(logEntry);
+                displayConsoleLog(side, logEntry);
+            }
+        });
+
+        // Display console log entry
+        function displayConsoleLog(side, logEntry) {
+            const consoleElement = document.getElementById(side + 'Console');
+            const logLine = document.createElement('div');
+            logLine.className = `console-line ${logEntry.type}`;
+            
+            const timestamp = document.createElement('span');
+            timestamp.className = 'timestamp';
+            timestamp.textContent = `[${logEntry.timestamp}] `;
+            
+            const message = document.createElement('span');
+            message.textContent = logEntry.message;
+            
+            logLine.appendChild(timestamp);
+            logLine.appendChild(message);
+            consoleElement.appendChild(logLine);
+            
+            // Auto-scroll to bottom
+            consoleElement.scrollTop = consoleElement.scrollHeight;
+        }
+
+        // Load iframe
+        function loadIframe(side) {
+            const urlInput = document.getElementById(side + 'Url');
+            const iframe = document.getElementById(side + 'Iframe');
+            const error = document.getElementById(side + 'Error');
+            
+            const url = urlInput.value.trim();
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+
+            // Hide any error messages
+            error.classList.add('hidden');
+            
+            // Clear previous console logs
+            clearConsole(side);
+            
+            // Load iframe
+            iframe.src = url;
+            
+            // Inject console capture after iframe loads
+            iframe.onload = function() {
+                setTimeout(() => {
+                    injectConsoleCapture(side);
+                }, 500);
+            };
+        }
+
+        // Reload iframe
+        function reloadIframe(side) {
+            const iframe = document.getElementById(side + 'Iframe');
+            const error = document.getElementById(side + 'Error');
+            
+            if (iframe.src === 'about:blank') {
+                alert('No iframe loaded to reload');
+                return;
+            }
+
+            // Hide any error messages
+            error.classList.add('hidden');
+            
+            // Clear console logs
+            clearConsole(side);
+            
+            // Reload iframe
+            iframe.src = iframe.src;
+            
+            // Inject console capture after iframe reloads
+            iframe.onload = function() {
+                setTimeout(() => {
+                    injectConsoleCapture(side);
+                }, 500);
+            };
+        }
+
+        // Clear console
+        function clearConsole(side) {
+            const consoleElement = document.getElementById(side + 'Console');
+            consoleElement.innerHTML = '';
+            consoleLogs[side] = [];
+        }
+
+        // Clear all consoles
+        function clearAllConsoles() {
+            clearConsole('left');
+            clearConsole('right');
+        }
+
+        // Copy console to clipboard
+        function copyConsole(side) {
+            const logs = consoleLogs[side];
+            if (logs.length === 0) {
+                alert('No console logs to copy');
+                return;
+            }
+
+            const logText = logs.map(log => 
+                `[${log.timestamp}] ${log.type.toUpperCase()}: ${log.message}`
+            ).join('\n');
+
+            navigator.clipboard.writeText(logText).then(() => {
+                alert('Console logs copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy to clipboard:', err);
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = logText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Console logs copied to clipboard!');
+            });
+        }
+
+        // Copy all logs to clipboard (Player 1, Player 2, and Server)
+        function copyAllLogs() {
+            const leftLogs = consoleLogs.left;
+            const rightLogs = consoleLogs.right;
+            const serverLogs = window.serverLogs || [];
+            
+            if (leftLogs.length === 0 && rightLogs.length === 0 && serverLogs.length === 0) {
+                alert('No logs to copy');
+                return;
+            }
+
+            let combinedText = '';
+            const separator = '='.repeat(80);
+            const sectionSeparator = '\n' + separator + '\n';
+            
+            // Add header
+            combinedText += 'DR. MARIO 99 - DEBUG LOGS\n';
+            combinedText += `Generated: ${new Date().toLocaleString()}\n`;
+            combinedText += separator + '\n\n';
+            
+            if (leftLogs.length > 0) {
+                combinedText += '🎮 PLAYER 1 CONSOLE LOGS\n';
+                combinedText += '-'.repeat(40) + '\n';
+                combinedText += leftLogs.map(log => 
+                    `[${log.timestamp}] ${log.type.toUpperCase()}: ${log.message}`
+                ).join('\n');
+                combinedText += '\n';
+            }
+            
+            if (rightLogs.length > 0) {
+                if (combinedText.length > 0) combinedText += sectionSeparator;
+                combinedText += '🎮 PLAYER 2 CONSOLE LOGS\n';
+                combinedText += '-'.repeat(40) + '\n';
+                combinedText += rightLogs.map(log => 
+                    `[${log.timestamp}] ${log.type.toUpperCase()}: ${log.message}`
+                ).join('\n');
+                combinedText += '\n';
+            }
+            
+            if (serverLogs.length > 0) {
+                if (combinedText.length > 0) combinedText += sectionSeparator;
+                combinedText += '🖥️  SERVER OUTPUT LOGS\n';
+                combinedText += '-'.repeat(40) + '\n';
+                combinedText += serverLogs.map(log => 
+                    `[${log.timestamp}] ${log.type.toUpperCase()}: ${log.message}`
+                ).join('\n');
+                combinedText += '\n';
+            }
+            
+            // Add footer
+            combinedText += '\n' + separator + '\n';
+            combinedText += 'END OF DEBUG LOGS\n';
+
+            navigator.clipboard.writeText(combinedText).then(() => {
+                alert('All logs copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy to clipboard:', err);
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = combinedText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('All logs copied to clipboard!');
+            });
+        }
+
+        // Add server log
+        function addServerLog(type, message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = {
+                type,
+                message,
+                timestamp
+            };
+            
+            serverLogs.push(logEntry);
+            displayServerLog(logEntry);
+        }
+
+        // Display server log
+        function displayServerLog(logEntry) {
+            const serverOutput = document.getElementById('serverOutput');
+            const logLine = document.createElement('div');
+            logLine.style.marginBottom = '3px';
+            logLine.style.wordWrap = 'break-word';
+            logLine.style.padding = '2px 0';
+            
+            const timestamp = document.createElement('span');
+            timestamp.style.color = '#666';
+            timestamp.style.fontSize = '0.5rem';
+            timestamp.textContent = `[${logEntry.timestamp}] `;
+            
+            const message = document.createElement('span');
+            message.textContent = `${logEntry.type.toUpperCase()}: ${logEntry.message}`;
+            
+            // Color code based on type
+            switch(logEntry.type) {
+                case 'error':
+                    message.style.color = '#ff4444';
+                    message.style.textShadow = '0 0 5px #ff4444';
+                    break;
+                case 'warn':
+                    message.style.color = '#ffaa00';
+                    message.style.textShadow = '0 0 5px #ffaa00';
+                    break;
+                case 'info':
+                    message.style.color = '#00aaff';
+                    message.style.textShadow = '0 0 5px #00aaff';
+                    break;
+                case 'connect':
+                    message.style.color = '#00ff00';
+                    message.style.textShadow = '0 0 5px #00ff00';
+                    break;
+                case 'disconnect':
+                    message.style.color = '#ff4444';
+                    message.style.textShadow = '0 0 5px #ff4444';
+                    break;
+                default:
+                    message.style.color = '#00ff00';
+                    message.style.textShadow = '0 0 5px #00ff00';
+            }
+            
+            logLine.appendChild(timestamp);
+            logLine.appendChild(message);
+            serverOutput.appendChild(logLine);
+            
+            // Auto-scroll to bottom
+            serverOutput.scrollTop = serverOutput.scrollHeight;
+        }
+
+        // Clear server output
+        function clearServerOutput() {
+            const serverOutput = document.getElementById('serverOutput');
+            serverOutput.innerHTML = '';
+            serverLogs.length = 0;
+        }
+
+        // Copy server output
+        function copyServerOutput() {
+            if (serverLogs.length === 0) {
+                alert('No server logs to copy');
+                return;
+            }
+
+            const logText = serverLogs.map(log => 
+                `[${log.timestamp}] ${log.type.toUpperCase()}: ${log.message}`
+            ).join('\n');
+
+            navigator.clipboard.writeText(logText).then(() => {
+                alert('Server logs copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy to clipboard:', err);
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = logText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert('Server logs copied to clipboard!');
+            });
+        }
+
+        // Start server log updates
+        function startServerLogUpdates() {
+            // Connect to server to receive real server logs
+            const debugSocket = io(window.location.origin);
+            
+            // Listen for server log events
+            debugSocket.on('serverLog', (logData) => {
+                addServerLog(logData.type, logData.message);
+            });
+            
+            debugSocket.on('connect', () => {
+                addServerLog('connect', 'Debug console connected to server');
+                // Test the connection by sending a test message
+                debugSocket.emit('testConnection', 'Debug console test');
+            });
+            
+            debugSocket.on('disconnect', () => {
+                addServerLog('disconnect', 'Debug console disconnected from server');
+            });
+            
+            debugSocket.on('error', (error) => {
+                addServerLog('error', `Socket error: ${error}`);
+            });
+            
+            // Store the socket globally for testing
+            window.debugSocket = debugSocket;
+        }
+
+        // Create animated particles
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            const particleCount = 30;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 6 + 's';
+                particle.style.animationDuration = (Math.random() * 3 + 3) + 's';
+                particlesContainer.appendChild(particle);
+            }
+        }
+
+        // Inject console capture script into iframe
+        function injectConsoleCapture(side) {
+            const iframe = document.getElementById(side + 'Iframe');
+            try {
+                const iframeWindow = iframe.contentWindow;
+                const iframeDocument = iframe.contentDocument;
+                
+                if (iframeWindow && iframeDocument) {
+                    const script = iframeDocument.createElement('script');
+                    script.textContent = `
+                        (function() {
+                            const originalLog = console.log;
+                            const originalError = console.error;
+                            const originalWarn = console.warn;
+                            const originalInfo = console.info;
+                            const originalDebug = console.debug;
+                            
+                            function sendToParent(level, ...args) {
+                                const message = args.map(arg => 
+                                    typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+                                ).join(' ');
+                                
+                                window.parent.postMessage({
+                                    type: 'console',
+                                    side: '${side}',
+                                    level: level,
+                                    message: message,
+                                    args: args
+                                }, '*');
+                            }
+                            
+                            console.log = function(...args) {
+                                originalLog.apply(console, args);
+                                sendToParent('log', ...args);
+                            };
+                            
+                            console.error = function(...args) {
+                                originalError.apply(console, args);
+                                sendToParent('error', ...args);
+                            };
+                            
+                            console.warn = function(...args) {
+                                originalWarn.apply(console, args);
+                                sendToParent('warn', ...args);
+                            };
+                            
+                            console.info = function(...args) {
+                                originalInfo.apply(console, args);
+                                sendToParent('info', ...args);
+                            };
+                            
+                            console.debug = function(...args) {
+                                originalDebug.apply(console, args);
+                                sendToParent('debug', ...args);
+                            };
+                            
+                            // Capture uncaught errors
+                            window.addEventListener('error', function(event) {
+                                sendToParent('error', 'Uncaught Error: ' + event.message + ' at ' + event.filename + ':' + event.lineno + ':' + event.colno);
+                            });
+                            
+                            // Capture unhandled promise rejections
+                            window.addEventListener('unhandledrejection', function(event) {
+                                sendToParent('error', 'Unhandled Promise Rejection: ' + event.reason);
+                            });
+                        })();
+                    `;
+                    iframeDocument.head.appendChild(script);
+                }
+            } catch (error) {
+                console.error('Error injecting console capture:', error);
+            }
+        }
+
+
+        // Initialize console capture for both sides
+        document.addEventListener('DOMContentLoaded', function() {
+            // Create particles
+            createParticles();
+            
+            // Auto-fill URLs with current origin
+            const currentOrigin = window.location.origin;
+            document.getElementById('leftUrl').value = currentOrigin;
+            document.getElementById('rightUrl').value = currentOrigin;
+            
+            // Initialize server output
+            addServerLog('info', 'Debug console initialized');
+            addServerLog('info', `Server URL: ${currentOrigin}`);
+            
+            // Start server log updates
+            startServerLogUpdates();
+            
+            setupConsoleCapture('left');
+            setupConsoleCapture('right');
+            
+            // Auto-load both iframes
+            setTimeout(() => {
+                loadIframe('left');
+                loadIframe('right');
+            }, 500);
+            
+            // Add Enter key support for URL inputs
+            document.getElementById('leftUrl').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    loadIframe('left');
+                }
+            });
+            
+            document.getElementById('rightUrl').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    loadIframe('right');
+                }
+            });
+            
+            // Add keyboard shortcut for Copy All (Ctrl)
+            document.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+                    e.preventDefault(); // Prevent browser default behavior
+                    copyAllLogs();
+                }
+            });
+        });
+
+        // Handle iframe load errors
+        function handleIframeError(side, error) {
+            const errorElement = document.getElementById(side + 'Error');
+            const loading = document.getElementById(side + 'Loading');
+            
+            loading.classList.add('hidden');
+            errorElement.textContent = `Error loading iframe: ${error.message || 'Unknown error'}`;
+            errorElement.classList.remove('hidden');
+        }
+
+        // Add error handling for iframes
+        document.getElementById('leftIframe').addEventListener('error', function() {
+            handleIframeError('left', { message: 'Failed to load iframe content' });
+        });
+
+        document.getElementById('rightIframe').addEventListener('error', function() {
+            handleIframeError('right', { message: 'Failed to load iframe content' });
+        });
+    </script>
+</body>
+</html>

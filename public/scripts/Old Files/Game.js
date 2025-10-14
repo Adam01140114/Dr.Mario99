@@ -4,10 +4,8 @@ import { Color, DELAY } from "./components.js"
 
 
 export default class Game extends HTMLElement {
-    constructor(playerNumber = 1) {
+    constructor() {
         super()
-        this.playerNumber = playerNumber
-        console.log('Player Number:', this.playerNumber)
     }
 
     connectedCallback() {
@@ -23,21 +21,21 @@ export default class Game extends HTMLElement {
     setupSocketListeners() {
         // Listen for opponent game over (opponent lost, you won)
         socket.on('opponentGameOver', (data) => {
-            if (data.roomCode === roomCode && data.playerNumber === (this.playerNumber === 1 ? 2 : 1)) {
+            if (data.roomCode === roomCode && data.playerNumber === 2) {
                 this.showWinScreen()
             }
         });
 
         // Listen for opponent win (opponent won, you lost)
         socket.on('opponentWin', (data) => {
-            if (data.roomCode === roomCode && data.playerNumber === (this.playerNumber === 1 ? 2 : 1)) {
+            if (data.roomCode === roomCode && data.playerNumber === 2) {
                 this.showOpponentWinScreen()
             }
         });
     }
 
     createBoard(level, score) {
-        this.board = new PlayingBoard(this, level, score, this.playerNumber)
+        this.board = new PlayingBoard(this, level, score)
         this.append(this.board)
     }
     createDancingViruses() {
@@ -67,7 +65,7 @@ export default class Game extends HTMLElement {
             // Emit win event to server
             socket.emit('playerWin', { 
                 roomCode: roomCode, 
-                playerNumber: this.playerNumber 
+                playerNumber: 1 
             });
         } else {
             // Single player mode - proceed to next level
@@ -113,7 +111,7 @@ export default class Game extends HTMLElement {
         if (typeof roomCode !== 'undefined' && roomCode) {
             socket.emit('playerGameOver', { 
                 roomCode: roomCode, 
-                playerNumber: this.playerNumber 
+                playerNumber: 1 
             });
         }
         

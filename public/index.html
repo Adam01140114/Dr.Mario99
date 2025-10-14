@@ -741,7 +741,7 @@
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <script>
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-        const socket = io('https://dr-mario99.onrender.com/');
+        const socket = io(window.location.origin);
 
         let player = 0; // Default player number
         let who = 0;
@@ -833,7 +833,7 @@
                 console.log('Free Play: You are Player 1');
             } else if (data.player === 2) {
                 const script = document.createElement('script');
-                script.src = './scripts/script2.js';
+                script.src = './scripts/script.js';
                 script.type = 'module';
                 document.head.appendChild(script);
                 console.log('Free Play: You are Player 2');
@@ -874,7 +874,7 @@
             
             if (who == 2) {
                 const script = document.createElement('script');
-                script.src = './scripts/script2.js';
+                script.src = './scripts/script.js';
                 script.type = 'module';
                 document.head.appendChild(script);
                 console.log('Room Joined: You are Player 2');
