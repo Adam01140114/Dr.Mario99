@@ -55,6 +55,18 @@ export default class Game extends HTMLElement {
     createBoard(level, score) {
         this.board = new PlayingBoard(this, level, score, this.playerNumber)
         this.append(this.board)
+        
+        // Request new game data (virus positions and pill colors) for each new game
+        console.log(`Player ${this.playerNumber}: Requesting new game data for fresh game`);
+        
+        // For multiplayer games, request shared pill colors to ensure fairness
+        if (typeof roomCode !== 'undefined' && roomCode) {
+            console.log(`Player ${this.playerNumber}: Requesting shared pill colors for room ${roomCode}`);
+            socket.emit('resetSharedPillColors');
+        } else {
+            // Single player - just request new game data
+            socket.emit('requestNewGameData');
+        }
     }
     createDancingViruses() {
         if (this.dancingViruses)

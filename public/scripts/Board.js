@@ -1,5 +1,5 @@
 "use strict"
-import { Pill, Virus } from "./Shape.js"
+import { Pill, Virus, randomColor } from "./Shape.js"
 import { Color, Direction, Rotation, DELAY } from "./components.js"
 
 
@@ -108,6 +108,9 @@ export class PlayingBoard extends Board {
         console.log(`Player ${playerNumber}: PlayingBoard CONSTRUCTOR CALLED!`);
         super(game)
         this.playerNumber = playerNumber
+        
+        // Store reference to current PlayingBoard for new game data
+        window.currentPlayingBoard = this;
         
         // Prevent multiple PlayingBoard instances for the same player
         if (window[`playingBoard${playerNumber}Created`]) {
@@ -277,7 +280,19 @@ export class PlayingBoard extends Board {
     }
 
     movePillFromThrowingBoard() {
-        this.currentPill = new Pill(this, this.throwingBoard.currentPill.pieces[0].color, this.throwingBoard.currentPill.pieces[1].color)
+        // Check if currentPill exists and has pieces
+        if (this.throwingBoard.currentPill && this.throwingBoard.currentPill.pieces && this.throwingBoard.currentPill.pieces.length >= 2) {
+            console.log(`🔴 Player ${this.playerNumber}: Moving pill from throwing board with colors: ${this.throwingBoard.currentPill.pieces[0].color}, ${this.throwingBoard.currentPill.pieces[1].color}`);
+            this.currentPill = new Pill(this, this.throwingBoard.currentPill.pieces[0].color, this.throwingBoard.currentPill.pieces[1].color)
+        } else {
+            // Fallback: create pill with random colors
+            console.log(`🔴 Player ${this.playerNumber}: Creating pill with random colors (currentPill not available)`);
+            console.log(`🔴 Player ${this.playerNumber}: About to call randomColor() twice for fallback`);
+            const color1 = randomColor();
+            const color2 = randomColor();
+            console.log(`🔴 Player ${this.playerNumber}: Fallback colors: ${color1}, ${color2}`);
+            this.currentPill = new Pill(this, color1, color2)
+        }
         this.throwingBoard.spawnPill()
         clearInterval(this.throwingBoardInterval)
         this.throwingBoardInterval = null
@@ -1071,7 +1086,16 @@ class ThrowingBoard extends Board {
             this.currentPill.pieces[0].field.clear()
             this.currentPill.pieces[0].field.clear()
         }
-        this.currentPill = new Pill(this)
+        
+        // Get random colors for the pill
+        console.log(`🔴 Player ${this.playerNumber}: About to spawn pill - calling randomColor() twice`);
+        const color1 = randomColor();
+        console.log(`🔴 Player ${this.playerNumber}: Got first color: ${color1}`);
+        const color2 = randomColor();
+        console.log(`🔴 Player ${this.playerNumber}: Got second color: ${color2}`);
+        console.log(`🔴 Player ${this.playerNumber}: Spawning pill with colors: ${color1}, ${color2}`);
+        
+        this.currentPill = new Pill(this, color1, color2)
         this.currentFrame = 0
     }
 	

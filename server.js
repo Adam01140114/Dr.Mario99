@@ -31,13 +31,35 @@ function generateVirusPositions() {
     return positions;
 }
 
-// Function to generate a random list
+// Function to generate a random list (increased to 100 for longer games)
 function generateRandomList() {
-    return Array.from({ length: 20 }, () => Math.floor(Math.random() * 3));
+    return Array.from({ length: 100 }, () => Math.floor(Math.random() * 3));
 }
 
-// Generate initial virus positions
-const virusPositions = generateVirusPositions();
+// Store shared pill colors per room
+const roomPillColors = {};
+
+// Function to generate new game data (virus positions and pill colors)
+function generateNewGameData(roomCode) {
+    virusPositions = generateVirusPositions();
+    
+    // Generate shared pill colors for this room if not already exists
+    if (!roomPillColors[roomCode]) {
+        roomPillColors[roomCode] = generateRandomList();
+        console.log(`🔵 SERVER: Generated NEW shared pill colors for room ${roomCode}:`, roomPillColors[roomCode].length, 'colors');
+        console.log(`🔵 SERVER: First 20 colors for room ${roomCode}:`, roomPillColors[roomCode].slice(0, 20));
+    } else {
+        console.log(`🔵 SERVER: Using EXISTING shared pill colors for room ${roomCode}:`, roomPillColors[roomCode].length, 'colors');
+        console.log(`🔵 SERVER: First 20 colors for room ${roomCode}:`, roomPillColors[roomCode].slice(0, 20));
+    }
+    
+    const randomList = roomPillColors[roomCode];
+    console.log('🔵 SERVER: Generated new game data - virus positions:', virusPositions.length, 'shared pill colors:', randomList.length);
+    return { virusPositions, randomList };
+}
+
+// Generate initial virus positions (will be regenerated for each game)
+let virusPositions = generateVirusPositions();
 
 // Function to broadcast server logs to debug console
 function broadcastServerLog(type, message) {
@@ -144,7 +166,53 @@ io.on('connection', (socket) => {
         socket.emit('receiveRandomList', generateRandomList());
     });
 
-    // Send virus positions to the client
+    // Handle request for new game data (virus positions and pill colors)
+    socket.on('requestNewGameData', () => {
+        // Get the room code from the socket's rooms
+        const rooms = Array.from(socket.rooms);
+        const roomCode = rooms.find(room => room !== socket.id); // Find room that's not the socket's own ID
+        
+        console.log(`🔵 SERVER: requestNewGameData from socket ${socket.id}, rooms:`, rooms);
+        
+        if (roomCode) {
+            const gameData = generateNewGameData(roomCode);
+            socket.emit('receiveNewGameData', gameData);
+            console.log(`🔵 SERVER: Sent shared game data to client ${socket.id} in room ${roomCode}`);
+            console.log(`🔵 SERVER: Data sent - pill colors:`, gameData.randomList.slice(0, 10), '...');
+        } else {
+            // Fallback for single player or if no room found
+            const gameData = generateNewGameData('singleplayer');
+            socket.emit('receiveNewGameData', gameData);
+            console.log(`🔵 SERVER: Sent single player game data to client ${socket.id}`);
+            console.log(`🔵 SERVER: Data sent - pill colors:`, gameData.randomList.slice(0, 10), '...');
+        }
+    });
+
+    // Handle request to reset shared pill colors for a new game
+    socket.on('resetSharedPillColors', () => {
+        const rooms = Array.from(socket.rooms);
+        const roomCode = rooms.find(room => room !== socket.id);
+        
+        console.log(`🔵 SERVER: resetSharedPillColors from socket ${socket.id}, rooms:`, rooms);
+        
+        if (roomCode) {
+            // Generate new shared pill colors for this room
+            roomPillColors[roomCode] = generateRandomList();
+            console.log(`🔵 SERVER: Reset shared pill colors for room ${roomCode}:`, roomPillColors[roomCode].length, 'colors');
+            console.log(`🔵 SERVER: New pill colors for room ${roomCode}:`, roomPillColors[roomCode].slice(0, 20));
+            
+            // Send the new colors to all players in the room
+            const gameData = {
+                virusPositions: generateVirusPositions(),
+                randomList: roomPillColors[roomCode]
+            };
+            io.to(roomCode).emit('receiveNewGameData', gameData);
+            console.log(`🔵 SERVER: Broadcasted new shared pill colors to room ${roomCode}`);
+            console.log(`🔵 SERVER: Broadcasted data - pill colors:`, gameData.randomList.slice(0, 10), '...');
+        }
+    });
+
+    // Send initial virus positions to the client
     socket.emit('virusPositions', virusPositions);
 
     socket.on('testConnection', (data) => {

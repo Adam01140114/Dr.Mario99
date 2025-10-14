@@ -8,16 +8,62 @@ var pill = 0;
 
 let numberPosition = 1;
 let number;
-let myRandomList = [2, 2, 0, 1, 1, 0, 2, 2, 0, 1, 2, 1, 1, 1, 2, 0, 0, 2, 2, 0];
+let myRandomList = []; // Start with empty list, will be populated by server
+
+// Add a global tracker to monitor myRandomList changes
+window.trackMyRandomList = function() {
+    console.log('🔍 GLOBAL TRACKER - myRandomList changed to:', myRandomList.slice(0, 10));
+    console.log('🔍 GLOBAL TRACKER - myRandomList length:', myRandomList.length);
+    console.log('🔍 GLOBAL TRACKER - myRandomList reference:', myRandomList);
+};
+
+// Check for multiple script instances
+if (window.shapeScriptLoaded) {
+    console.log('🚨 WARNING: Shape.js already loaded! Multiple instances detected!');
+} else {
+    window.shapeScriptLoaded = true;
+    console.log('✅ Shape.js loaded for the first time');
+}
 
 
 
 
 
-socket.emit('requestRandomList');
-socket.on('receiveRandomList', (receivedList) => {
-	myRandomList = receivedList;
+// Request new game data (virus positions and pill colors) for each new game
+socket.emit('requestNewGameData');
+socket.on('receiveNewGameData', (gameData) => {
+    console.log('🟢 CLIENT: Received new game data:', gameData);
+    console.log('🟢 CLIENT: BEFORE assignment - myRandomList:', myRandomList);
+    console.log('🟢 CLIENT: BEFORE assignment - gameData.randomList:', gameData.randomList);
+    
+    // Create a DEEP COPY to prevent mutation
+    myRandomList = [...gameData.randomList];
+    window.trackMyRandomList(); // Track the change
+    
+    console.log('🟢 CLIENT: AFTER assignment - myRandomList:', myRandomList);
+    console.log('🟢 CLIENT: VERIFICATION - myRandomList === gameData.randomList:', myRandomList === gameData.randomList);
+    console.log('🟢 CLIENT: VERIFICATION - myRandomList[0]:', myRandomList[0], 'gameData.randomList[0]:', gameData.randomList[0]);
+    
+    // Reset pill color position for new game
+    numberPosition = 1;
+    console.log('🟢 CLIENT: Reset pill color position to 1 for new game');
+    console.log(`🟢 CLIENT: Using shared pill color list with ${myRandomList.length} colors:`, myRandomList.slice(0, 20));
+    console.log(`🟢 CLIENT: Full pill color list:`, myRandomList);
+    
+    // Update virus positions in the board
+    if (window.currentPlayingBoard) {
+        window.currentPlayingBoard.virusPositions = gameData.virusPositions;
+        console.log('🟢 CLIENT: Updated virus positions for new game:', gameData.virusPositions);
+    }
 });
+
+// DISABLED: Old system conflicts with new shared system
+// socket.emit('requestRandomList');
+// socket.on('receiveRandomList', (receivedList) => {
+// 	console.log('🟢 CLIENT: OLD SYSTEM - received random list:', receivedList);
+// 	myRandomList = receivedList;
+// 	window.trackMyRandomList(); // Track the change
+// });
 
 
 
@@ -25,44 +71,59 @@ socket.on('receiveRandomList', (receivedList) => {
 
 
 function updateNumber() {
+    console.log(`🟠 updateNumber() called - numberPosition: ${numberPosition}, myRandomList.length: ${myRandomList.length}`);
+    console.log(`🟠 updateNumber() - myRandomList BEFORE access:`, myRandomList.slice(0, 10));
     
     if (numberPosition > 0 && numberPosition <= myRandomList.length) {
         number = myRandomList[numberPosition - 1];
+        console.log(`🟠 updateNumber() - got number: ${number} from myRandomList[${numberPosition - 1}]`);
+        console.log(`🟠 updateNumber() - myRandomList AFTER access:`, myRandomList.slice(0, 10));
 		numberPosition = numberPosition + 1;
-		if(numberPosition > 20){
+		if(numberPosition > 100){ // Updated to match new list size
 			numberPosition = 1;
 		}
+		console.log(`🟠 updateNumber() - new numberPosition: ${numberPosition}`);
 		
     } else {
-        
+        console.log(`🟠 updateNumber() - numberPosition out of bounds: ${numberPosition}`);
         //number = undefined; 
     }
 }
 
-updateNumber(); 
+// REMOVED: updateNumber(); - This was causing the position to advance before players started using the list 
 
 
 
 
-function randomColor() {
+export function randomColor() {
+	// If myRandomList is empty (before server data is received), wait for server data
+	if (myRandomList.length === 0) {
+		console.log(`🟡 randomColor() - waiting for server data, using default blue`);
+		return Color.FIRST; // Default to blue while waiting for server data
+	}
 	
-	
+	// Use the server-provided shared random list
 	updateNumber(); 
 	pill = number;
-
+	
+	console.log(`🟡 randomColor() called - numberPosition: ${numberPosition}, pill: ${pill}, myRandomList[${numberPosition-1}]: ${myRandomList[numberPosition-1]}`);
+	console.log(`🟡 randomColor() - current myRandomList:`, myRandomList.slice(0, 10), '...');
 
 	if(pill == 0){	
 	//pill = pill + 1;
+    console.log(`🟡 randomColor() returning Color.FIRST (bl/blue)`);
     return Color.FIRST
 	}
 	
 	if(pill == 1){	
 	//pill = pill + 1;
+    console.log(`🟡 randomColor() returning Color.SECOND (br/brown)`);
     return Color.SECOND
 	}
 	
 	if(pill == 2){	
 	//pill = 0;
+    console.log(`🟡 randomColor() returning Color.THIRD (yl/yellow)`);
     return Color.THIRD
 	}
 	
@@ -98,24 +159,48 @@ export class Virus extends Shape {
 export class Pill extends Shape {
     constructor(board, color1, color2) {
         super(board)
-        if (color1 && color2)
+        // Determine if this is a PlayingBoard (8x17) or ThrowingBoard (12x8)
+        if (board.width === 8 && board.height === 17) {
+            // This is a PlayingBoard - use position (3, 15)
             this.setCenterField(3, 15)
-        else
+        } else {
+            // This is a ThrowingBoard - use position (10, 4)
             this.setCenterField(10, 4)
+        }
         this.rotation = Rotation.HORIZONTAL
         this.createPieces(color1, color2)
     }
 
     createPieces(color1, color2) {
-        this.pieces = [
-            new ShapePiece(this, this.centerField, color1),
-            new ShapePiece(this, this.fieldTo(Direction.RIGHT), color2),
-        ]
+        // Use random colors if not provided
+        const actualColor1 = color1 || randomColor();
+        const actualColor2 = color2 || randomColor();
+        
+        // Get the right field, but check if it exists
+        const rightField = this.fieldTo(Direction.RIGHT);
+        if (!rightField) {
+            console.log('Warning: Right field is out of bounds, using center field instead');
+            // If right field is out of bounds, use center field for both pieces
+            this.pieces = [
+                new ShapePiece(this, this.centerField, actualColor1),
+                new ShapePiece(this, this.centerField, actualColor2),
+            ]
+        } else {
+            this.pieces = [
+                new ShapePiece(this, this.centerField, actualColor1),
+                new ShapePiece(this, rightField, actualColor2),
+            ]
+        }
+        
         this.pieces[0].field.setColor(this.pieces[0].color)
         this.pieces[1].field.setColor(this.pieces[1].color)
     }
 
     fieldTo(direction) {
+        if (!this.centerField) {
+            console.log('Warning: centerField is undefined in fieldTo method');
+            return false;
+        }
         const x = this.centerField.x + direction.x
         const y = this.centerField.y + direction.y
         if (x >= this.board.width || y >= this.board.height || x < 0 || y < 0) return false
