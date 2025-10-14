@@ -102,17 +102,40 @@ export default class Game extends HTMLElement {
         this.board = new PlayingBoard(this, level, score, this.playerNumber)
         this.append(this.board)
         
-        // Request new game data (virus positions and pill colors) for each new game
-        console.log(`Player ${this.playerNumber}: Requesting new game data for fresh game`);
-        
-        // For multiplayer games, request shared pill colors to ensure fairness
-        if (typeof roomCode !== 'undefined' && roomCode) {
-            console.log(`Player ${this.playerNumber}: Requesting shared pill colors for room ${roomCode}`);
-            socket.emit('resetSharedPillColors');
+        // Check if we have shared game data from multiplayer room
+        if (typeof roomCode !== 'undefined' && roomCode && window.sharedGameData) {
+            this.initializeWithSharedData();
         } else {
-            // Single player - just request new game data
+            // Single player or no shared data - request new game data
             socket.emit('requestNewGameData');
         }
+    }
+
+    /**
+     * Initialize the game with shared data from multiplayer room
+     */
+    initializeWithSharedData() {
+        const gameData = window.sharedGameData;
+        console.log(`🟢 CLIENT: Player ${this.playerNumber} initializing with shared data:`, gameData);
+        console.log(`🟢 CLIENT: Player ${this.playerNumber} virus positions:`, gameData.virusPositions);
+        console.log(`🟢 CLIENT: Player ${this.playerNumber} pill colors (first 10):`, gameData.randomList.slice(0, 10));
+        
+        // Update virus positions in the board
+        if (this.board) {
+            this.board.virusPositions = gameData.virusPositions;
+            console.log(`🟢 CLIENT: Player ${this.playerNumber} set board virusPositions to:`, this.board.virusPositions);
+            
+            // Trigger virus spawning with the shared positions
+            if (this.board.spawnViruses) {
+                console.log(`🟢 CLIENT: Player ${this.playerNumber} calling spawnViruses with shared positions`);
+                this.board.spawnViruses();
+            }
+        }
+        
+        // Update pill colors globally
+        window.myRandomList = [...gameData.randomList];
+        window.numberPosition = 1; // Reset position for new game
+        console.log(`🟢 CLIENT: Player ${this.playerNumber} set pill colors to:`, window.myRandomList.slice(0, 10));
     }
     /**
      * Creates the dancing virus animations at the bottom of the screen

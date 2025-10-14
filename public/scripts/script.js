@@ -59,14 +59,16 @@ if (window.scriptLoaded) {
      * and ensure proper multiplayer synchronization.
      */
     if (window[`gameInstance${playerNumber}Created`]) {
-        console.log(`Game instance for Player ${playerNumber} already created, skipping...`);
+        // Game instance already created, skipping...
     } else {
         window[`gameInstance${playerNumber}Created`] = true;
-        console.log(`Creating game instance for Player ${playerNumber}`);
 
         // Create only the game instance for the current player
         const game = new Game(playerNumber);
         gameContainer.append(game);
+        
+        // Store game instance globally for later access
+        window.currentGame = game;
     }
 }
 

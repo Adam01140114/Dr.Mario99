@@ -819,7 +819,6 @@
                 script.type = 'module';
                 document.head.appendChild(script);
             }
-            console.log('Single Player: Starting game');
             
             // Show Player 1 game container (single player uses Player 1)
             document.getElementById('game1').classList.remove('hidden');
@@ -863,7 +862,6 @@
                     script.type = 'module';
                     document.head.appendChild(script);
                 }
-                console.log('Free Play: You are Player 1');
                 
                 // Show Player 1 game container
                 document.getElementById('game1').classList.remove('hidden');
@@ -877,7 +875,6 @@
                     script.type = 'module';
                     document.head.appendChild(script);
                 }
-                console.log('Free Play: You are Player 2');
                 
                 // Show Player 2 game container
                 document.getElementById('game2').classList.remove('hidden');
@@ -919,6 +916,21 @@
             if (scanlines) scanlines.style.display = 'none';
             // Keep particles visible for starry background during gameplay
             
+            // Show waiting message for first player
+            if (who == 1) {
+                showRoomCode('⏳ Waiting for Player 2 to join...');
+            }
+        });
+
+        // New event: Game is ready to start with both players
+        socket.on('gameReady', (data) => {
+            console.log(`🟢 CLIENT: Received gameReady event with data:`, data);
+            console.log(`🟢 CLIENT: Game data virus positions:`, data.gameData.virusPositions);
+            console.log(`🟢 CLIENT: Game data pill colors (first 10):`, data.gameData.randomList.slice(0, 10));
+            
+            // Store the shared game data globally for the game to use
+            window.sharedGameData = data.gameData;
+            
             if (who == 2) {
                 if (!window.scriptLoaded) {
                     const script = document.createElement('script');
@@ -926,7 +938,6 @@
                     script.type = 'module';
                     document.head.appendChild(script);
                 }
-                console.log('Room Joined: You are Player 2');
                 
                 // Show Player 2 game container
                 document.getElementById('game2').classList.remove('hidden');
@@ -942,13 +953,17 @@
                     script.type = 'module';
                     document.head.appendChild(script);
                 }
-                console.log('Room Joined: You are Player 1');
                 
                 // Show Player 1 game container
                 document.getElementById('game1').classList.remove('hidden');
                 
                 // Show touch controls
                 document.getElementById('touchControls').classList.remove('hidden');
+            }
+            
+            // If game was already created, initialize it with shared data
+            if (window.currentGame && window.currentGame.initializeWithSharedData) {
+                window.currentGame.initializeWithSharedData();
             }
         });
 
@@ -964,7 +979,6 @@
                 socket.emit('joinRoom', roomCode);
                 who = 2;
                 showRoomCode(`🚪 Joining room: ${roomCode}...`);
-                console.log('Joining room:', roomCode);
             } else if (inputCode) {
                 showRoomCode('❌ Invalid room code! Must be 4 letters.', true);
             }
@@ -993,7 +1007,6 @@
         // Add sound effects (optional)
         function playClickSound() {
             // You can add sound effects here if you have audio files
-            console.log('Click sound');
         }
 
         function returnToHomepage() {

@@ -56,29 +56,77 @@ const lobby = [];        // Players waiting for matches
 
 /**
  * Generates random virus positions for the game board
+ * Uses room code and timestamp to ensure unique positions for each room
+ * @param {string} roomCode - The room code to use as seed
  * @returns {Array} Array of {x, y} position objects
  */
-function generateVirusPositions() {
+function generateVirusPositions(roomCode = '') {
+    // Create a simple seeded random number generator
+    let seed = 0;
+    for (let i = 0; i < roomCode.length; i++) {
+        seed += roomCode.charCodeAt(i);
+    }
+    const timestamp = Date.now();
+    seed += timestamp; // Add timestamp for extra uniqueness
+    
+    console.log(`🔵 SERVER: generateVirusPositions for room ${roomCode} - seed calculation:`);
+    console.log(`🔵 SERVER: Room code chars: ${roomCode.split('').map(c => `${c}(${c.charCodeAt(0)})`).join('+')}`);
+    console.log(`🔵 SERVER: Char sum: ${roomCode.split('').reduce((sum, c) => sum + c.charCodeAt(0), 0)}`);
+    console.log(`🔵 SERVER: Timestamp: ${timestamp}`);
+    console.log(`🔵 SERVER: Final seed: ${seed}`);
+    
+    // Simple linear congruential generator
+    function seededRandom() {
+        seed = (seed * 1664525 + 1013904223) % 2147483648;
+        return seed / 2147483648;
+    }
+    
     const positions = [];
     for (let i = 0; i < 10; i++) {
         positions.push({
-            x: Math.floor(Math.random() * 7),
-            y: Math.floor(Math.random() * 5)
+            x: Math.floor(seededRandom() * 7),
+            y: Math.floor(seededRandom() * 5)
         });
     }
+    console.log(`🔵 SERVER: Generated virus positions: [${positions.map(p => `(${p.x},${p.y})`).join(', ')}]`);
     return positions;
 }
 
 /**
  * Generates a random pill color list for fair multiplayer games
+ * Uses room code and timestamp to ensure unique sequences for each room
+ * @param {string} roomCode - The room code to use as seed
  * @returns {Array} Array of 100 random numbers (0, 1, or 2)
  */
-function generateRandomList() {
-    return Array.from({ length: 100 }, () => Math.floor(Math.random() * 3));
+function generateRandomList(roomCode = '') {
+    // Create a simple seeded random number generator
+    let seed = 0;
+    for (let i = 0; i < roomCode.length; i++) {
+        seed += roomCode.charCodeAt(i);
+    }
+    const timestamp = Date.now();
+    seed += timestamp; // Add timestamp for extra uniqueness
+    
+    console.log(`🔵 SERVER: generateRandomList for room ${roomCode} - seed calculation:`);
+    console.log(`🔵 SERVER: Room code chars: ${roomCode.split('').map(c => `${c}(${c.charCodeAt(0)})`).join('+')}`);
+    console.log(`🔵 SERVER: Char sum: ${roomCode.split('').reduce((sum, c) => sum + c.charCodeAt(0), 0)}`);
+    console.log(`🔵 SERVER: Timestamp: ${timestamp}`);
+    console.log(`🔵 SERVER: Final seed: ${seed}`);
+    
+    // Simple linear congruential generator
+    function seededRandom() {
+        seed = (seed * 1664525 + 1013904223) % 2147483648;
+        return seed / 2147483648;
+    }
+    
+    const result = Array.from({ length: 100 }, () => Math.floor(seededRandom() * 3));
+    console.log(`🔵 SERVER: Generated pill colors (first 10): [${result.slice(0, 10).join(',')}]`);
+    return result;
 }
 
-// Store shared pill colors per room for multiplayer synchronization
+// Store shared game data per room for multiplayer synchronization
 const roomPillColors = {};
+const roomVirusPositions = {};
 
 /**
  * SHARED GAME DATA GENERATION
@@ -88,28 +136,44 @@ const roomPillColors = {};
  * Ensures both players receive the same data for fair gameplay.
  * 
  * @param {string} roomCode - The room code for the game
+ * @param {boolean} forceNew - Force generation of new data even if room data exists
  * @returns {Object} Game data with virus positions and pill colors
  */
-function generateNewGameData(roomCode) {
-    virusPositions = generateVirusPositions();
+function generateNewGameData(roomCode, forceNew = false) {
+    console.log(`🔵 SERVER: generateNewGameData called for room ${roomCode}, forceNew: ${forceNew}`);
+    console.log(`🔵 SERVER: Current roomVirusPositions[${roomCode}]:`, roomVirusPositions[roomCode]);
+    console.log(`🔵 SERVER: Current roomPillColors[${roomCode}]:`, roomPillColors[roomCode] ? roomPillColors[roomCode].slice(0, 5) : 'undefined');
     
-    // Generate shared pill colors for this room if not already exists
-    if (!roomPillColors[roomCode]) {
-        roomPillColors[roomCode] = generateRandomList();
-        console.log(`🔵 SERVER: Generated NEW shared pill colors for room ${roomCode}:`, roomPillColors[roomCode].length, 'colors');
+    // Generate fresh virus positions for each new game
+    if (forceNew || !roomVirusPositions[roomCode]) {
+        roomVirusPositions[roomCode] = generateVirusPositions(roomCode);
+        console.log(`🔵 SERVER: Generated FRESH shared virus positions for room ${roomCode}:`, roomVirusPositions[roomCode].length, 'positions');
+        console.log(`🔵 SERVER: Fresh virus positions:`, roomVirusPositions[roomCode]);
+    } else {
+        console.log(`🔵 SERVER: Using EXISTING shared virus positions for room ${roomCode}:`, roomVirusPositions[roomCode].length, 'positions');
+        console.log(`🔵 SERVER: Existing virus positions:`, roomVirusPositions[roomCode]);
+    }
+    
+    // Generate fresh pill colors for each new game
+    if (forceNew || !roomPillColors[roomCode]) {
+        roomPillColors[roomCode] = generateRandomList(roomCode);
+        console.log(`🔵 SERVER: Generated FRESH shared pill colors for room ${roomCode}:`, roomPillColors[roomCode].length, 'colors');
         console.log(`🔵 SERVER: First 20 colors for room ${roomCode}:`, roomPillColors[roomCode].slice(0, 20));
+        console.log(`🔵 SERVER: 🎨 NEW UNIQUE PILL COLORS for room ${roomCode}!`);
     } else {
         console.log(`🔵 SERVER: Using EXISTING shared pill colors for room ${roomCode}:`, roomPillColors[roomCode].length, 'colors');
         console.log(`🔵 SERVER: First 20 colors for room ${roomCode}:`, roomPillColors[roomCode].slice(0, 20));
+        console.log(`🔵 SERVER: 🔄 REUSING existing pill colors for room ${roomCode}`);
     }
     
     const randomList = roomPillColors[roomCode];
-    console.log('🔵 SERVER: Generated new game data - virus positions:', virusPositions.length, 'shared pill colors:', randomList.length);
+    const virusPositions = roomVirusPositions[roomCode];
+    console.log('🔵 SERVER: Final shared game data - virus positions:', virusPositions.length, 'shared pill colors:', randomList.length);
+    console.log('🔵 SERVER: Final virus positions being returned:', virusPositions);
     return { virusPositions, randomList };
 }
 
-// Generate initial virus positions (will be regenerated for each game)
-let virusPositions = generateVirusPositions();
+// Note: Virus positions are now generated fresh for each game, no global variable needed
 
 /**
  * DEBUG LOGGING SYSTEM
@@ -122,15 +186,6 @@ function broadcastServerLog(type, message) {
     io.emit('serverLog', { type, message, timestamp: new Date().toISOString() });
 }
 
-// Override console.log to also broadcast to debug console
-const originalConsoleLog = console.log;
-console.log = function(...args) {
-    originalConsoleLog.apply(console, args);
-    const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-    ).join(' ');
-    broadcastServerLog('log', message);
-};
 
 /**
  * SOCKET.IO CONNECTION HANDLER
@@ -140,7 +195,6 @@ console.log = function(...args) {
  * Manages room creation, player matching, and game synchronization.
  */
 io.on('connection', (socket) => {
-    broadcastServerLog('connect', `Client connected: ${socket.id}`);
     
     /**
      * ROOM MANAGEMENT SYSTEM
@@ -152,7 +206,12 @@ io.on('connection', (socket) => {
         if (!activeRooms[roomCode]) {
             activeRooms[roomCode] = { players: [socket.id] };
             socket.join(roomCode);
-            broadcastServerLog('info', `Room created: ${roomCode} by ${socket.id}`);
+            
+            // Generate unique virus data for this room immediately when created
+            const gameData = generateNewGameData(roomCode, true);
+            console.log(`🔵 SERVER: Room ${roomCode} created with unique virus data:`, gameData.virusPositions);
+            console.log(`🔵 SERVER: Room ${roomCode} virus positions:`, gameData.virusPositions);
+            console.log(`🔵 SERVER: Room ${roomCode} created with unique pill colors (first 10):`, gameData.randomList.slice(0, 10));
         }
     });
 
@@ -160,25 +219,39 @@ io.on('connection', (socket) => {
         if (activeRooms[roomCode]) {
             activeRooms[roomCode].players.push(socket.id);
             socket.join(roomCode);
-            io.to(roomCode).emit('roomJoined', roomCode);
-            broadcastServerLog('info', `Client ${socket.id} joined room: ${roomCode}`);
+            
+            // Check if room is now full (2 players)
+            if (activeRooms[roomCode].players.length === 2) {
+                console.log(`🔵 SERVER: Room ${roomCode} is now full with 2 players:`, activeRooms[roomCode].players);
+                
+                // Use existing game data that was created when the room was made
+                const gameData = generateNewGameData(roomCode, false); // false = use existing data
+                console.log(`🔵 SERVER: Using existing game data for room ${roomCode}:`, gameData);
+                console.log(`🔵 SERVER: Existing virus positions:`, gameData.virusPositions);
+                console.log(`🔵 SERVER: Existing pill colors (first 10):`, gameData.randomList.slice(0, 10));
+                
+                // Notify both players that the game is ready to start
+                io.to(roomCode).emit('gameReady', { roomCode, gameData });
+                console.log(`🔵 SERVER: Sent gameReady event to room ${roomCode} with existing gameData:`, gameData);
+            } else {
+                console.log(`🔵 SERVER: Room ${roomCode} has ${activeRooms[roomCode].players.length} players, waiting for second player`);
+                // First player - just notify they joined
+                io.to(roomCode).emit('roomJoined', roomCode);
+            }
+            
         } else {
             socket.emit('error', 'Room does not exist.');
-            broadcastServerLog('warn', `Client ${socket.id} tried to join non-existent room: ${roomCode}`);
         }
     });
 
   
   
   socket.on('single', () => {
-        console.log("somebody is playing single player");
-        broadcastServerLog('info', `Single player game started by ${socket.id}`);
     });
   
   
     socket.on('joinLobby', () => {
         lobby.push(socket.id);
-        broadcastServerLog('info', `Client ${socket.id} joined lobby (${lobby.length} players waiting)`);
         if (lobby.length >= 2) {
             const roomCode = generateRoomCode();
             const player1 = lobby.shift();
@@ -187,7 +260,6 @@ io.on('connection', (socket) => {
             activeRooms[roomCode] = { players: [player1, player2] };
             io.to(player1).emit('startFreePlay', { player: 1, roomCode });
             io.to(player2).emit('startFreePlay', { player: 2, roomCode });
-            broadcastServerLog('info', `Free play room created: ${roomCode} with players ${player1} and ${player2}`);
         }
     });
 
@@ -202,20 +274,12 @@ io.on('connection', (socket) => {
 	 */
 	socket.on('updatePoints1', (data) => {
         // Player 2 is sending damage to Player 1
-        console.log('Server received updatePoints1:', data);
-        console.log(`Server: Player 2 sending ${data.player1points} damage to Player 1 in room ${data.roomCode}`);
         io.emit('p1damage', { p1damage: data.player1points, roomCode: data.roomCode });
-        console.log(`Server: Emitted p1damage event with ${data.player1points} damage to room ${data.roomCode}`);
-        broadcastServerLog('info', `Player 1 damage update: ${data.player1points} points in room ${data.roomCode}`);
     });
 
     socket.on('updatePoints2', (data) => {
         // Player 1 is sending damage to Player 2
-        console.log('Server received updatePoints2:', data);
-        console.log(`Server: Player 1 sending ${data.player2points} damage to Player 2 in room ${data.roomCode}`);
         io.emit('p2damage', { p2damage: data.player2points, roomCode: data.roomCode });
-        console.log(`Server: Emitted p2damage event with ${data.player2points} damage to room ${data.roomCode}`);
-        broadcastServerLog('info', `Player 2 damage update: ${data.player2points} points in room ${data.roomCode}`);
     });
 
     /**
@@ -230,7 +294,6 @@ io.on('connection', (socket) => {
             roomCode: data.roomCode, 
             playerNumber: data.playerNumber 
         });
-        broadcastServerLog('info', `Player ${data.playerNumber} game over in room ${data.roomCode}`);
     });
 
     socket.on('playerWin', (data) => {
@@ -238,76 +301,68 @@ io.on('connection', (socket) => {
             roomCode: data.roomCode, 
             playerNumber: data.playerNumber 
         });
-        broadcastServerLog('info', `Player ${data.playerNumber} won in room ${data.roomCode}`);
     });
 	
 	
 
     socket.on('requestRandomList', () => {
-        socket.emit('receiveRandomList', generateRandomList());
+        // For single player or fallback, generate random list without room code
+        socket.emit('receiveRandomList', generateRandomList('singleplayer'));
     });
 
-    // Handle request for new game data (virus positions and pill colors)
+    /**
+     * FRESH GAME DATA REQUEST HANDLER
+     * ===============================
+     * 
+     * Handles requests for fresh game data (virus positions and pill colors).
+     * For multiplayer games, ensures both players get the same data.
+     */
     socket.on('requestNewGameData', () => {
         // Get the room code from the socket's rooms
         const rooms = Array.from(socket.rooms);
         const roomCode = rooms.find(room => room !== socket.id); // Find room that's not the socket's own ID
         
-        console.log(`🔵 SERVER: requestNewGameData from socket ${socket.id}, rooms:`, rooms);
         
-        if (roomCode) {
-            const gameData = generateNewGameData(roomCode);
+        if (roomCode && roomCode !== 'singleplayer') {
+            // For multiplayer games, use the room's shared data
+            const gameData = generateNewGameData(roomCode, true);
             socket.emit('receiveNewGameData', gameData);
-            console.log(`🔵 SERVER: Sent shared game data to client ${socket.id} in room ${roomCode}`);
-            console.log(`🔵 SERVER: Data sent - pill colors:`, gameData.randomList.slice(0, 10), '...');
         } else {
             // Fallback for single player or if no room found
-            const gameData = generateNewGameData('singleplayer');
+            const gameData = generateNewGameData('singleplayer', true);
             socket.emit('receiveNewGameData', gameData);
-            console.log(`🔵 SERVER: Sent single player game data to client ${socket.id}`);
-            console.log(`🔵 SERVER: Data sent - pill colors:`, gameData.randomList.slice(0, 10), '...');
         }
     });
 
-    // Handle request to reset shared pill colors for a new game
+    /**
+     * RESET SHARED GAME DATA HANDLER
+     * ==============================
+     * 
+     * Handles requests to reset shared game data for a new game.
+     * Generates fresh virus positions and pill colors for all players in the room.
+     */
     socket.on('resetSharedPillColors', () => {
         const rooms = Array.from(socket.rooms);
         const roomCode = rooms.find(room => room !== socket.id);
         
-        console.log(`🔵 SERVER: resetSharedPillColors from socket ${socket.id}, rooms:`, rooms);
         
         if (roomCode) {
-            // Generate new shared pill colors for this room
-            roomPillColors[roomCode] = generateRandomList();
-            console.log(`🔵 SERVER: Reset shared pill colors for room ${roomCode}:`, roomPillColors[roomCode].length, 'colors');
-            console.log(`🔵 SERVER: New pill colors for room ${roomCode}:`, roomPillColors[roomCode].slice(0, 20));
-            
-            // Send the new colors to all players in the room
-            const gameData = {
-                virusPositions: generateVirusPositions(),
-                randomList: roomPillColors[roomCode]
-            };
+            // Generate fresh game data for the new game
+            const gameData = generateNewGameData(roomCode, true);
+            // Send the fresh data to all players in the room
             io.to(roomCode).emit('receiveNewGameData', gameData);
-            console.log(`🔵 SERVER: Broadcasted new shared pill colors to room ${roomCode}`);
-            console.log(`🔵 SERVER: Broadcasted data - pill colors:`, gameData.randomList.slice(0, 10), '...');
         }
     });
 
-    // Send initial virus positions to the client
-    socket.emit('virusPositions', virusPositions);
+    // Note: Virus positions are now sent through the new game data system
+    // when clients request fresh game data via 'requestNewGameData' or 'resetSharedPillColors'
 
-    socket.on('testConnection', (data) => {
-        console.log('Debug console test connection received:', data);
-    });
 
     socket.on('disconnect', () => {
-        console.log('A user disconnected');
-        broadcastServerLog('disconnect', `Client disconnected: ${socket.id}`);
         // Remove from lobby if in lobby
         const lobbyIndex = lobby.indexOf(socket.id);
         if (lobbyIndex !== -1) {
             lobby.splice(lobbyIndex, 1);
-            broadcastServerLog('info', `Client ${socket.id} removed from lobby`);
         }
         // Handle room cleanup if needed
     });

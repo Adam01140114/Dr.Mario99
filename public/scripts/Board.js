@@ -171,7 +171,6 @@ export class PlayingBoard extends Board {
      * @param {number} playerNumber - Player number (1 or 2)
      */
     constructor(game, level = 0, score = 0, playerNumber = 1) {
-        console.log(`Player ${playerNumber}: PlayingBoard CONSTRUCTOR CALLED!`);
         super(game)
         this.playerNumber = playerNumber
         
@@ -180,13 +179,10 @@ export class PlayingBoard extends Board {
         
         // Prevent multiple PlayingBoard instances for the same player
         if (window[`playingBoard${playerNumber}Created`]) {
-            console.log(`PlayingBoard for Player ${playerNumber} already exists, skipping creation`);
-            console.log(`Player ${playerNumber}: CONSTRUCTOR SKIPPED - damage listener will NOT be added!`);
             return;
         }
         window[`playingBoard${playerNumber}Created`] = true;
         
-        console.log('Player', this.playerNumber, 'undery:', this.playerNumber === 1 ? 14 : 6)
         
         // Set player-specific undery values for virus spawning
         // Player 1: undery = 14 (bottom of board)
@@ -249,10 +245,8 @@ export class PlayingBoard extends Board {
 		
 		// Virus positions for multiplayer synchronization
 		this.virusPositions = [];
-        socket.on('virusPositions', (positions) => {
-            this.virusPositions = positions;
-            this.spawnViruses(); // Call spawnViruses after receiving positions
-        });
+        // Note: Virus positions are now received via 'receiveNewGameData' event
+        // and handled in Shape.js for synchronization
     }
 
     /**
@@ -267,10 +261,7 @@ export class PlayingBoard extends Board {
         this.initImageCounters()
 		
 		// Add damage listener to PlayingBoard instance
-        console.log(`Player ${this.playerNumber}: REACHED DAMAGE LISTENER CODE!`);
-        console.log(`Player ${this.playerNumber}: CHECKING DAMAGE LISTENER - isDamageListenerAdded: ${this.isDamageListenerAdded}`);
         if (!this.isDamageListenerAdded) {
-            console.log(`Player ${this.playerNumber}: Adding damage listener to PlayingBoard instance`);
             this.isDamageListenerAdded = true;
             
             /**
@@ -282,37 +273,23 @@ export class PlayingBoard extends Board {
              * Damage is capped at 1 virus maximum per clear.
              */
             socket.on(`p${this.playerNumber}damage`, (data) => {
-                console.log(`Player ${this.playerNumber}: DAMAGE EVENT RECEIVED!`);
-                console.log(`Player ${this.playerNumber}: Raw damage data:`, data);
-                console.log(`Player ${this.playerNumber}: Room code check - received: ${data.roomCode}, expected: ${roomCode}`);
                 
                 // Validate room code to ensure damage is for the correct game
                 if (data.roomCode === roomCode) {
-                    console.log(`Player ${this.playerNumber}: Room code matches! Processing damage...`);
-                    console.log(`Player ${this.playerNumber}: Damage received: ${data[`p${this.playerNumber}damage`]}`);
                     
                     // Calculate damage: every 4 points = 1 virus
                     const calculatedDamage = Math.floor(data[`p${this.playerNumber}damage`] / 4);
-                    console.log(`Player ${this.playerNumber}: Calculated realdamage: ${calculatedDamage} (from ${data[`p${this.playerNumber}damage`]} / 4)`);
                     
                     if (calculatedDamage > 0) {
                         // Cap damage at 1 virus maximum per clear
                         this.realdamage = Math.min(calculatedDamage, 1);
                         this.damageProcessed = false;
-                        console.log(`Player ${this.playerNumber}: DAMAGE STORED - realdamage set to ${this.realdamage} in PlayingBoard (capped at 1)`);
-                        console.log(`Player ${this.playerNumber}: VERIFICATION - this.realdamage is now: ${this.realdamage}`);
-                        console.log(`Player ${this.playerNumber}: DAMAGE STORED in PlayingBoard instance with playerNumber: ${this.playerNumber}`);
-                        console.log(`Player ${this.playerNumber}: DAMAGE STORED in PlayingBoard instance ID: ${this.constructor.name}-${this.playerNumber}-${Date.now()}`);
-                        console.log(`Player ${this.playerNumber}: DAMAGE STORED in PlayingBoard instance reference: ${this}`);
                     } else {
-                        console.log(`Player ${this.playerNumber}: Ignoring 0 damage - keeping existing realdamage: ${this.realdamage}`);
                     }
                 } else {
-                    console.log(`Player ${this.playerNumber}: Room code mismatch! Ignoring damage event.`);
                 }
             });
         } else {
-            console.log(`Player ${this.playerNumber}: Damage listener already added, skipping...`);
         }
 		
     }
@@ -385,15 +362,11 @@ export class PlayingBoard extends Board {
     movePillFromThrowingBoard() {
         // Check if currentPill exists and has pieces
         if (this.throwingBoard.currentPill && this.throwingBoard.currentPill.pieces && this.throwingBoard.currentPill.pieces.length >= 2) {
-            console.log(`🔴 Player ${this.playerNumber}: Moving pill from throwing board with colors: ${this.throwingBoard.currentPill.pieces[0].color}, ${this.throwingBoard.currentPill.pieces[1].color}`);
             this.currentPill = new Pill(this, this.throwingBoard.currentPill.pieces[0].color, this.throwingBoard.currentPill.pieces[1].color)
         } else {
             // Fallback: create pill with random colors
-            console.log(`🔴 Player ${this.playerNumber}: Creating pill with random colors (currentPill not available)`);
-            console.log(`🔴 Player ${this.playerNumber}: About to call randomColor() twice for fallback`);
             const color1 = randomColor();
             const color2 = randomColor();
-            console.log(`🔴 Player ${this.playerNumber}: Fallback colors: ${color1}, ${color2}`);
             this.currentPill = new Pill(this, color1, color2)
         }
         this.throwingBoard.spawnPill()
@@ -419,7 +392,6 @@ export class PlayingBoard extends Board {
 
     destroy() {
 		
-		console.log('hello');
 		
         this.topElement.remove()
         this.scoreElement.remove()
@@ -501,9 +473,6 @@ export class PlayingBoard extends Board {
 	hurt(realdamage = null) {
 		// Use provided damage or fall back to stored damage
 		const actualDamage = realdamage !== null ? realdamage : this.realdamage;
-		console.log(`Player ${this.playerNumber}: HURT() METHOD CALLED!`);
-		console.log(`Player ${this.playerNumber}: hurt() called - spawn: ${this.spawn}, realdamage: ${actualDamage}`);
-		console.log(`Player ${this.playerNumber}: About to call spawnRandomDot()...`);
 		
 		// Spawn a random virus on the board
 		this.spawnRandomDot();
@@ -541,6 +510,7 @@ export class PlayingBoard extends Board {
 	
 	
 	spawnViruses() {
+		console.log(`Player ${this.playerNumber}: spawnViruses() called with virusPositions:`, this.virusPositions);
 		
 		//number of viruses
         this.virusCount = 5;
@@ -550,25 +520,19 @@ export class PlayingBoard extends Board {
         if (this.level >= 19) this.maxVirusHeight++
         let color
 
-        // Use pre-generated virus positions
+        // Use synchronized virus positions from server
         for (let i = 0; i < this.virusCount; i++) {
-			
-			
 			if (this.lastColor == Color.FIRST) color = Color.SECOND
             else if (this.lastColor == Color.SECOND) color = Color.THIRD
             else color = Color.FIRST
-            //this.spawnVirus(color)
             this.lastColor = color
-			
-			
 			
             const position = this.virusPositions[i];
             if (position) {
                 const { x, y } = position;
-				
-				
-                //const color = this.lastColor === Color.FIRST ? Color.SECOND : (this.lastColor === Color.SECOND ? Color.THIRD : Color.FIRST);
+                console.log(`Player ${this.playerNumber}: Spawning virus ${i+1} at position (${x}, ${y}) with color ${color}`);
                 this.virusList.push(new Virus(this, x, y, color));
+            } else {
             }
         }
         
@@ -656,14 +620,10 @@ export class PlayingBoard extends Board {
      * 4. Handle multiple virus spawning for multiple damage
      */
     spawnRandomDot() {
-        console.log(`Player ${this.playerNumber}: SPAWNRANDOMDOT() METHOD CALLED!`);
-        console.log(`Player ${this.playerNumber}: spawnRandomDot() called`);
         
         // Available colors for virus spawning
         let colors = ['yl', 'bl', 'br'];
         let availableX = [1, 2, 3, 4, 5, 6, 7];
-        console.log(`Player ${this.playerNumber}: Available colors: ${colors.join(', ')}`);
-        console.log(`Player ${this.playerNumber}: Available X positions: ${availableX.join(', ')}`);
 
         /**
          * Helper function to get random X position
@@ -677,7 +637,6 @@ export class PlayingBoard extends Board {
 		// Set Y positions for virus spawning (bottom of board)
 		this.randy = 15;
 		this.undery = 14;
-		console.log(`Player ${this.playerNumber}: randy set to ${this.randy}, undery set to ${this.undery}`);
 		
 		// Set Y positions for additional viruses
 		this.randy2 = 15;
@@ -694,14 +653,7 @@ export class PlayingBoard extends Board {
 		// Spawn the first virus
 		this.randx = getRandomX();
 		this.randcolor = colors[Math.floor(Math.random() * colors.length)];
-		console.log(`Player ${this.playerNumber}: VIRUS SPAWNING ATTEMPT!`);
-		console.log(`Player ${this.playerNumber}: Spawning virus at position (${this.randx}, ${this.randy}) with color ${this.randcolor}`);
-		console.log(`Player ${this.playerNumber}: Board dimensions - width: ${this.width}, height: ${this.height}`);
-		console.log(`Player ${this.playerNumber}: Field exists check - fields[${this.randx}][${this.randy}] exists: ${this.fields[this.randx] && this.fields[this.randx][this.randy] ? 'YES' : 'NO'}`);
-		console.log(`Player ${this.playerNumber}: About to call setColor() on field...`);
 		this.fields[this.randx][this.randy].setColor(this.randcolor);
-		console.log(`Player ${this.playerNumber}: VIRUS SPAWNED SUCCESSFULLY!`);
-		console.log(`Player ${this.playerNumber}: Virus spawned successfully`);
     
 	
 		// Spawn additional viruses for multiple damage
@@ -920,7 +872,6 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
             }
         }
         if (fieldsToClear.length > 0) {
-            console.log(`Player ${this.playerNumber}: Clearing ${fieldsToClear.length} fields`);
             for (let field of fieldsToClear)
                 field.clearAnimated()
         }
@@ -1017,7 +968,6 @@ class Field extends HTMLElement {
     * - Points are sent immediately when threshold is reached
     */
    clearAnimated() {
-    console.log(`Player ${this.board.playerNumber}: clearAnimated() called`);
     
     // Determine what type of piece is being cleared
     const x = this.shapePiece.shape instanceof Virus;
@@ -1030,31 +980,24 @@ class Field extends HTMLElement {
     // Accumulate points for each piece cleared
     if (x) {
         this.board.localpoints += 1;
-        console.log(`Player ${this.board.playerNumber}: Virus cleared, points: ${this.board.localpoints}`);
         this.style.backgroundImage = "url('./img/" + color + "_x.png')";
     }
     if (o) {
         this.board.localpoints += 1;
-        console.log(`Player ${this.board.playerNumber}: Pill cleared, points: ${this.board.localpoints}`);
         this.style.backgroundImage = "url('./img/" + color + "_o.png')";
     }
     
     // DAMAGE THRESHOLD: Send damage when 4+ points are reached
     if (this.board.localpoints >= 4) {
-        console.log(`Player ${this.board.playerNumber}: 4 in a row cleared! Points: ${this.board.localpoints}`);
-        console.log(`Player ${this.board.playerNumber}: DAMAGE SHOULD BE SENT NOW!`);
         
         // Send damage immediately when 4+ points are reached
-        console.log(`Player ${this.board.playerNumber}: Sending damage to opponent...`);
         socket.emit(`updatePoints${this.board.playerNumber === 1 ? 2 : 1}`, { 
             [`player${this.board.playerNumber === 1 ? 2 : 1}points`]: this.board.localpoints, 
             roomCode: roomCode 
         });
-        console.log(`Player ${this.board.playerNumber}: Damage sent! Points: ${this.board.localpoints}, Target: Player ${this.board.playerNumber === 1 ? 2 : 1}`);
         
         // Reset points after sending damage
         this.board.localpoints = 0;
-        console.log(`Player ${this.board.playerNumber}: Points reset to 0 after sending damage`);
     }
 		
     setTimeout(() => {
@@ -1223,12 +1166,9 @@ class ThrowingBoard extends Board {
         super(game)
         this.playerNumber = playerNumber
         this.playingBoard = playingBoard;
-        console.log(`Player ${this.playerNumber}: ThrowingBoard created, referencing PlayingBoard instance with playerNumber: ${this.playingBoard.playerNumber}`);
-        console.log(`Player ${this.playerNumber}: ThrowingBoard PlayingBoard reference: ${this.playingBoard === this.playingBoard ? 'SAME' : 'DIFFERENT'}`);
         
         // Prevent multiple ThrowingBoard instances
         if (window[`throwingBoard${playerNumber}Created`]) {
-            console.log(`Player ${this.playerNumber}: ThrowingBoard already exists, skipping creation`);
             return;
         }
         window[`throwingBoard${playerNumber}Created`] = true;
@@ -1246,12 +1186,8 @@ class ThrowingBoard extends Board {
         }
         
         // Get random colors for the pill
-        console.log(`🔴 Player ${this.playerNumber}: About to spawn pill - calling randomColor() twice`);
         const color1 = randomColor();
-        console.log(`🔴 Player ${this.playerNumber}: Got first color: ${color1}`);
         const color2 = randomColor();
-        console.log(`🔴 Player ${this.playerNumber}: Got second color: ${color2}`);
-        console.log(`🔴 Player ${this.playerNumber}: Spawning pill with colors: ${color1}, ${color2}`);
         
         this.currentPill = new Pill(this, color1, color2)
         this.currentFrame = 0
@@ -1286,7 +1222,6 @@ class ThrowingBoard extends Board {
      * 4. Reset damage after processing
      */
     setFrames() {
-        console.log(`Player ${this.playerNumber}: setFrames() METHOD CALLED!`);
         this.currentFrame = 0
         this.frames = [
             {
@@ -1296,7 +1231,6 @@ class ThrowingBoard extends Board {
                  */
                 action: (pill) => {
                     pill.rotate(Direction.LEFT)
-					console.log('new pill');
 					
 					// Reset pill positioning
 					pillx1 = 3;
@@ -1305,37 +1239,22 @@ class ThrowingBoard extends Board {
 					this.pilly2 = 15;
 
 					// Send points update to opponent
-					console.log(`Player ${this.playerNumber}: setFrames() - Sending points update. Current localpoints: ${this.localpoints}`);
 					socket.emit(`updatePoints${this.playerNumber === 1 ? 2 : 1}`, { [`player${this.playerNumber === 1 ? 2 : 1}points`]: this.localpoints, roomCode: roomCode });
-					console.log(`Player ${this.playerNumber}: setFrames() - Points update sent to Player ${this.playerNumber === 1 ? 2 : 1}`);
 
 					// Reset local points
 					this.localpoints = 0;
-					console.log(`Player ${this.playerNumber}: setFrames() - Points reset to 0`);
 					
 					// DAMAGE PROCESSING: Check for received damage
-					console.log(`Player ${this.playerNumber}: setFrames() - CHECKING DAMAGE - this.playingBoard.realdamage = ${this.playingBoard.realdamage}`);
-					console.log(`Player ${this.playerNumber}: setFrames() - damageProcessed flag = ${this.playingBoard.damageProcessed}`);
-					console.log(`Player ${this.playerNumber}: setFrames() - PlayingBoard instance playerNumber: ${this.playingBoard.playerNumber}`);
-					console.log(`Player ${this.playerNumber}: setFrames() - PlayingBoard instance ID: ${this.playingBoard.constructor.name}-${this.playingBoard.playerNumber}-${Date.now()}`);
-					console.log(`Player ${this.playerNumber}: setFrames() - PlayingBoard instance reference: ${this.playingBoard}`);
-					console.log(`Player ${this.playerNumber}: setFrames() - VERIFICATION: this.playingBoard === this.playingBoard: ${this.playingBoard === this.playingBoard}`);
-					console.log(`Player ${this.playerNumber}: setFrames() - CRITICAL CHECK: Is this the same PlayingBoard that stored damage?`);
 					
 					// Process damage if available and not already processed
 					if(this.playingBoard.realdamage > 0 && !this.playingBoard.damageProcessed){
 						// Only send one virus regardless of damage amount
-						console.log(`Player ${this.playerNumber}: setFrames() - DAMAGE FOUND! Calling hurt() with realdamage: ${this.playingBoard.realdamage}`);
-						console.log(`Player ${this.playerNumber}: setFrames() - hurt - damage limited to 1 virus`);
 						this.playingBoard.hurt(this.playingBoard.realdamage);
 						this.spawn = this.spawn + 1;
 						this.playingBoard.damageProcessed = true; // Mark damage as processed
 						this.playingBoard.realdamage = 0
-						console.log(`Player ${this.playerNumber}: setFrames() - reset real damage and marked as processed`);
 					} else if (this.playingBoard.realdamage > 0 && this.playingBoard.damageProcessed) {
-						console.log(`Player ${this.playerNumber}: setFrames() - Damage already processed, skipping`);
 					} else {
-						console.log(`Player ${this.playerNumber}: setFrames() - No real damage to send (realdamage: ${this.playingBoard.realdamage})`);
 					}
 					
                 }

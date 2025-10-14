@@ -35,6 +35,7 @@ var pill = 0;
  * - number: Current color value being used
  * - myRandomList: The shared color list from the server
  */
+// These variables will be set by the Game.js module when shared data is received
 let numberPosition = 1;  // Position in the shared color list
 let number;              // Current color value
 let myRandomList = [];   // Shared color list from server
@@ -44,9 +45,7 @@ let myRandomList = [];   // Shared color list from server
  * Helps debug synchronization issues between players
  */
 window.trackMyRandomList = function() {
-    console.log('🔍 GLOBAL TRACKER - myRandomList changed to:', myRandomList.slice(0, 10));
-    console.log('🔍 GLOBAL TRACKER - myRandomList length:', myRandomList.length);
-    console.log('🔍 GLOBAL TRACKER - myRandomList reference:', myRandomList);
+    // Track myRandomList changes
 };
 
 /**
@@ -54,10 +53,8 @@ window.trackMyRandomList = function() {
  * Prevents duplicate loading that could cause synchronization issues
  */
 if (window.shapeScriptLoaded) {
-    console.log('🚨 WARNING: Shape.js already loaded! Multiple instances detected!');
 } else {
     window.shapeScriptLoaded = true;
-    console.log('✅ Shape.js loaded for the first time');
 }
 
 
@@ -79,11 +76,14 @@ if (window.shapeScriptLoaded) {
  */
 
 // Request new game data (virus positions and pill colors) for each new game
-socket.emit('requestNewGameData');
+// Only request if not in a multiplayer room with shared data
+if (typeof roomCode === 'undefined' || !roomCode || !window.sharedGameData) {
+    socket.emit('requestNewGameData');
+}
 socket.on('receiveNewGameData', (gameData) => {
-    console.log('🟢 CLIENT: Received new game data:', gameData);
-    console.log('🟢 CLIENT: BEFORE assignment - myRandomList:', myRandomList);
-    console.log('🟢 CLIENT: BEFORE assignment - gameData.randomList:', gameData.randomList);
+    console.log('🟢 CLIENT: OLD SYSTEM - receiveNewGameData called with:', gameData);
+    console.log('🟢 CLIENT: OLD SYSTEM - virus positions:', gameData.virusPositions);
+    console.log('🟢 CLIENT: OLD SYSTEM - pill colors (first 10):', gameData.randomList.slice(0, 10));
     
     /**
      * CRITICAL: Create a DEEP COPY to prevent mutation
@@ -93,20 +93,20 @@ socket.on('receiveNewGameData', (gameData) => {
     myRandomList = [...gameData.randomList];
     window.trackMyRandomList(); // Track the change
     
-    console.log('🟢 CLIENT: AFTER assignment - myRandomList:', myRandomList);
-    console.log('🟢 CLIENT: VERIFICATION - myRandomList === gameData.randomList:', myRandomList === gameData.randomList);
-    console.log('🟢 CLIENT: VERIFICATION - myRandomList[0]:', myRandomList[0], 'gameData.randomList[0]:', gameData.randomList[0]);
     
     // Reset pill color position for new game to ensure synchronization
     numberPosition = 1;
-    console.log('🟢 CLIENT: Reset pill color position to 1 for new game');
-    console.log(`🟢 CLIENT: Using shared pill color list with ${myRandomList.length} colors:`, myRandomList.slice(0, 20));
-    console.log(`🟢 CLIENT: Full pill color list:`, myRandomList);
     
     // Update virus positions in the board
     if (window.currentPlayingBoard) {
         window.currentPlayingBoard.virusPositions = gameData.virusPositions;
-        console.log('🟢 CLIENT: Updated virus positions for new game:', gameData.virusPositions);
+        console.log('🟢 CLIENT: OLD SYSTEM - set board virusPositions to:', window.currentPlayingBoard.virusPositions);
+        
+        // Trigger virus spawning with the new synchronized positions
+        if (window.currentPlayingBoard.spawnViruses) {
+            console.log('🟢 CLIENT: OLD SYSTEM - calling spawnViruses');
+            window.currentPlayingBoard.spawnViruses();
+        }
     }
 });
 
@@ -137,27 +137,32 @@ socket.on('receiveNewGameData', (gameData) => {
  * - Extensive logging for debugging synchronization
  */
 function updateNumber() {
-    console.log(`🟠 updateNumber() called - numberPosition: ${numberPosition}, myRandomList.length: ${myRandomList.length}`);
-    console.log(`🟠 updateNumber() - myRandomList BEFORE access:`, myRandomList.slice(0, 10));
+    // Use window variables to ensure they're shared across modules
+    const currentPosition = window.numberPosition || numberPosition;
+    const currentList = window.myRandomList || myRandomList;
+    
+    console.log(`🟠 updateNumber(): numberPosition=${currentPosition}, myRandomList.length=${currentList.length}`);
     
     // Check if position is within bounds
-    if (numberPosition > 0 && numberPosition <= myRandomList.length) {
+    if (currentPosition > 0 && currentPosition <= currentList.length) {
         // Get the color value at the current position
-        number = myRandomList[numberPosition - 1];
-        console.log(`🟠 updateNumber() - got number: ${number} from myRandomList[${numberPosition - 1}]`);
-        console.log(`🟠 updateNumber() - myRandomList AFTER access:`, myRandomList.slice(0, 10));
+        number = currentList[currentPosition - 1];
+        console.log(`🟠 updateNumber(): Got number=${number} from myRandomList[${currentPosition - 1}]`);
         
         // Advance to next position
-		numberPosition = numberPosition + 1;
+		window.numberPosition = currentPosition + 1;
+		numberPosition = window.numberPosition;
+		console.log(`🟠 updateNumber(): Incremented numberPosition to ${window.numberPosition}`);
 		
 		// Loop back to start when reaching end of list
-		if(numberPosition > 100){ // Updated to match new list size
+		if(window.numberPosition > 100){ // Updated to match new list size
+			window.numberPosition = 1;
 			numberPosition = 1;
+			console.log(`🟠 updateNumber(): Looped back to position 1`);
 		}
-		console.log(`🟠 updateNumber() - new numberPosition: ${numberPosition}`);
 		
     } else {
-        console.log(`🟠 updateNumber() - numberPosition out of bounds: ${numberPosition}`);
+        console.log(`🟠 updateNumber(): numberPosition out of bounds: ${currentPosition}`);
         //number = undefined; 
     }
 }
@@ -187,9 +192,13 @@ function updateNumber() {
  * @returns {string} The color constant for the pill
  */
 export function randomColor() {
+	// Use window variables to ensure they're shared across modules
+	const currentList = window.myRandomList || myRandomList;
+	const currentPosition = window.numberPosition || numberPosition;
+	
 	// If myRandomList is empty (before server data is received), wait for server data
-	if (myRandomList.length === 0) {
-		console.log(`🟡 randomColor() - waiting for server data, using default blue`);
+	if (currentList.length === 0) {
+		console.log('🟡 randomColor(): No server data yet, returning default blue');
 		return Color.FIRST; // Default to blue while waiting for server data
 	}
 	
@@ -197,22 +206,21 @@ export function randomColor() {
 	updateNumber(); 
 	pill = number;
 	
-	console.log(`🟡 randomColor() called - numberPosition: ${numberPosition}, pill: ${pill}, myRandomList[${numberPosition-1}]: ${myRandomList[numberPosition-1]}`);
-	console.log(`🟡 randomColor() - current myRandomList:`, myRandomList.slice(0, 10), '...');
+	console.log(`🟡 randomColor(): numberPosition=${currentPosition}, pill=${pill}, color=${pill == 0 ? 'blue' : pill == 1 ? 'brown' : 'yellow'}`);
 
 	// Map number values to color constants
 	if(pill == 0){	
-		console.log(`🟡 randomColor() returning Color.FIRST (bl/blue)`);
+		console.log('🟡 randomColor(): Returning blue (Color.FIRST)');
 		return Color.FIRST
 	}
 	
 	if(pill == 1){	
-		console.log(`🟡 randomColor() returning Color.SECOND (br/brown)`);
+		console.log('🟡 randomColor(): Returning brown (Color.SECOND)');
 		return Color.SECOND
 	}
 	
 	if(pill == 2){	
-		console.log(`🟡 randomColor() returning Color.THIRD (yl/yellow)`);
+		console.log('🟡 randomColor(): Returning yellow (Color.THIRD)');
 		return Color.THIRD
 	}
 }
@@ -290,7 +298,6 @@ export class Pill extends Shape {
         // Get the right field, but check if it exists
         const rightField = this.fieldTo(Direction.RIGHT);
         if (!rightField) {
-            console.log('Warning: Right field is out of bounds, using center field instead');
             // If right field is out of bounds, use center field for both pieces
             this.pieces = [
                 new ShapePiece(this, this.centerField, actualColor1),
@@ -316,7 +323,6 @@ export class Pill extends Shape {
      */
     fieldTo(direction) {
         if (!this.centerField) {
-            console.log('Warning: centerField is undefined in fieldTo method');
             return false;
         }
         const x = this.centerField.x + direction.x
