@@ -82,6 +82,9 @@ if (typeof roomCode === 'undefined' || !roomCode || !window.sharedGameData) {
 }
 socket.on('receiveNewGameData', (gameData) => {
     console.log('🟢 CLIENT: OLD SYSTEM - receiveNewGameData called with:', gameData);
+    // Expose full shared data for other modules (e.g., Board uses virusCount)
+    window.sharedGameData = gameData;
+
     console.log('🟢 CLIENT: OLD SYSTEM - virus positions:', gameData.virusPositions);
     console.log('🟢 CLIENT: OLD SYSTEM - pill colors (first 10):', gameData.randomList.slice(0, 10));
     

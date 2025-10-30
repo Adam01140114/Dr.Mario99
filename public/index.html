@@ -887,17 +887,7 @@
         // Create Room
         document.getElementById('createRoom').onclick = function() {
             roomCode = generateRoomCode();
-
-            // Ask for virus amount/level with default autofilled (5)
-            const defaultVirusCount = 5;
-            let input = prompt('Set virus amount/level:', String(defaultVirusCount));
-            let virusCount = parseInt(input, 10);
-            if (isNaN(virusCount) || virusCount <= 0) {
-                virusCount = defaultVirusCount;
-            }
-
-            // Send room creation with settings to server
-            socket.emit('createRoom', { roomCode, virusCount });
+            socket.emit('createRoom', roomCode);
             who = 1;
 
             // Copy to clipboard
@@ -1072,26 +1062,51 @@
             messageElement.className = 'alert-message';
             messageElement.textContent = message;
 
-            // Create button
-            const button = document.createElement('button');
-            button.className = 'alert-button';
-            button.textContent = 'OKAY';
-            button.onclick = () => {
+            // Buttons container
+            const buttonsWrapper = document.createElement('div');
+            buttonsWrapper.style.display = 'flex';
+            buttonsWrapper.style.justifyContent = 'center';
+            buttonsWrapper.style.gap = '12px';
+
+            // Next Round button (multiplayer only)
+            const nextRoundBtn = document.createElement('button');
+            nextRoundBtn.className = 'alert-button';
+            nextRoundBtn.textContent = 'NEXT ROUND (+1 VIRUS)';
+            nextRoundBtn.onclick = () => {
+                nextRoundBtn.disabled = true;
+                nextRoundBtn.textContent = 'Waiting for opponent…';
+                // signal readiness to server
+                if (typeof roomCode !== 'undefined' && roomCode) {
+                    socket.emit('nextRoundReady', { roomCode });
+                }
+            };
+
+            // Exit to menu button
+            const exitBtn = document.createElement('button');
+            exitBtn.className = 'alert-button';
+            exitBtn.textContent = 'EXIT';
+            exitBtn.onclick = () => {
                 overlay.remove();
                 returnToHomepage();
             };
 
+            // Assemble buttons
+            if (typeof roomCode !== 'undefined' && roomCode) {
+                buttonsWrapper.appendChild(nextRoundBtn);
+            }
+            buttonsWrapper.appendChild(exitBtn);
+
             // Assemble modal
             modal.appendChild(titleElement);
             modal.appendChild(messageElement);
-            modal.appendChild(button);
+            modal.appendChild(buttonsWrapper);
             overlay.appendChild(modal);
 
             // Add to page
             document.body.appendChild(overlay);
 
-            // Focus button for keyboard navigation
-            setTimeout(() => button.focus(), 100);
+            // Focus a button for keyboard navigation
+            setTimeout(() => (typeof roomCode !== 'undefined' && roomCode ? nextRoundBtn : exitBtn).focus(), 100);
         }
 
         // Touch Controls Functionality

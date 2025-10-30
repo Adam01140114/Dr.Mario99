@@ -45,6 +45,7 @@ app.use(cors({
 // Multiplayer state management
 const activeRooms = {};  // Track active game rooms
 const lobby = [];        // Players waiting for matches
+const nextRoundReady = {}; // Track next-round readiness per room
 
 /**
  * GAME DATA GENERATION SYSTEM
@@ -268,6 +269,33 @@ io.on('connection', (socket) => {
             activeRooms[roomCode] = { players: [player1, player2] };
             io.to(player1).emit('startFreePlay', { player: 1, roomCode });
             io.to(player2).emit('startFreePlay', { player: 2, roomCode });
+        }
+    });
+
+
+    // NEXT ROUND FLOW: both players must click "Next Round" to proceed
+    socket.on('nextRoundReady', ({ roomCode }) => {
+        if (!roomCode || !activeRooms[roomCode]) return;
+
+        if (!nextRoundReady[roomCode]) nextRoundReady[roomCode] = new Set();
+        nextRoundReady[roomCode].add(socket.id);
+
+        // Notify room of current readiness state (optional UI feedback)
+        io.to(roomCode).emit('nextRoundStatus', { readyCount: nextRoundReady[roomCode].size });
+
+        // When both players are ready, increment virus count and start next round
+        if (nextRoundReady[roomCode].size >= 2) {
+            // Reset readiness for room
+            nextRoundReady[roomCode].clear();
+
+            // Increment virus count for this room (default 5)
+            if (!activeRooms[roomCode].settings) activeRooms[roomCode].settings = {};
+            const current = parseInt(activeRooms[roomCode].settings.virusCount, 10) || 5;
+            activeRooms[roomCode].settings.virusCount = current + 1;
+
+            // Generate and broadcast fresh shared data for the new round
+            const gameData = generateNewGameData(roomCode, true);
+            io.to(roomCode).emit('startNextRound', { roomCode, gameData });
         }
     });
 

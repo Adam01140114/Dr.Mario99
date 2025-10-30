@@ -89,6 +89,27 @@ export default class Game extends HTMLElement {
                 console.log(`Player ${this.playerNumber}: Conditions not met, ignoring event`);
             }
         });
+
+        // Start next round when both players are ready
+        socket.on('startNextRound', (data) => {
+            if (!data || data.roomCode !== roomCode) return;
+            // Store the shared game data globally
+            window.sharedGameData = data.gameData;
+
+            // Reset UI overlay if present
+            const existingAlert = document.querySelector('.alert-overlay');
+            if (existingAlert) existingAlert.remove();
+
+            // Recreate a fresh board and restart loop
+            const lastLevel = this.board ? this.board.level : 0;
+            const newLevel = lastLevel; // keep same background cycle
+            const score = 0;
+            if (this.board) this.board.destroy();
+            this.setBg(newLevel);
+            this.createBoard(newLevel, score);
+            this.createDancingViruses();
+            this.startInterval();
+        });
     }
 
     /**
