@@ -887,7 +887,17 @@
         // Create Room
         document.getElementById('createRoom').onclick = function() {
             roomCode = generateRoomCode();
-            socket.emit('createRoom', roomCode);
+
+            // Ask for virus amount/level with default autofilled (5)
+            const defaultVirusCount = 5;
+            let input = prompt('Set virus amount/level:', String(defaultVirusCount));
+            let virusCount = parseInt(input, 10);
+            if (isNaN(virusCount) || virusCount <= 0) {
+                virusCount = defaultVirusCount;
+            }
+
+            // Send room creation with settings to server
+            socket.emit('createRoom', { roomCode, virusCount });
             who = 1;
 
             // Copy to clipboard
