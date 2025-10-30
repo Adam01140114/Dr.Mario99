@@ -391,8 +391,15 @@ export class PlayingBoard extends Board {
     }
 
     destroy() {
-		
-		
+        // Reset creation guards so a fresh board can be created next round
+        if (typeof this.playerNumber !== 'undefined') {
+            delete window[`playingBoard${this.playerNumber}Created`];
+            delete window[`throwingBoard${this.playerNumber}Created`];
+        }
+        if (window.currentPlayingBoard === this) {
+            window.currentPlayingBoard = null;
+        }
+
         this.topElement.remove()
         this.scoreElement.remove()
         this.virusCountElement.remove()
