@@ -60,7 +60,7 @@ const lobby = [];        // Players waiting for matches
  * @param {string} roomCode - The room code to use as seed
  * @returns {Array} Array of {x, y} position objects
  */
-function generateVirusPositions(roomCode = '') {
+function generateVirusPositions(roomCode = '', count = 10) {
     // Create a simple seeded random number generator
     let seed = 0;
     for (let i = 0; i < roomCode.length; i++) {
@@ -82,7 +82,7 @@ function generateVirusPositions(roomCode = '') {
     }
     
     const positions = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < count; i++) {
         positions.push({
             x: Math.floor(seededRandom() * 7),
             y: Math.floor(seededRandom() * 5)
@@ -144,9 +144,12 @@ function generateNewGameData(roomCode, forceNew = false) {
     console.log(`🔵 SERVER: Current roomVirusPositions[${roomCode}]:`, roomVirusPositions[roomCode]);
     console.log(`🔵 SERVER: Current roomPillColors[${roomCode}]:`, roomPillColors[roomCode] ? roomPillColors[roomCode].slice(0, 5) : 'undefined');
     
+    // Determine desired virus count from room settings (default 5)
+    const virusCount = (activeRooms[roomCode] && activeRooms[roomCode].settings && parseInt(activeRooms[roomCode].settings.virusCount, 10)) || 5;
+
     // Generate fresh virus positions for each new game
     if (forceNew || !roomVirusPositions[roomCode]) {
-        roomVirusPositions[roomCode] = generateVirusPositions(roomCode);
+        roomVirusPositions[roomCode] = generateVirusPositions(roomCode, Math.max(virusCount, 10));
         console.log(`🔵 SERVER: Generated FRESH shared virus positions for room ${roomCode}:`, roomVirusPositions[roomCode].length, 'positions');
         console.log(`🔵 SERVER: Fresh virus positions:`, roomVirusPositions[roomCode]);
     } else {
@@ -170,7 +173,7 @@ function generateNewGameData(roomCode, forceNew = false) {
     const virusPositions = roomVirusPositions[roomCode];
     console.log('🔵 SERVER: Final shared game data - virus positions:', virusPositions.length, 'shared pill colors:', randomList.length);
     console.log('🔵 SERVER: Final virus positions being returned:', virusPositions);
-    return { virusPositions, randomList };
+    return { virusPositions, randomList, virusCount };
 }
 
 // Note: Virus positions are now generated fresh for each game, no global variable needed
@@ -202,9 +205,14 @@ io.on('connection', (socket) => {
      * 
      * Handles room creation and joining for multiplayer games.
      */
-    socket.on('createRoom', (roomCode) => {
+    socket.on('createRoom', (payload) => {
+        // Backward compatible: payload can be a string (roomCode) or an object { roomCode, virusCount }
+        const isString = typeof payload === 'string';
+        const roomCode = isString ? payload : payload.roomCode;
+        const virusCount = isString ? 5 : parseInt(payload.virusCount, 10) || 5;
+
         if (!activeRooms[roomCode]) {
-            activeRooms[roomCode] = { players: [socket.id] };
+            activeRooms[roomCode] = { players: [socket.id], settings: { virusCount } };
             socket.join(roomCode);
             
             // Generate unique virus data for this room immediately when created
@@ -230,7 +238,7 @@ io.on('connection', (socket) => {
                 console.log(`🔵 SERVER: Existing virus positions:`, gameData.virusPositions);
                 console.log(`🔵 SERVER: Existing pill colors (first 10):`, gameData.randomList.slice(0, 10));
                 
-                // Notify both players that the game is ready to start
+                // Notify both players that the game is ready to start (includes virusCount)
                 io.to(roomCode).emit('gameReady', { roomCode, gameData });
                 console.log(`🔵 SERVER: Sent gameReady event to room ${roomCode} with existing gameData:`, gameData);
             } else {

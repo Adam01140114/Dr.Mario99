@@ -512,8 +512,8 @@ export class PlayingBoard extends Board {
 	spawnViruses() {
 		console.log(`Player ${this.playerNumber}: spawnViruses() called with virusPositions:`, this.virusPositions);
 		
-		//number of viruses
-        this.virusCount = 5;
+		//number of viruses (use shared setting if available)
+		this.virusCount = (window.sharedGameData && parseInt(window.sharedGameData.virusCount, 10)) || 5;
         this.maxVirusHeight = 5
         if (this.level >= 15) this.maxVirusHeight++
         if (this.level >= 17) this.maxVirusHeight++
