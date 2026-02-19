@@ -1039,61 +1039,44 @@ shouldBeCleared(selfColor = this.getColor()) {
 }
 
 setColor(color = this.color) {
-    // Set the color of the current field.
+    // Resolve the final sprite once and apply once.
     this.color = color;
-    // If the color is NONE, make the field appear empty.
-    if (color == Color.NONE) this.applyBackgroundImage("");
-    else {
-        // Otherwise, set the appropriate image based on the color and shape.
-        this.applyBackgroundImage("url('" + getSpriteUrl("./img/" + color + "_dot.png") + "')");
-        if (this.shapePiece && !(this.shapePiece.shape instanceof Virus)) {
-            const shape = this.shapePiece.shape;
-            // Adjust the image based on the pill's orientation.
-            if (shape.pieces && shape.pieces.length == 2) {
-                switch (shape.rotation) {
-                    case Rotation.HORIZONTAL:
-                        shape.pieces[0].field.setPillElement('left');
-                        shape.pieces[1].field.setPillElement('right');
-                        break;
-                    case Rotation.VERTICAL:
-                        shape.pieces[0].field.setPillElement('down');
-                        shape.pieces[1].field.setPillElement('up');
-                        break;
-                    case Rotation.HORIZONTAL_REVERSED:
-                        shape.pieces[1].field.setPillElement('left');
-                        shape.pieces[0].field.setPillElement('right');
-                        break;
-                    case Rotation.VERTICAL_REVERSED:
-                        shape.pieces[1].field.setPillElement('down');
-                        shape.pieces[0].field.setPillElement('up');
-                        break;
-                }
-            }
-        }
-
-        // If the shape is a Virus, use a specific image.
-        if (this.shapePiece && this.shapePiece.shape instanceof Virus) {			
-
-			/*
-			//turns fallen pills into pills instead of viruses
-			if(this.x == this.randx && this.y == this.randy){
-			this.style.backgroundImage = "url('./img/" + color + "_dot.png')";
-			} else if(this.x == this.randx2 && this.y == this.randy2){
-			this.style.backgroundImage = "url('./img/" + color + "_dot.png')";
-			} else if(this.x == this.randx3 && this.y == this.randy3){
-			this.style.backgroundImage = "url('./img/" + color + "_dot.png')";
-			} else if(this.x == this.randx4 && this.y == this.randy4){
-			this.style.backgroundImage = "url('./img/" + color + "_dot.png')";
-			} else {
-				this.style.backgroundImage = "url('./img/" + color + "_covid.png')";
-			}
-			*/
-
-            this.applyBackgroundImage("url('" + getSpriteUrl("./img/" + color + "_covid.png") + "')");
-
-        }
-
+    if (color == Color.NONE) {
+        this.applyBackgroundImage("");
+        return;
     }
+
+    let finalSprite = getSpriteUrl("./img/" + color + "_dot.png");
+
+    // Virus uses dedicated sprite.
+    if (this.shapePiece && this.shapePiece.shape instanceof Virus) {
+        finalSprite = getSpriteUrl("./img/" + color + "_covid.png");
+    }
+    // Pill piece uses directional sprite based on rotation/half.
+    else if (this.shapePiece && this.shapePiece.shape && this.shapePiece.shape.pieces && this.shapePiece.shape.pieces.length == 2) {
+        const shape = this.shapePiece.shape;
+        const isFirstPiece = shape.pieces[0] === this.shapePiece;
+        let element = null;
+
+        switch (shape.rotation) {
+            case Rotation.HORIZONTAL:
+                element = isFirstPiece ? 'left' : 'right';
+                break;
+            case Rotation.VERTICAL:
+                element = isFirstPiece ? 'down' : 'up';
+                break;
+            case Rotation.HORIZONTAL_REVERSED:
+                element = isFirstPiece ? 'right' : 'left';
+                break;
+            case Rotation.VERTICAL_REVERSED:
+                element = isFirstPiece ? 'up' : 'down';
+                break;
+        }
+
+        if (element) finalSprite = getSpriteUrl("./img/" + color + "_" + element + ".png");
+    }
+
+    this.applyBackgroundImage("url('" + finalSprite + "')");
 }
 
     setPillElement(element) {
