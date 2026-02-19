@@ -341,7 +341,7 @@
         /* Touch Controls */
         .touch-controls {
             position: fixed;
-            bottom: 20px;
+            bottom: 35px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 20;
@@ -454,6 +454,10 @@
 
         /* Mobile responsiveness */
         @media (max-width: 768px) {
+            .touch-controls {
+                flex-direction: column;
+                gap: 10px;
+            }
             .control-btn {
                 width: 50px;
                 height: 50px;
@@ -471,6 +475,14 @@
             
             .control-row {
                 gap: 10px;
+            }
+            .control-row.drop-row {
+                width: 100%;
+                justify-content: center;
+            }
+            #dropFast {
+                width: calc((50px * 4) + (10px * 3));
+                max-width: calc(100vw - 24px);
             }
         }
 
@@ -766,7 +778,7 @@
 
         <!-- Touch Controls -->
         <div class="touch-controls hidden" id="touchControls">
-            <div class="control-row">
+            <div class="control-row top-row">
                 <button class="control-btn move-btn" id="moveLeft" aria-label="Move left">
                     <svg viewBox="0 0 24 24" class="control-icon" aria-hidden="true">
                         <line x1="20" y1="12" x2="4" y2="12"></line>
@@ -779,12 +791,6 @@
                         <polyline points="12 8 7 8 7 3"></polyline>
                     </svg>
                 </button>
-                <button class="control-btn drop-btn" id="dropFast" aria-label="Drop fast">
-                    <svg viewBox="0 0 24 24" class="control-icon" aria-hidden="true">
-                        <line x1="12" y1="4" x2="12" y2="20"></line>
-                        <polyline points="6 14 12 20 18 14"></polyline>
-                    </svg>
-                </button>
                 <button class="control-btn rotate-btn" id="rotateRight" aria-label="Rotate right">
                     <svg viewBox="0 0 24 24" class="control-icon rotate-right-icon" aria-hidden="true">
                         <path d="M17 8a7 7 0 1 0 1 8"></path>
@@ -795,6 +801,14 @@
                     <svg viewBox="0 0 24 24" class="control-icon" aria-hidden="true">
                         <line x1="4" y1="12" x2="20" y2="12"></line>
                         <polyline points="14 6 20 12 14 18"></polyline>
+                    </svg>
+                </button>
+            </div>
+            <div class="control-row drop-row">
+                <button class="control-btn drop-btn" id="dropFast" aria-label="Drop fast">
+                    <svg viewBox="0 0 24 24" class="control-icon" aria-hidden="true">
+                        <line x1="12" y1="4" x2="12" y2="20"></line>
+                        <polyline points="6 14 12 20 18 14"></polyline>
                     </svg>
                 </button>
             </div>

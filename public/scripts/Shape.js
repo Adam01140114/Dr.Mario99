@@ -353,6 +353,9 @@ export class Pill extends Shape {
     }
 
     rotatePieces(direction) {
+        const previousFields = this.pieces.map(piece => piece.field)
+        this.board.isBatchUpdate = true
+
         if (direction == Direction.RIGHT)
             if (this.rotation++ == 3) this.rotation = 0
         if (direction == Direction.LEFT)
@@ -379,6 +382,9 @@ export class Pill extends Shape {
                 this.pieces[1].setField(this.centerField)
             }
         }
+
+        this.board.isBatchUpdate = false
+        this.reconcilePieceRendering(previousFields)
 
     }
 
@@ -409,6 +415,9 @@ export class Pill extends Shape {
     }
 
     movePieces(direction) {
+        const previousFields = this.pieces.map(piece => piece.field)
+        this.board.isBatchUpdate = true
+
         let sortedPieces = [...this.pieces]
         if (direction == Direction.LEFT)
             sortedPieces.sort((a, b) => a.field.x - b.field.x)
@@ -420,6 +429,20 @@ export class Pill extends Shape {
             sortedPieces.sort((a, b) => b.field.y - a.field.y)
         for (let piece of sortedPieces)
             piece.move(direction)
+
+        this.board.isBatchUpdate = false
+        this.reconcilePieceRendering(previousFields)
+    }
+
+    reconcilePieceRendering(previousFields) {
+        // Clear only vacated fields after all piece positions are final.
+        for (let field of previousFields) {
+            if (field && !field.shapePiece) field.setColor(Color.NONE)
+        }
+        // Repaint current piece fields once (avoids interim black-frame flicker).
+        for (let piece of this.pieces) {
+            if (piece && piece.field) piece.field.setColor(piece.color)
+        }
     }
 
     moveUntilStopped(direction) {
@@ -454,21 +477,27 @@ class ShapePiece {
         let x = this.field.x + direction.x
         let y = this.field.y + direction.y
         if (!this.canMoveTo(x, y)) return false
-        this.field.shapePiece = null
-        this.field.setColor(Color.NONE)
+        const previousField = this.field
+        previousField.shapePiece = null
         this.field = this.board.fields[x][y]
         this.field.shapePiece = this
-        this.field.setColor(this.color)
+        if (!this.board.isBatchUpdate) {
+            previousField.setColor(Color.NONE)
+            this.field.setColor(this.color)
+        }
         return true
     }
 
     setField(field) {
         if (this.destroyed) return false
-        this.field.shapePiece = null
-        this.field.setColor(Color.NONE)
+        const previousField = this.field
+        previousField.shapePiece = null
         this.field = field
         this.field.shapePiece = this
-        this.field.setColor(this.color)
+        if (!this.board.isBatchUpdate) {
+            previousField.setColor(Color.NONE)
+            this.field.setColor(this.color)
+        }
     }
 
     place() {
