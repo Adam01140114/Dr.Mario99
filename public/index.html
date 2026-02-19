@@ -325,6 +325,73 @@
             display: none !important;
         }
 
+        /* Rules overlay */
+        .rules-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+        .rules-overlay:not(.hidden) {
+            display: flex !important;
+        }
+        .rules-modal {
+            background: linear-gradient(145deg, #1a1a2e, #16213e);
+            border: 4px solid #00ffff;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.4);
+        }
+        .rules-title {
+            color: #00ffff;
+            font-size: 1.4rem;
+            margin-bottom: 24px;
+            text-align: center;
+            text-shadow: 0 0 10px #00ffff;
+        }
+        .rules-list {
+            color: #fff;
+            font-size: 0.9rem;
+            line-height: 1.8;
+            margin: 0 0 24px 0;
+            padding-left: 1.5em;
+        }
+        .rules-list li {
+            margin-bottom: 16px;
+        }
+        .rules-emoji {
+            font-size: 1.8em;
+            line-height: 1;
+            vertical-align: -0.15em;
+        }
+        .rules-close-btn {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 0.9rem;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            color: white;
+            border: 3px solid #fff;
+            border-radius: 12px;
+            padding: 15px 30px;
+            cursor: pointer;
+            display: block;
+            margin: 0 auto;
+            transition: all 0.2s ease;
+        }
+        .rules-close-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 255, 0.4);
+        }
+
         /* AI Mode button: hidden by default, shown on logo click or Ctrl+Shift / Cmd+Shift */
         .ai-mode-shortcut {
             display: none !important;
@@ -359,14 +426,46 @@
                 align-items: flex-start;
                 flex-wrap: nowrap;
             }
+            /* In AI mode on desktop, boards use normal flow for side-by-side layout */
+            body.ai-mode .game-container {
+                position: relative !important;
+                top: auto !important;
+                left: auto !important;
+                transform: none !important;
+                margin: 0 !important;
+            }
         }
-        /* In AI mode boards use normal flow */
-        body.ai-mode .game-container {
-            position: relative !important;
-            top: auto !important;
-            left: auto !important;
-            transform: none !important;
-            margin: 0 !important;
+        /* Mobile AI mode: fix and center the stacked boards (same graceful zoom/lock as single canvas) */
+        @media (max-width: 768px) {
+            body.ai-mode {
+                overflow: hidden;
+            }
+            body.ai-mode .main-container {
+                overflow: hidden;
+                min-height: 100vh;
+            }
+            body.ai-mode .logo-container {
+                display: none !important;
+            }
+            body.ai-mode .ai-boards-row {
+                position: fixed !important;
+                top: 50% !important;
+                left: 50% !important;
+                margin: 0 !important;
+                z-index: 10;
+                transform: translate(-50%, -50%);
+            }
+            @supports (height: 100dvh) {
+                body.ai-mode .ai-boards-row {
+                    top: 50dvh !important;
+                }
+            }
+            body.ai-mode .game-container {
+                position: relative !important;
+                top: auto !important;
+                left: auto !important;
+                margin: 0 !important;
+            }
         }
 
         /* Touch Controls */
@@ -770,6 +869,16 @@
                 font-size: 1.2rem;
                 min-width: 300px;
             }
+            
+            .rules-modal {
+                padding: 24px;
+            }
+            .rules-title {
+                font-size: 1.1rem;
+            }
+            .rules-list {
+                font-size: 0.8rem;
+            }
         }
     </style>
 </head>
@@ -803,6 +912,22 @@
                 <button id="joinRoom" class="menu-button secondary-button">
                     <span class="emoji">🚪</span>JOIN ROOM
                 </button>
+                <button id="rulesBtn" class="menu-button secondary-button">
+                    <span class="emoji">📜</span>RULES
+                </button>
+            </div>
+        </div>
+
+        <!-- Rules overlay (hidden by default) -->
+        <div id="rulesOverlay" class="rules-overlay hidden">
+            <div class="rules-modal">
+                <h2 class="rules-title">How to Play</h2>
+                <ol class="rules-list">
+                    <li><span class="rules-emoji">🎮</span> Press <strong>Free Play</strong> to be matched with a random player from across the world to 1v1 </li>
+                    <li><span class="rules-emoji">🦠</span> Every time your opponent kills a germ, it sends a germ your way!</li>
+                    <li><span class="rules-emoji">🏆</span> The person who gets rid of all their germs first wins!</li>
+                </ol>
+                <button id="rulesClose" class="rules-close-btn">Got it! <span class="rules-emoji">✨</span></button>
             </div>
         </div>
 
@@ -927,8 +1052,8 @@
         }
 
         // Scale gameplay UI down when viewport is narrower than the fixed 960px game canvas.
-        // This works on both phones and skinny desktop browser windows.
         const GAME_CANVAS_WIDTH = 960;
+        const GAME_CANVAS_HEIGHT = 720; // approximate height of one game container (board + throwing + header)
         function isGameVisible() {
             const game1Visible = !document.getElementById('game1').classList.contains('hidden');
             const game2Visible = !document.getElementById('game2').classList.contains('hidden');
@@ -954,27 +1079,58 @@
             if (!activeGame) return;
 
             const viewportPadding = 16;
+            const touchControlsHeight = 100;
             const singleBoardWidth = GAME_CANVAS_WIDTH + 14; // 960 canvas + 2*7 border
             const availableWidth = Math.max(300, window.innerWidth - viewportPadding);
+            const availableHeight = Math.max(200, window.innerHeight - touchControlsHeight - viewportPadding);
             // AI mode desktop: two boards side-by-side; mobile: stacked
             const isDesktop = window.innerWidth >= 769;
             const targetWidth = document.body.classList.contains('ai-mode') && isDesktop
                 ? 2 * singleBoardWidth + 20  // two boards + gap
                 : singleBoardWidth;
-            const scale = Math.min(1, availableWidth / targetWidth);
+            const targetHeight = document.body.classList.contains('ai-mode') && !isDesktop
+                ? 2 * GAME_CANVAS_HEIGHT + 40  // two stacked boards + gap
+                : GAME_CANVAS_HEIGHT;
+            const widthScale = availableWidth / targetWidth;
+            const heightScale = availableHeight / targetHeight;
+            const scale = Math.min(1, widthScale, document.body.classList.contains('ai-mode') && !isDesktop ? heightScale : 1);
 
-            // AI mode: apply scaling to each visible board (side-by-side on desktop, stacked on mobile)
+            // AI mode: apply scaling (side-by-side on desktop, stacked + fixed/centered on mobile)
             if (document.body.classList.contains('ai-mode')) {
                 const visible = getVisibleGameContainers();
-                for (const container of visible) {
-                    if (scale < 1) {
-                        container.style.transform = `scale(${scale})`;
-                        container.style.transformOrigin = 'top center';
-                        container.style.width = `${100 / scale}%`;
-                    } else {
+                const row = document.querySelector('.ai-boards-row');
+                if (isDesktop) {
+                    // Desktop: scale each board individually
+                    for (const container of visible) {
+                        if (scale < 1) {
+                            container.style.transform = `scale(${scale})`;
+                            container.style.transformOrigin = 'top center';
+                            container.style.width = `${100 / scale}%`;
+                        } else {
+                            container.style.transform = '';
+                            container.style.transformOrigin = '';
+                            container.style.width = '';
+                        }
+                    }
+                    if (row) {
+                        row.style.transform = '';
+                        row.style.transformOrigin = '';
+                    }
+                } else {
+                    // Mobile: fix/center the whole stack and scale (zoom out + lock in place)
+                    for (const container of visible) {
                         container.style.transform = '';
                         container.style.transformOrigin = '';
                         container.style.width = '';
+                    }
+                    if (row) {
+                        if (scale < 1) {
+                            row.style.transform = `translate(-50%, -50%) scale(${scale})`;
+                            row.style.transformOrigin = 'center center';
+                        } else {
+                            row.style.transform = 'translate(-50%, -50%)';
+                            row.style.transformOrigin = 'center center';
+                        }
                     }
                 }
                 return;
@@ -996,6 +1152,7 @@
         function restoreViewport() {
             const game1 = document.getElementById('game1');
             const game2 = document.getElementById('game2');
+            const row = document.querySelector('.ai-boards-row');
 
             if (game1) {
                 game1.style.transform = '';
@@ -1006,6 +1163,10 @@
                 game2.style.transform = '';
                 game2.style.transformOrigin = '';
                 game2.style.width = '';
+            }
+            if (row) {
+                row.style.transform = '';
+                row.style.transformOrigin = '';
             }
         }
 
@@ -1270,6 +1431,17 @@
                 showRoomCode('❌ Invalid room code! Must be 4 letters.', true);
             }
         };
+
+        // Rules button
+        document.getElementById('rulesBtn').onclick = function() {
+            document.getElementById('rulesOverlay').classList.remove('hidden');
+        };
+        document.getElementById('rulesClose').onclick = function() {
+            document.getElementById('rulesOverlay').classList.add('hidden');
+        };
+        document.getElementById('rulesOverlay').addEventListener('click', function(e) {
+            if (e.target === this) this.classList.add('hidden');
+        });
 
         function generateRoomCode() {
             let result = '';
