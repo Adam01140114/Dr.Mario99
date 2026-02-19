@@ -29,6 +29,7 @@
 "use strict"
 import { Pill, Virus, randomColor } from "./Shape.js"
 import { Color, Direction, Rotation, DELAY } from "./components.js"
+import { getSpriteUrl, preloadGameplaySprites } from "./spriteCache.js"
 
 // Global game state variables
 var pillnum = 1;        // Current pill number
@@ -66,6 +67,7 @@ var pillx2 = 4;  // Right pill X position
 
 // Socket.IO connection for multiplayer communication
 const socket = io(window.location.origin);
+preloadGameplaySprites()
 
 /**
  * Utility function to convert digits to image elements
@@ -76,7 +78,7 @@ const socket = io(window.location.origin);
 function digitToImg(digit) {
     digit = parseInt(digit)
     const img = document.createElement("img")
-    img.src = "./img/cyfry/" + digit + ".png"
+    img.src = getSpriteUrl("./img/cyfry/" + digit + ".png")
     return img
 }
 
@@ -961,11 +963,11 @@ class Field extends HTMLElement {
     // Accumulate points for each piece cleared
     if (x) {
         this.board.localpoints += 1;
-        this.style.backgroundImage = "url('./img/" + color + "_x.png')";
+        this.applyBackgroundImage("url('" + getSpriteUrl("./img/" + color + "_x.png") + "')");
     }
     if (o) {
         this.board.localpoints += 1;
-        this.style.backgroundImage = "url('./img/" + color + "_o.png')";
+        this.applyBackgroundImage("url('" + getSpriteUrl("./img/" + color + "_o.png") + "')");
     }
 
     // DAMAGE THRESHOLD: Send damage when 4+ points are reached
@@ -1043,7 +1045,7 @@ setColor(color = this.color) {
     if (color == Color.NONE) this.applyBackgroundImage("");
     else {
         // Otherwise, set the appropriate image based on the color and shape.
-        this.applyBackgroundImage("url('./img/" + color + "_dot.png')");
+        this.applyBackgroundImage("url('" + getSpriteUrl("./img/" + color + "_dot.png") + "')");
         if (this.shapePiece && !(this.shapePiece.shape instanceof Virus)) {
             const shape = this.shapePiece.shape;
             // Adjust the image based on the pill's orientation.
@@ -1087,7 +1089,7 @@ setColor(color = this.color) {
 			}
 			*/
 
-            this.applyBackgroundImage("url('./img/" + color + "_covid.png')");
+            this.applyBackgroundImage("url('" + getSpriteUrl("./img/" + color + "_covid.png") + "')");
 
         }
 
@@ -1096,7 +1098,7 @@ setColor(color = this.color) {
 
     setPillElement(element) {
 
-		this.applyBackgroundImage("url('./img/" + this.color + "_" + element + ".png')")
+		this.applyBackgroundImage("url('" + getSpriteUrl("./img/" + this.color + "_" + element + ".png") + "')")
 
     }
 

@@ -23,6 +23,9 @@
 "use strict"
 import { PlayingBoard } from "./Board.js"
 import { Color, DELAY } from "./components.js"
+import { getSpriteUrl, preloadGameplaySprites } from "./spriteCache.js"
+
+preloadGameplaySprites()
 
 /**
  * Main Game Controller Class
@@ -838,7 +841,7 @@ class DancingVirus extends HTMLElement {
      */
     getImage() {
         if (this.mode == DancingMode.DEAD) return ''
-        return "./img/lupa/" + this.color + "/" + this.animations[this.mode][this.currentAnimation] + ".png"
+        return getSpriteUrl("./img/lupa/" + this.color + "/" + this.animations[this.mode][this.currentAnimation] + ".png")
     }
 
     /**
