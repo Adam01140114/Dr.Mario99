@@ -46,6 +46,57 @@ app.use(cors({
 const activeRooms = {};  // Track active game rooms
 const lobby = [];        // Players waiting for matches
 const nextRoundReady = {}; // Track next-round readiness per room
+const aiMatches = {}; // Track active AI opponents per room
+
+function stopAiMatch(roomCode) {
+    const ai = aiMatches[roomCode];
+    if (!ai) return;
+    if (ai.damageInterval) clearInterval(ai.damageInterval);
+    delete aiMatches[roomCode];
+}
+
+function startAiMatch(roomCode, playerSocketId) {
+    stopAiMatch(roomCode);
+    const aiState = {
+        roomCode,
+        playerSocketId,
+        startedAt: Date.now(),
+    };
+
+    // Bot plays "well": steady pressure + occasional combos + rising win pressure over time
+    aiState.damageInterval = setInterval(() => {
+        const room = activeRooms[roomCode];
+        if (!room || !room.players.includes(playerSocketId)) {
+            stopAiMatch(roomCode);
+            return;
+        }
+
+        // Main attack cadence
+        if (Math.random() < 0.8) {
+            io.emit('p1damage', { p1damage: 4, roomCode }); // 4 points => 1 damage virus
+        }
+
+        // Occasional extra combo pellet for stronger play feel
+        if (Math.random() < 0.18) {
+            setTimeout(() => {
+                io.emit('p1damage', { p1damage: 4, roomCode });
+            }, 350);
+        }
+
+        // Bot has a growing chance to finish the match if player doesn't win quickly
+        const elapsedSeconds = (Date.now() - aiState.startedAt) / 1000;
+        const winChancePerTick = Math.min(0.01 + elapsedSeconds / 1800, 0.09);
+        if (Math.random() < winChancePerTick) {
+            io.to(roomCode).emit('opponentWin', {
+                roomCode,
+                playerNumber: 2
+            });
+            stopAiMatch(roomCode);
+        }
+    }, 3200);
+
+    aiMatches[roomCode] = aiState;
+}
 
 /**
  * GAME DATA GENERATION SYSTEM
@@ -253,6 +304,25 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('startAIMode', (payload = {}) => {
+        const virusCount = parseInt(payload.virusCount, 10) || 5;
+        let roomCode = generateRoomCode();
+        while (activeRooms[roomCode]) {
+            roomCode = generateRoomCode();
+        }
+
+        activeRooms[roomCode] = {
+            players: [socket.id, 'AI_BOT'],
+            settings: { virusCount },
+            ai: true
+        };
+        socket.join(roomCode);
+
+        const gameData = generateNewGameData(roomCode, true);
+        socket.emit('startAIMode', { roomCode, gameData });
+        startAiMatch(roomCode, socket.id);
+    });
+
   
   
   socket.on('single', () => {
@@ -282,6 +352,17 @@ io.on('connection', (socket) => {
     // NEXT ROUND FLOW: both players must click "Next Round" to proceed
     socket.on('nextRoundReady', ({ roomCode }) => {
         if (!roomCode || !activeRooms[roomCode]) return;
+
+        // AI matches don't need second-player readiness.
+        if (activeRooms[roomCode].ai) {
+            if (!activeRooms[roomCode].settings) activeRooms[roomCode].settings = {};
+            const current = parseInt(activeRooms[roomCode].settings.virusCount, 10) || 5;
+            activeRooms[roomCode].settings.virusCount = current + 1;
+            const gameData = generateNewGameData(roomCode, true);
+            io.to(roomCode).emit('startNextRound', { roomCode, gameData });
+            startAiMatch(roomCode, socket.id);
+            return;
+        }
 
         if (!nextRoundReady[roomCode]) nextRoundReady[roomCode] = new Set();
         nextRoundReady[roomCode].add(socket.id);
@@ -332,6 +413,9 @@ io.on('connection', (socket) => {
      * Notifies opponents when a player loses or wins.
      */
     socket.on('playerGameOver', (data) => {
+        if (activeRooms[data.roomCode] && activeRooms[data.roomCode].ai) {
+            stopAiMatch(data.roomCode);
+        }
         io.to(data.roomCode).emit('opponentGameOver', { 
             roomCode: data.roomCode, 
             playerNumber: data.playerNumber 
@@ -339,6 +423,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('playerWin', (data) => {
+        if (activeRooms[data.roomCode] && activeRooms[data.roomCode].ai) {
+            stopAiMatch(data.roomCode);
+        }
         io.to(data.roomCode).emit('opponentWin', { 
             roomCode: data.roomCode, 
             playerNumber: data.playerNumber 
@@ -405,6 +492,12 @@ io.on('connection', (socket) => {
         const lobbyIndex = lobby.indexOf(socket.id);
         if (lobbyIndex !== -1) {
             lobby.splice(lobbyIndex, 1);
+        }
+        for (let roomCode of Object.keys(aiMatches)) {
+            if (aiMatches[roomCode].playerSocketId === socket.id) {
+                stopAiMatch(roomCode);
+                delete activeRooms[roomCode];
+            }
         }
         // Handle room cleanup if needed
     });

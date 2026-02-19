@@ -320,18 +320,9 @@
         }
 
         .game-container {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            position: relative;
+            margin: 20px auto 0;
             z-index: 10;
-        }
-
-        /* iOS Safari / mobile browsers: center against visible dynamic viewport */
-        @supports (height: 100dvh) {
-            .game-container {
-                top: 50dvh;
-            }
         }
 
         .game-container:not(.hidden) {
@@ -454,6 +445,18 @@
 
         /* Mobile responsiveness */
         @media (max-width: 768px) {
+            .game-container {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                margin: 0;
+            }
+            @supports (height: 100dvh) {
+                .game-container {
+                    top: 50dvh;
+                }
+            }
             .touch-controls {
                 flex-direction: column;
                 gap: 10px;
@@ -749,6 +752,9 @@
             <button id="single" class="menu-button primary-button">
                 <span class="emoji">👤</span>SINGLE PLAYER
             </button>
+            <button id="aiMode" class="menu-button primary-button">
+                <span class="emoji">🤖</span>AI MODE
+            </button>
             
             <div class="room-section">
                 <button id="createRoom" class="menu-button secondary-button">
@@ -902,7 +908,14 @@
             const availableWidth = Math.max(300, window.innerWidth - viewportPadding);
             const scale = Math.min(1, availableWidth / targetWidth);
 
-            // Keep existing centering transform and append scale.
+            // Desktop: keep normal flow under logo, centered horizontally.
+            if (scale >= 1) {
+                activeGame.style.transform = '';
+                activeGame.style.transformOrigin = '';
+                return;
+            }
+
+            // Narrow/mobile: keep viewport centering and scale down to fit width.
             activeGame.style.transform = `translate(-50%, -50%) scale(${scale})`;
             activeGame.style.transformOrigin = 'center center';
         }
@@ -955,6 +968,17 @@
             document.getElementById('touchControls').classList.remove('hidden');
             
             applyMobileGameZoom();
+        };
+
+        // AI Mode (play against server bot)
+        document.getElementById('aiMode').onclick = function() {
+            const defaultVirusCount = 5;
+            const input = prompt('Set starting virus amount for AI match:', String(defaultVirusCount));
+            let virusCount = parseInt(input, 10);
+            if (isNaN(virusCount) || virusCount <= 0) virusCount = defaultVirusCount;
+
+            showRoomCode('🤖 Spinning up AI opponent...');
+            socket.emit('startAIMode', { virusCount });
         };
 
         // Free Play (Multiplayer Lobby)
@@ -1014,6 +1038,35 @@
                 document.getElementById('touchControls').classList.remove('hidden');
                 applyMobileGameZoom();
             }
+        });
+
+        socket.on('startAIMode', (data) => {
+            roomCode = data.roomCode;
+            who = 1;
+            window.sharedGameData = data.gameData;
+            hideRoomCode();
+            document.getElementById('playbuttons').classList.add('hidden');
+
+            // Hide all homepage elements except logo and particles
+            const titleElement = document.querySelector('.title');
+            if (titleElement) titleElement.style.display = 'none';
+
+            const menuContainer = document.querySelector('.menu-container');
+            if (menuContainer) menuContainer.style.display = 'none';
+
+            const scanlines = document.querySelector('.scanlines');
+            if (scanlines) scanlines.style.display = 'none';
+
+            if (!window.scriptLoaded) {
+                const script = document.createElement('script');
+                script.src = './scripts/script.js';
+                script.type = 'module';
+                document.head.appendChild(script);
+            }
+
+            document.getElementById('game1').classList.remove('hidden');
+            document.getElementById('touchControls').classList.remove('hidden');
+            applyMobileGameZoom();
         });
 
         // Create Room

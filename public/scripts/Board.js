@@ -200,6 +200,7 @@ export class PlayingBoard extends Board {
         this.hurting2 = 0;                 // Hurt animation state 2
         this.hurting3 = 0;                 // Hurt animation state 3
         this.hurting4 = 0;                 // Hurt animation state 4
+        this.pendingSpawnAfterDamage = false; // Delay next pill while damage viruses are still dropping
 
         // VIRUS SPAWNING VARIABLES
         this.randy = 15;                   // Random Y position for virus spawning
@@ -637,6 +638,10 @@ export class PlayingBoard extends Board {
 
 }
 
+    hasActiveDamageDrop() {
+        return this.hurting1 === 1 || this.hurting2 === 1 || this.hurting3 === 1 || this.hurting4 === 1
+    }
+
     nextFrame() {
 
 		//where the magic happens
@@ -731,6 +736,13 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
     }
 }
 
+        // If spawn was deferred while damage viruses were falling, throw next pill only after they settle.
+        if (this.pendingSpawnAfterDamage && !this.hasActiveDamageDrop()) {
+            this.pendingSpawnAfterDamage = false;
+            this.spawnPill();
+            return;
+        }
+
         if (this.currentPill) {
 
 			//
@@ -783,6 +795,13 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
         if (this.stageCompleted() || this.gameOver()) return
         this.lastStateThrowing = true
         this.currentPill = null
+
+        // Don't spawn the next pill while incoming damage viruses are still dropping.
+        if (this.hasActiveDamageDrop()) {
+            this.pendingSpawnAfterDamage = true
+            return
+        }
+
         if (!this.throwingBoardInterval) {
             this.throwingBoardInterval = setInterval(() => {
                 this.throwingBoard.nextFrame()
