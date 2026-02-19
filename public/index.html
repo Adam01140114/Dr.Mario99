@@ -306,6 +306,17 @@
             margin: 20px 0;
         }
 
+        /* Keep pixel-art sprites crisp/stable while scaled on mobile */
+        game-board-field,
+        game-board,
+        throwing-board,
+        dancing-virus {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+        }
+
         .loading {
             display: inline-block;
             width: 20px;
@@ -1058,6 +1069,12 @@
         // Scale gameplay UI down when viewport is narrower than the fixed 960px game canvas.
         const GAME_CANVAS_WIDTH = 960;
         const GAME_CANVAS_HEIGHT = 720; // approximate height of one game container (board + throwing + header)
+        function snapPixelScale(rawScale) {
+            if (rawScale >= 1) return 1;
+            // 24px cell grid: snap scale to 1/24 steps to reduce sub-pixel shimmer/flicker.
+            const step = 1 / 24;
+            return Math.max(step, Math.floor(rawScale / step) * step);
+        }
         function isGameVisible() {
             const game1Visible = !document.getElementById('game1').classList.contains('hidden');
             const game2Visible = !document.getElementById('game2').classList.contains('hidden');
@@ -1097,7 +1114,8 @@
                 : GAME_CANVAS_HEIGHT;
             const widthScale = availableWidth / targetWidth;
             const heightScale = availableHeight / targetHeight;
-            const scale = Math.min(1, widthScale, document.body.classList.contains('ai-mode') && !isDesktop ? heightScale : 1);
+            const baseScale = Math.min(1, widthScale, document.body.classList.contains('ai-mode') && !isDesktop ? heightScale : 1);
+            const scale = isDesktop ? baseScale : snapPixelScale(baseScale);
 
             // AI mode: apply scaling (side-by-side on desktop, stacked + fixed/centered on mobile)
             if (document.body.classList.contains('ai-mode')) {
@@ -1129,10 +1147,10 @@
                     }
                     if (row) {
                         if (scale < 1) {
-                            row.style.transform = `translate(-50%, -50%) scale(${scale})`;
+                            row.style.transform = `translate3d(-50%, -50%, 0) scale(${scale})`;
                             row.style.transformOrigin = 'center center';
                         } else {
-                            row.style.transform = 'translate(-50%, -50%)';
+                            row.style.transform = 'translate3d(-50%, -50%, 0)';
                             row.style.transformOrigin = 'center center';
                         }
                     }
@@ -1149,7 +1167,7 @@
             }
 
             // Narrow/mobile: keep viewport centering and scale down to fit width.
-            activeGame.style.transform = `translate(-50%, -50%) scale(${scale})`;
+            activeGame.style.transform = `translate3d(-50%, -50%, 0) scale(${scale})`;
             activeGame.style.transformOrigin = 'center center';
             activeGame.style.width = '';
         }
