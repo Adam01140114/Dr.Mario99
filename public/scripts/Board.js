@@ -911,8 +911,15 @@ class Field extends HTMLElement {
         this.locked = false
         this.beingPassed = false
         this.shapePiece = null
+        this.currentBackgroundImage = ''
         this.setColor(Color.NONE)
         if (this.y == 16 && this.x != 3 && this.x != 4) this.locked = true
+    }
+
+    applyBackgroundImage(imageValue) {
+        if (this.currentBackgroundImage === imageValue) return
+        this.style.backgroundImage = imageValue
+        this.currentBackgroundImage = imageValue
     }
 
     isTaken() {
@@ -1033,10 +1040,10 @@ setColor(color = this.color) {
     // Set the color of the current field.
     this.color = color;
     // If the color is NONE, make the field appear empty.
-    if (color == Color.NONE) this.style.backgroundImage = "";
+    if (color == Color.NONE) this.applyBackgroundImage("");
     else {
         // Otherwise, set the appropriate image based on the color and shape.
-        this.style.backgroundImage = "url('./img/" + color + "_dot.png')";
+        this.applyBackgroundImage("url('./img/" + color + "_dot.png')");
         if (this.shapePiece && !(this.shapePiece.shape instanceof Virus)) {
             const shape = this.shapePiece.shape;
             // Adjust the image based on the pill's orientation.
@@ -1080,7 +1087,7 @@ setColor(color = this.color) {
 			}
 			*/
 
-            this.style.backgroundImage = "url('./img/" + color + "_covid.png')";
+            this.applyBackgroundImage("url('./img/" + color + "_covid.png')");
 
         }
 
@@ -1089,7 +1096,7 @@ setColor(color = this.color) {
 
     setPillElement(element) {
 
-		this.style.backgroundImage = "url('./img/" + this.color + "_" + element + ".png')"
+		this.applyBackgroundImage("url('./img/" + this.color + "_" + element + ".png')")
 
     }
 

@@ -628,6 +628,9 @@ class DancingViruses {
      */
     constructor(game) {
         this.game = game
+        this.moveInterval = null
+        this.animateInterval = null
+        this.animateStartTimeout = null
         // Create three dancing viruses, one for each color
         this.list = [
             new DancingVirus(this.game, Color.THIRD, 0),   // Yellow virus
@@ -644,14 +647,14 @@ class DancingViruses {
      */
     startAnimation() {
         // Move viruses every second (unless one is laying down)
-        setInterval(() => {
+        this.moveInterval = setInterval(() => {
             if (this.anyVirusLaying()) return
             this.nextMove()
         }, 1000);
         
         // Animate viruses every 250ms (with slight delay)
-        setTimeout(() => {
-            setInterval(() => {
+        this.animateStartTimeout = setTimeout(() => {
+            this.animateInterval = setInterval(() => {
                 this.nextAnimation()
             }, 250);
         }, 125)
@@ -713,6 +716,18 @@ class DancingViruses {
      * Removes all dancing viruses from the game
      */
     destroy() {
+        if (this.moveInterval) {
+            clearInterval(this.moveInterval)
+            this.moveInterval = null
+        }
+        if (this.animateInterval) {
+            clearInterval(this.animateInterval)
+            this.animateInterval = null
+        }
+        if (this.animateStartTimeout) {
+            clearTimeout(this.animateStartTimeout)
+            this.animateStartTimeout = null
+        }
         for (let virus of this.list)
             virus.remove()
     }
@@ -776,6 +791,9 @@ class DancingVirus extends HTMLElement {
             { x: 6, y: 2 },
             { x: 6, y: 1 },  // End position (loops back to start)
         ]
+        this.lastLeft = null
+        this.lastTop = null
+        this.lastBackgroundImage = null
     }
 
     /**
@@ -789,9 +807,21 @@ class DancingVirus extends HTMLElement {
      * Updates the virus position and appearance
      */
     display() {
-        this.style.left = 2 * 24 + this.getPosition().x * 24 + 'px'
-        this.style.top = 14 * 24 + this.getPosition().y * 24 + 'px'
-        this.style.backgroundImage = "url('" + this.getImage() + "')"
+        const left = 2 * 24 + this.getPosition().x * 24 + 'px'
+        const top = 14 * 24 + this.getPosition().y * 24 + 'px'
+        const backgroundImage = "url('" + this.getImage() + "')"
+        if (left !== this.lastLeft) {
+            this.style.left = left
+            this.lastLeft = left
+        }
+        if (top !== this.lastTop) {
+            this.style.top = top
+            this.lastTop = top
+        }
+        if (backgroundImage !== this.lastBackgroundImage) {
+            this.style.backgroundImage = backgroundImage
+            this.lastBackgroundImage = backgroundImage
+        }
     }
 
     /**
@@ -818,8 +848,16 @@ class DancingVirus extends HTMLElement {
     nextMove() {
         if (this.mode != DancingMode.NORMAL) return
         if (++this.currentStep == this.steps.length) this.currentStep = 0
-        this.style.left = 2 * 24 + this.getPosition().x * 24 + 'px'
-        this.style.top = 14 * 24 + this.getPosition().y * 24 + 'px'
+        const left = 2 * 24 + this.getPosition().x * 24 + 'px'
+        const top = 14 * 24 + this.getPosition().y * 24 + 'px'
+        if (left !== this.lastLeft) {
+            this.style.left = left
+            this.lastLeft = left
+        }
+        if (top !== this.lastTop) {
+            this.style.top = top
+            this.lastTop = top
+        }
     }
 
     /**
@@ -848,7 +886,11 @@ class DancingVirus extends HTMLElement {
         
         // Advance to next animation frame
         if (++this.currentAnimation == this.animations[this.mode].length) this.currentAnimation = 0
-        this.style.backgroundImage = "url('" + this.getImage() + "')"
+        const backgroundImage = "url('" + this.getImage() + "')"
+        if (backgroundImage !== this.lastBackgroundImage) {
+            this.style.backgroundImage = backgroundImage
+            this.lastBackgroundImage = backgroundImage
+        }
     }
 
     /**
