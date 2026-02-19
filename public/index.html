@@ -10,6 +10,7 @@
     <link rel="modulepreload" href="./scripts/Board.js">
     <link rel="modulepreload" href="./scripts/Shape.js">
     <link rel="modulepreload" href="./scripts/components.js">
+    <link rel="modulepreload" href="./scripts/spriteCache.js">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
     <style>
         * {
@@ -993,6 +994,10 @@
     </div>
 
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script type="module">
+        import { preloadGameplaySprites } from './scripts/spriteCache.js';
+        preloadGameplaySprites();
+    </script>
     <script>
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
         const socket = io(window.location.origin);

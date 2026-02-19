@@ -62,12 +62,26 @@ export function preloadGameplaySprites() {
         paths.push(`./img/cyfry/${digit}.png`)
     }
 
-    // Dancing virus animation frames used by Game.js
+    // Dancing virus animation frames
     for (const color of colors) {
         for (let frame = 1; frame <= 6; frame++) {
             paths.push(`./img/lupa/${color}/${frame}.png`)
         }
     }
+
+    // Backgrounds, game over, stage complete
+    for (let i = 0; i < 5; i++) {
+        paths.push(`./img/bg${i}.png`, `./img/go${i}.png`, `./img/sc${i}.png`)
+    }
+    paths.push(`./img/go_dr.png`, `./img/logo.png`)
+
+    // Throwing board hands
+    paths.push(
+        `./img/hands/up_1.png`, `./img/hands/up_2.png`, `./img/hands/up_3.png`,
+        `./img/hands/middle11.png`, `./img/hands/middle12.png`,
+        `./img/hands/middle21.png`, `./img/hands/middle22.png`,
+        `./img/hands/down_1.png`, `./img/hands/down_2.png`
+    )
 
     gameplayPreloadPromise = preloadSprites(paths).catch(() => [])
     return gameplayPreloadPromise
