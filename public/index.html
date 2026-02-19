@@ -320,11 +320,18 @@
         }
 
         .game-container {
-            position: absolute;
+            position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             z-index: 10;
+        }
+
+        /* iOS Safari / mobile browsers: center against visible dynamic viewport */
+        @supports (height: 100dvh) {
+            .game-container {
+                top: 50dvh;
+            }
         }
 
         .game-container:not(.hidden) {
@@ -408,16 +415,29 @@
             box-shadow: 0 6px 20px rgba(255, 0, 255, 0.5);
         }
 
+        .control-icon {
+            width: 24px;
+            height: 24px;
+            display: block;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
         #rotateLeft .rotate-left-icon {
             display: inline-block;
-            font-size: 30px;
+            width: 30px;
+            height: 30px;
             line-height: 1;
             transform: rotate(-70deg);
         }
 
         #rotateRight .rotate-right-icon {
             display: inline-block;
-            font-size: 30px;
+            width: 30px;
+            height: 30px;
             line-height: 1;
             transform: rotate(-70deg);
         }
@@ -438,6 +458,15 @@
                 width: 50px;
                 height: 50px;
                 font-size: 20px;
+            }
+            .control-icon {
+                width: 20px;
+                height: 20px;
+            }
+            #rotateLeft .rotate-left-icon,
+            #rotateRight .rotate-right-icon {
+                width: 26px;
+                height: 26px;
             }
             
             .control-row {
@@ -738,11 +767,36 @@
         <!-- Touch Controls -->
         <div class="touch-controls hidden" id="touchControls">
             <div class="control-row">
-                <button class="control-btn move-btn" id="moveLeft">←</button>
-                <button class="control-btn rotate-btn" id="rotateLeft"><span class="rotate-left-icon">↺</span></button>
-                <button class="control-btn drop-btn" id="dropFast">↓</button>
-                <button class="control-btn rotate-btn" id="rotateRight"><span class="rotate-right-icon">↻</span></button>
-                <button class="control-btn move-btn" id="moveRight">→</button>
+                <button class="control-btn move-btn" id="moveLeft" aria-label="Move left">
+                    <svg viewBox="0 0 24 24" class="control-icon" aria-hidden="true">
+                        <line x1="20" y1="12" x2="4" y2="12"></line>
+                        <polyline points="10 6 4 12 10 18"></polyline>
+                    </svg>
+                </button>
+                <button class="control-btn rotate-btn" id="rotateLeft" aria-label="Rotate left">
+                    <svg viewBox="0 0 24 24" class="control-icon rotate-left-icon" aria-hidden="true">
+                        <path d="M7 8a7 7 0 1 1-1 8"></path>
+                        <polyline points="12 8 7 8 7 3"></polyline>
+                    </svg>
+                </button>
+                <button class="control-btn drop-btn" id="dropFast" aria-label="Drop fast">
+                    <svg viewBox="0 0 24 24" class="control-icon" aria-hidden="true">
+                        <line x1="12" y1="4" x2="12" y2="20"></line>
+                        <polyline points="6 14 12 20 18 14"></polyline>
+                    </svg>
+                </button>
+                <button class="control-btn rotate-btn" id="rotateRight" aria-label="Rotate right">
+                    <svg viewBox="0 0 24 24" class="control-icon rotate-right-icon" aria-hidden="true">
+                        <path d="M17 8a7 7 0 1 0 1 8"></path>
+                        <polyline points="12 8 17 8 17 3"></polyline>
+                    </svg>
+                </button>
+                <button class="control-btn move-btn" id="moveRight" aria-label="Move right">
+                    <svg viewBox="0 0 24 24" class="control-icon" aria-hidden="true">
+                        <line x1="4" y1="12" x2="20" y2="12"></line>
+                        <polyline points="14 6 20 12 14 18"></polyline>
+                    </svg>
+                </button>
             </div>
         </div>
 
