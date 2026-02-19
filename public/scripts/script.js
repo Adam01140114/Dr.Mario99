@@ -30,7 +30,6 @@ import Game from "./Game.js";
  * and synchronization issues in multiplayer games.
  */
 if (window.scriptLoaded) {
-
 } else {
     window.scriptLoaded = true;
 
@@ -42,32 +41,26 @@ if (window.scriptLoaded) {
      * the visible game container. This allows the same script to handle
      * both Player 1 and Player 2 dynamically.
      */
-    let playerNumber = 1; // Default to Player 1
-    let gameContainer = document.getElementById("game1");
+    const visiblePlayers = [];
+    const game1 = document.getElementById("game1");
+    const game2 = document.getElementById("game2");
+    if (game1 && !game1.classList.contains("hidden")) visiblePlayers.push(1);
+    if (game2 && !game2.classList.contains("hidden")) visiblePlayers.push(2);
+    if (visiblePlayers.length === 0) visiblePlayers.push(1);
 
-    // Check if Player 2 container is visible (not hidden)
-    if (document.getElementById("game2") && !document.getElementById("game2").classList.contains("hidden")) {
-        playerNumber = 2;
-        gameContainer = document.getElementById("game2");
-    }
+    if (!window.gameInstances) window.gameInstances = {};
 
-    /**
-     * GAME INSTANCE CREATION SYSTEM
-     * ==============================
-     * 
-     * Creates only one game instance per player to prevent conflicts
-     * and ensure proper multiplayer synchronization.
-     */
-    if (window[`gameInstance${playerNumber}Created`]) {
-        // Game instance already created, skipping...
-    } else {
+    for (const playerNumber of visiblePlayers) {
+        if (window[`gameInstance${playerNumber}Created`]) continue;
         window[`gameInstance${playerNumber}Created`] = true;
 
-        // Create only the game instance for the current player
-        const game = new Game(playerNumber);
-        gameContainer.append(game);
+        const gameContainer = document.getElementById(`game${playerNumber}`);
+        if (!gameContainer) continue;
 
-        // Store game instance globally for later access
-        window.currentGame = game;
+        const optionsForPlayer = (window.gameInstanceOptions && window.gameInstanceOptions[playerNumber]) || {};
+        const game = new Game(playerNumber, optionsForPlayer);
+        gameContainer.append(game);
+        window.gameInstances[playerNumber] = game;
+        if (playerNumber === 1) window.currentGame = game;
     }
 }

@@ -329,6 +329,15 @@
             display: block;
         }
 
+        /* In AI mode we stack both boards in normal flow (player board then AI board). */
+        body.ai-mode .game-container {
+            position: relative !important;
+            top: auto !important;
+            left: auto !important;
+            transform: none !important;
+            margin: 20px auto 0 !important;
+        }
+
         /* Touch Controls */
         .touch-controls {
             position: fixed;
@@ -899,6 +908,14 @@
             if (game2 && !game2.classList.contains('hidden')) return game2;
             return null;
         }
+        function getVisibleGameContainers() {
+            const containers = [];
+            const game1 = document.getElementById('game1');
+            const game2 = document.getElementById('game2');
+            if (game1 && !game1.classList.contains('hidden')) containers.push(game1);
+            if (game2 && !game2.classList.contains('hidden')) containers.push(game2);
+            return containers;
+        }
         function applyMobileGameZoom() {
             const activeGame = getActiveGameContainer();
             if (!activeGame) return;
@@ -908,16 +925,35 @@
             const availableWidth = Math.max(300, window.innerWidth - viewportPadding);
             const scale = Math.min(1, availableWidth / targetWidth);
 
+            // AI mode uses stacked canvases; apply mobile fit scaling to each visible board.
+            if (document.body.classList.contains('ai-mode')) {
+                const visible = getVisibleGameContainers();
+                for (const container of visible) {
+                    if (scale < 1) {
+                        container.style.transform = `scale(${scale})`;
+                        container.style.transformOrigin = 'top center';
+                        container.style.width = `${100 / scale}%`;
+                    } else {
+                        container.style.transform = '';
+                        container.style.transformOrigin = '';
+                        container.style.width = '';
+                    }
+                }
+                return;
+            }
+
             // Desktop: keep normal flow under logo, centered horizontally.
             if (scale >= 1) {
                 activeGame.style.transform = '';
                 activeGame.style.transformOrigin = '';
+                activeGame.style.width = '';
                 return;
             }
 
             // Narrow/mobile: keep viewport centering and scale down to fit width.
             activeGame.style.transform = `translate(-50%, -50%) scale(${scale})`;
             activeGame.style.transformOrigin = 'center center';
+            activeGame.style.width = '';
         }
         function restoreViewport() {
             const game1 = document.getElementById('game1');
@@ -926,10 +962,12 @@
             if (game1) {
                 game1.style.transform = '';
                 game1.style.transformOrigin = '';
+                game1.style.width = '';
             }
             if (game2) {
                 game2.style.transform = '';
                 game2.style.transformOrigin = '';
+                game2.style.width = '';
             }
         }
 
@@ -939,6 +977,8 @@
 
         // Single Player
         document.getElementById('single').onclick = function() {
+            document.body.classList.remove('ai-mode');
+            window.gameInstanceOptions = {};
             socket.emit('single');
             hideRoomCode();
             document.getElementById('playbuttons').classList.add('hidden');
@@ -954,7 +994,8 @@
             if (scanlines) scanlines.style.display = 'none';
             // Keep particles visible for starry background during gameplay
             
-            if (!window.scriptLoaded) {
+            if (!window.scriptLoaded || !window.gameInstance2Created) {
+                if (window.scriptLoaded) window.scriptLoaded = false;
                 const script = document.createElement('script');
                 script.src = './scripts/script.js';
                 script.type = 'module';
@@ -983,6 +1024,8 @@
 
         // Free Play (Multiplayer Lobby)
         document.getElementById('freePlay').onclick = function() {
+            document.body.classList.remove('ai-mode');
+            window.gameInstanceOptions = {};
             socket.emit('joinLobby');
             showRoomCode('🔍 Searching for opponents...');
             this.innerHTML = '🔍 SEARCHING... <div class="loading"></div>';
@@ -1044,6 +1087,10 @@
             roomCode = data.roomCode;
             who = 1;
             window.sharedGameData = data.gameData;
+            document.body.classList.add('ai-mode');
+            window.gameInstanceOptions = {
+                2: { isAIOpponentView: true }
+            };
             hideRoomCode();
             document.getElementById('playbuttons').classList.add('hidden');
 
@@ -1065,12 +1112,15 @@
             }
 
             document.getElementById('game1').classList.remove('hidden');
+            document.getElementById('game2').classList.remove('hidden');
             document.getElementById('touchControls').classList.remove('hidden');
             applyMobileGameZoom();
         });
 
         // Create Room
         document.getElementById('createRoom').onclick = function() {
+            document.body.classList.remove('ai-mode');
+            window.gameInstanceOptions = {};
             roomCode = generateRoomCode();
 
             // Ask for virus amount/level with default autofilled (5)
@@ -1170,6 +1220,8 @@
 
         // Join Room
         document.getElementById('joinRoom').onclick = function() {
+            document.body.classList.remove('ai-mode');
+            window.gameInstanceOptions = {};
             const inputCode = prompt('Enter the 4-letter room code:');
             if (inputCode && inputCode.length === 4) {
                 roomCode = inputCode.toUpperCase();
@@ -1207,6 +1259,8 @@
         }
 
         function returnToHomepage() {
+            document.body.classList.remove('ai-mode');
+            window.gameInstanceOptions = {};
             restoreViewport();
             
             // Show all homepage elements again

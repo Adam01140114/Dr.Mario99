@@ -33,9 +33,10 @@ export default class Game extends HTMLElement {
      * Constructor - Creates a new game instance for a specific player
      * @param {number} playerNumber - The player number (1 or 2) for multiplayer games
      */
-    constructor(playerNumber = 1) {
+    constructor(playerNumber = 1, options = {}) {
         super()
         this.playerNumber = playerNumber
+        this.isAIOpponentView = !!options.isAIOpponentView
         this.hasLost = false  // true after endGame(); prevents showing victory if opponent loses after you
         console.log('Player Number:', this.playerNumber)
     }
@@ -52,6 +53,8 @@ export default class Game extends HTMLElement {
         
         // Add socket listeners for multiplayer events
         this.setupSocketListeners()
+
+        if (this.isAIOpponentView) this.startAIAutoplay()
     }
 
     /**
@@ -59,6 +62,7 @@ export default class Game extends HTMLElement {
      * Handles opponent game events (victory/defeat) and validates room/player data
      */
     setupSocketListeners() {
+        if (this.isAIOpponentView) return
         // Listen for opponent game over (opponent lost, you won)
         socket.on('opponentGameOver', (data) => {
             console.log(`Player ${this.playerNumber}: Received opponentGameOver event`);
@@ -200,6 +204,17 @@ export default class Game extends HTMLElement {
     nextStage() {
         this.board.blockInput = true
         clearInterval(this.interval)
+
+        if (this.isAIOpponentView) {
+            setTimeout(() => {
+                const keepLevel = this.board ? this.board.level : 0
+                if (this.board) this.board.destroy()
+                this.createBoard(keepLevel, 0)
+                this.createDancingViruses()
+                this.startInterval()
+            }, DELAY.nextStage)
+            return
+        }
         
         // Check if this is multiplayer mode
         if (typeof roomCode !== 'undefined' && roomCode) {
@@ -244,6 +259,17 @@ export default class Game extends HTMLElement {
         this.hasLost = true
         this.board.blockInput = true
         clearInterval(this.interval)
+
+        if (this.isAIOpponentView) {
+            setTimeout(() => {
+                const keepLevel = this.board ? this.board.level : 0
+                if (this.board) this.board.destroy()
+                this.createBoard(keepLevel, 0)
+                this.createDancingViruses()
+                this.startInterval()
+            }, DELAY.endGameListener)
+            return
+        }
         
         // Show defeat alert immediately
         if (typeof showGameAlert === 'function') {
@@ -514,8 +540,45 @@ export default class Game extends HTMLElement {
      * Returns to the homepage by reloading the page
      */
     returnToHomepage() {
+        if (this.aiInterval) clearInterval(this.aiInterval)
         // Reload the page to return to homepage
         window.location.reload();
+    }
+
+    startAIAutoplay() {
+        if (this.aiInterval) clearInterval(this.aiInterval)
+        this.aiPillRef = null
+        this.aiTargetColumn = 3
+        this.aiRotateBudget = 0
+
+        this.aiInterval = setInterval(() => {
+            if (!this.board || !this.board.currentPill || this.board.currentPill.placed) return
+
+            const currentPill = this.board.currentPill
+            if (this.aiPillRef !== currentPill) {
+                this.aiPillRef = currentPill
+                this.aiTargetColumn = Math.floor(Math.random() * 6) + 1
+                this.aiRotateBudget = Math.random() < 0.65 ? 1 : 0
+            }
+
+            if (this.aiRotateBudget > 0 && Math.random() < 0.2) {
+                this.board.movementFromKey('w')
+                this.aiRotateBudget--
+                return
+            }
+
+            const x = (currentPill.centerField && currentPill.centerField.x) || 3
+            if (x < this.aiTargetColumn) {
+                this.board.movementFromKey('d')
+                return
+            }
+            if (x > this.aiTargetColumn) {
+                this.board.movementFromKey('a')
+                return
+            }
+
+            this.board.movementFromKey('s')
+        }, 180)
     }
 }
 customElements.define("game-element", Game)

@@ -201,6 +201,7 @@ export class PlayingBoard extends Board {
         this.hurting3 = 0;                 // Hurt animation state 3
         this.hurting4 = 0;                 // Hurt animation state 4
         this.pendingSpawnAfterDamage = false; // Delay next pill while damage viruses are still dropping
+        this.fastDamageDropInterval = null;   // Temporary high-speed drop when next pill is waiting
 
         // VIRUS SPAWNING VARIABLES
         this.randy = 15;                   // Random Y position for virus spawning
@@ -384,6 +385,10 @@ export class PlayingBoard extends Board {
     }
 
     destroy() {
+        if (this.fastDamageDropInterval) {
+            clearInterval(this.fastDamageDropInterval)
+            this.fastDamageDropInterval = null
+        }
         // Reset creation guards so a fresh board can be created next round
         if (typeof this.playerNumber !== 'undefined') {
             delete window[`playingBoard${this.playerNumber}Created`];
@@ -435,6 +440,8 @@ export class PlayingBoard extends Board {
     }
 
     createKeyboardListeners() {
+        // AI opponent preview board is autoplayed and should not react to user keyboard.
+        if (this.game && this.game.isAIOpponentView) return
         this.intervals = []
         document.addEventListener("keydown", e => {
             e.preventDefault()
@@ -799,6 +806,17 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
         // Don't spawn the next pill while incoming damage viruses are still dropping.
         if (this.hasActiveDamageDrop()) {
             this.pendingSpawnAfterDamage = true
+            // Accelerate damage-virus settling while player is waiting for next pill.
+            if (!this.fastDamageDropInterval) {
+                this.fastDamageDropInterval = setInterval(() => {
+                    if (!this.pendingSpawnAfterDamage || !this.hasActiveDamageDrop()) {
+                        clearInterval(this.fastDamageDropInterval)
+                        this.fastDamageDropInterval = null
+                        return
+                    }
+                    this.nextFrame()
+                }, 35)
+            }
             return
         }
 
@@ -941,10 +959,12 @@ class Field extends HTMLElement {
     if (this.board.localpoints >= 4) {
 
         // Send damage immediately when 4+ points are reached
-        socket.emit(`updatePoints${this.board.playerNumber === 1 ? 2 : 1}`, { 
-            [`player${this.board.playerNumber === 1 ? 2 : 1}points`]: this.board.localpoints, 
-            roomCode: roomCode 
-        });
+        if (!this.board.game.isAIOpponentView) {
+            socket.emit(`updatePoints${this.board.playerNumber === 1 ? 2 : 1}`, { 
+                [`player${this.board.playerNumber === 1 ? 2 : 1}points`]: this.board.localpoints, 
+                roomCode: roomCode 
+            });
+        }
 
         // Reset points after sending damage
         this.board.localpoints = 0;
@@ -1098,9 +1118,16 @@ class ThrowingBoard extends Board {
             this.currentPill.pieces[0].field.clear()
         }
 
-        // Get random colors for the pill
-        const color1 = randomColor();
-        const color2 = randomColor();
+        // AI preview board uses local colors so it doesn't consume the player's shared color stream.
+        let color1, color2
+        if (this.playingBoard && this.playingBoard.game && this.playingBoard.game.isAIOpponentView) {
+            const aiColors = [Color.FIRST, Color.SECOND, Color.THIRD]
+            color1 = aiColors[Math.floor(Math.random() * aiColors.length)]
+            color2 = aiColors[Math.floor(Math.random() * aiColors.length)]
+        } else {
+            color1 = randomColor();
+            color2 = randomColor();
+        }
 
         this.currentPill = new Pill(this, color1, color2)
         this.currentFrame = 0
@@ -1149,7 +1176,9 @@ class ThrowingBoard extends Board {
 					this.pilly2 = 15;
 
 					// Send points update to opponent
-					socket.emit(`updatePoints${this.playerNumber === 1 ? 2 : 1}`, { [`player${this.playerNumber === 1 ? 2 : 1}points`]: this.localpoints, roomCode: roomCode });
+                    if (!(this.playingBoard && this.playingBoard.game && this.playingBoard.game.isAIOpponentView)) {
+					    socket.emit(`updatePoints${this.playerNumber === 1 ? 2 : 1}`, { [`player${this.playerNumber === 1 ? 2 : 1}points`]: this.localpoints, roomCode: roomCode });
+                    }
 
 					// Reset local points
 					this.localpoints = 0;
