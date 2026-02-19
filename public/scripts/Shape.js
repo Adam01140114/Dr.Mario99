@@ -435,13 +435,13 @@ export class Pill extends Shape {
     }
 
     reconcilePieceRendering(previousFields) {
-        // Clear only vacated fields after all piece positions are final.
-        for (let field of previousFields) {
-            if (field && !field.shapePiece) field.setColor(Color.NONE)
-        }
-        // Repaint current piece fields once (avoids interim black-frame flicker).
+        // Paint destination cells first, then clear vacated cells.
+        // This avoids a transient all-black frame on slower/mobile renders.
         for (let piece of this.pieces) {
             if (piece && piece.field) piece.field.setColor(piece.color)
+        }
+        for (let field of previousFields) {
+            if (field && !field.shapePiece) field.setColor(Color.NONE)
         }
     }
 
