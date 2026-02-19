@@ -354,7 +354,7 @@
         }
         .rules-title {
             color: #00ffff;
-            font-size: 1.4rem;
+            font-size: 1.8rem;
             margin-bottom: 24px;
             text-align: center;
             text-shadow: 0 0 10px #00ffff;
@@ -362,7 +362,7 @@
         .rules-list {
             color: #fff;
             font-size: 0.9rem;
-            line-height: 1.8;
+            line-height: 1.5;
             margin: 0 0 24px 0;
             padding-left: 1.5em;
         }
@@ -441,12 +441,9 @@
             body.ai-mode {
                 overflow: hidden;
             }
-            body.ai-mode .logo-container {
-                display: none !important;
-            }
             body.ai-mode .ai-boards-row {
                 position: fixed !important;
-                top: 50% !important;
+                top: calc(50% + 30px) !important;
                 left: 50% !important;
                 margin: 0 !important;
                 z-index: 10;
@@ -454,13 +451,17 @@
             }
             @supports (height: 100dvh) {
                 body.ai-mode .ai-boards-row {
-                    top: 50dvh !important;
+                    top: calc(50dvh + 30px) !important;
                 }
+            }
+            body.ai-mode .touch-controls {
+                bottom: 5px !important;
             }
             body.ai-mode .game-container {
                 position: relative !important;
                 top: auto !important;
                 left: auto !important;
+                transform: none !important;
                 margin: 0 !important;
             }
         }
@@ -558,7 +559,7 @@
             width: 30px;
             height: 30px;
             line-height: 1;
-            transform: rotate(-70deg);
+            transform: rotate(0deg);
         }
 
         #rotateRight .rotate-right-icon {
@@ -566,7 +567,7 @@
             width: 30px;
             height: 30px;
             line-height: 1;
-            transform: rotate(-70deg);
+            transform: rotate(0deg);
         }
 
         .drop-btn {
@@ -871,7 +872,7 @@
                 padding: 24px;
             }
             .rules-title {
-                font-size: 1.1rem;
+                font-size: 1.4rem;
             }
             .rules-list {
                 font-size: 0.8rem;
@@ -920,7 +921,8 @@
             <div class="rules-modal">
                 <h2 class="rules-title">How to Play</h2>
                 <ol class="rules-list">
-                    <li><span class="rules-emoji">🎮</span> Press <strong>Free Play</strong> to be matched with a random player </li>
+                    <li><span class="rules-emoji">🎮</span> Press <strong>Free Play</strong> to be matched with a random player.</li>
+                    <li><span class="rules-emoji">🤝</span> Or create a room to battle your friends.</li>
                     <li><span class="rules-emoji">🦠</span> Every time your opponent kills a germ, it sends a germ your way!</li>
                     <li><span class="rules-emoji">🏆</span> The person who gets rid of all their germs first wins!</li>
                 </ol>
