@@ -862,16 +862,14 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
                         // Temporarily unlock the pieces to move them
                         for (let piece of shape.pieces) {
                             piece.field.locked = false;
-                            piece.field.setColor(Color.NONE);
                         }
-                        // Move the shape down if possible
+                        // move() uses batch update + reconcilePieceRendering to avoid flicker
                         if (shape.move(Direction.DOWN)) {
                             moved = true;
                         }
-                        // Relock the pieces
+                        // Relock the pieces (reconcile already drew new positions)
                         for (let piece of shape.pieces) {
                             piece.field.locked = true;
-                            piece.field.setColor(piece.color);
                         }
                     }
                 }
