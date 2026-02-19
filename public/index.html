@@ -408,6 +408,18 @@
             box-shadow: 0 6px 20px rgba(255, 0, 255, 0.5);
         }
 
+        #rotateLeft .rotate-left-icon {
+            display: inline-block;
+            font-size: inherit;
+            transform: rotate(-70deg);
+        }
+
+        #rotateRight .rotate-right-icon {
+            display: inline-block;
+            font-size: inherit;
+            transform: rotate(70deg);
+        }
+
         .drop-btn {
             border-color: #ff4444;
             color: #ff4444;
@@ -725,9 +737,9 @@
         <div class="touch-controls hidden" id="touchControls">
             <div class="control-row">
                 <button class="control-btn move-btn" id="moveLeft">←</button>
-                <button class="control-btn rotate-btn" id="rotateLeft">↶</button>
+                <button class="control-btn rotate-btn" id="rotateLeft"><span class="rotate-left-icon">↺</span></button>
                 <button class="control-btn drop-btn" id="dropFast">↓</button>
-                <button class="control-btn rotate-btn" id="rotateRight">↷</button>
+                <button class="control-btn rotate-btn" id="rotateRight"><span class="rotate-right-icon">↻</span></button>
                 <button class="control-btn move-btn" id="moveRight">→</button>
             </div>
         </div>
@@ -796,6 +808,19 @@
             document.getElementById('roomCodeContainer').classList.add('hidden');
         }
 
+        // Mobile: zoom out so 960px game canvas fits in viewport width when game starts
+        const GAME_CANVAS_WIDTH = 960;
+        function applyMobileGameZoom() {
+            if (window.innerWidth < GAME_CANVAS_WIDTH) {
+                const meta = document.querySelector('meta[name=viewport]');
+                if (meta) meta.setAttribute('content', 'width=' + GAME_CANVAS_WIDTH);
+            }
+        }
+        function restoreViewport() {
+            const meta = document.querySelector('meta[name=viewport]');
+            if (meta) meta.setAttribute('content', 'width=device-width, initial-scale=1.0');
+        }
+
         // Single Player
         document.getElementById('single').onclick = function() {
             socket.emit('single');
@@ -825,6 +850,8 @@
             
             // Show touch controls
             document.getElementById('touchControls').classList.remove('hidden');
+            
+            applyMobileGameZoom();
         };
 
         // Free Play (Multiplayer Lobby)
@@ -868,6 +895,7 @@
                 
                 // Show touch controls
                 document.getElementById('touchControls').classList.remove('hidden');
+                applyMobileGameZoom();
             } else if (data.player === 2) {
                 if (!window.scriptLoaded) {
                     const script = document.createElement('script');
@@ -881,6 +909,7 @@
                 
                 // Show touch controls
                 document.getElementById('touchControls').classList.remove('hidden');
+                applyMobileGameZoom();
             }
         });
 
@@ -954,6 +983,7 @@
                 
                 // Show touch controls
                 document.getElementById('touchControls').classList.remove('hidden');
+                applyMobileGameZoom();
             }
 
             if (who == 1) {
@@ -969,6 +999,7 @@
                 
                 // Show touch controls
                 document.getElementById('touchControls').classList.remove('hidden');
+                applyMobileGameZoom();
             }
             
             // If game was already created, initialize it with shared data
@@ -1020,6 +1051,8 @@
         }
 
         function returnToHomepage() {
+            restoreViewport();
+            
             // Show all homepage elements again
             const titleElement = document.querySelector('.title');
             if (titleElement) titleElement.style.display = 'block';

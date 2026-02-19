@@ -57,10 +57,6 @@ if (window.shapeScriptLoaded) {
     window.shapeScriptLoaded = true;
 }
 
-
-
-
-
 /**
  * SHARED GAME DATA SYSTEM
  * =======================
@@ -81,13 +77,10 @@ if (typeof roomCode === 'undefined' || !roomCode || !window.sharedGameData) {
     socket.emit('requestNewGameData');
 }
 socket.on('receiveNewGameData', (gameData) => {
-    console.log('🟢 CLIENT: OLD SYSTEM - receiveNewGameData called with:', gameData);
+
     // Expose full shared data for other modules (e.g., Board uses virusCount)
     window.sharedGameData = gameData;
 
-    console.log('🟢 CLIENT: OLD SYSTEM - virus positions:', gameData.virusPositions);
-    console.log('🟢 CLIENT: OLD SYSTEM - pill colors (first 10):', gameData.randomList.slice(0, 10));
-    
     /**
      * CRITICAL: Create a DEEP COPY to prevent mutation
      * This ensures both players have independent copies of the color list
@@ -95,19 +88,17 @@ socket.on('receiveNewGameData', (gameData) => {
      */
     myRandomList = [...gameData.randomList];
     window.trackMyRandomList(); // Track the change
-    
-    
+
     // Reset pill color position for new game to ensure synchronization
     numberPosition = 1;
-    
+
     // Update virus positions in the board
     if (window.currentPlayingBoard) {
         window.currentPlayingBoard.virusPositions = gameData.virusPositions;
-        console.log('🟢 CLIENT: OLD SYSTEM - set board virusPositions to:', window.currentPlayingBoard.virusPositions);
-        
+
         // Trigger virus spawning with the new synchronized positions
         if (window.currentPlayingBoard.spawnViruses) {
-            console.log('🟢 CLIENT: OLD SYSTEM - calling spawnViruses');
+
             window.currentPlayingBoard.spawnViruses();
         }
     }
@@ -116,15 +107,12 @@ socket.on('receiveNewGameData', (gameData) => {
 // DISABLED: Old system conflicts with new shared system
 // socket.emit('requestRandomList');
 // socket.on('receiveRandomList', (receivedList) => {
-// 	console.log('🟢 CLIENT: OLD SYSTEM - received random list:', receivedList);
+// 	
 // 	myRandomList = receivedList;
 // 	window.trackMyRandomList(); // Track the change
 // });
 
-
-
 //start time
-
 
 /**
  * POSITION TRACKING SYSTEM - UPDATE NUMBER
@@ -143,37 +131,30 @@ function updateNumber() {
     // Use window variables to ensure they're shared across modules
     const currentPosition = window.numberPosition || numberPosition;
     const currentList = window.myRandomList || myRandomList;
-    
-    console.log(`🟠 updateNumber(): numberPosition=${currentPosition}, myRandomList.length=${currentList.length}`);
-    
+
     // Check if position is within bounds
     if (currentPosition > 0 && currentPosition <= currentList.length) {
         // Get the color value at the current position
         number = currentList[currentPosition - 1];
-        console.log(`🟠 updateNumber(): Got number=${number} from myRandomList[${currentPosition - 1}]`);
-        
+
         // Advance to next position
 		window.numberPosition = currentPosition + 1;
 		numberPosition = window.numberPosition;
-		console.log(`🟠 updateNumber(): Incremented numberPosition to ${window.numberPosition}`);
-		
+
 		// Loop back to start when reaching end of list
 		if(window.numberPosition > 100){ // Updated to match new list size
 			window.numberPosition = 1;
 			numberPosition = 1;
-			console.log(`🟠 updateNumber(): Looped back to position 1`);
+
 		}
-		
+
     } else {
-        console.log(`🟠 updateNumber(): numberPosition out of bounds: ${currentPosition}`);
+
         //number = undefined; 
     }
 }
 
 // REMOVED: updateNumber(); - This was causing the position to advance before players started using the list 
-
-
-
 
 /**
  * PILL COLOR GENERATION SYSTEM
@@ -198,32 +179,30 @@ export function randomColor() {
 	// Use window variables to ensure they're shared across modules
 	const currentList = window.myRandomList || myRandomList;
 	const currentPosition = window.numberPosition || numberPosition;
-	
+
 	// If myRandomList is empty (before server data is received), wait for server data
 	if (currentList.length === 0) {
-		console.log('🟡 randomColor(): No server data yet, returning default blue');
+
 		return Color.FIRST; // Default to blue while waiting for server data
 	}
-	
+
 	// Use the server-provided shared random list
 	updateNumber(); 
 	pill = number;
-	
-	console.log(`🟡 randomColor(): numberPosition=${currentPosition}, pill=${pill}, color=${pill == 0 ? 'blue' : pill == 1 ? 'brown' : 'yellow'}`);
 
 	// Map number values to color constants
 	if(pill == 0){	
-		console.log('🟡 randomColor(): Returning blue (Color.FIRST)');
+
 		return Color.FIRST
 	}
-	
+
 	if(pill == 1){	
-		console.log('🟡 randomColor(): Returning brown (Color.SECOND)');
+
 		return Color.SECOND
 	}
-	
+
 	if(pill == 2){	
-		console.log('🟡 randomColor(): Returning yellow (Color.THIRD)');
+
 		return Color.THIRD
 	}
 }
@@ -274,7 +253,7 @@ export class Pill extends Shape {
      */
     constructor(board, color1, color2) {
         super(board)
-        
+
         // Determine if this is a PlayingBoard (8x17) or ThrowingBoard (12x8)
         if (board.width === 8 && board.height === 17) {
             // This is a PlayingBoard - use position (3, 15)
@@ -297,7 +276,7 @@ export class Pill extends Shape {
         // Use random colors if not provided (fallback to shared random system)
         const actualColor1 = color1 || randomColor();
         const actualColor2 = color2 || randomColor();
-        
+
         // Get the right field, but check if it exists
         const rightField = this.fieldTo(Direction.RIGHT);
         if (!rightField) {
@@ -312,7 +291,7 @@ export class Pill extends Shape {
                 new ShapePiece(this, rightField, actualColor2),
             ]
         }
-        
+
         // Set the visual colors on the board
         this.pieces[0].field.setColor(this.pieces[0].color)
         this.pieces[1].field.setColor(this.pieces[1].color)
@@ -513,5 +492,3 @@ class ShapePiece {
         return this.canMoveTo(x, y)
     }
 }
-
-

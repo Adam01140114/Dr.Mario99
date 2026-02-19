@@ -141,10 +141,12 @@
             min-height: calc(100vh - 80px);
             position: relative;
             z-index: 10;
+            width: 100%;
         }
 
         .debug-panel {
-            flex: 1;
+            flex: 1 1 0;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             background: rgba(0, 0, 0, 0.3);
@@ -170,7 +172,8 @@
         }
 
         .url-input {
-            flex: 1;
+            flex: 1 1 0;
+            min-width: 0;
             background: rgba(0, 0, 0, 0.6);
             color: #00ff00;
             border: 2px solid #00ffff;
@@ -248,6 +251,7 @@
 
         .iframe-container {
             height: 80vh;
+            min-width: 0;
             position: relative;
             background: #000;
             border: 2px solid #00ffff;

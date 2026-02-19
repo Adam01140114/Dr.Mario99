@@ -36,6 +36,7 @@ export default class Game extends HTMLElement {
     constructor(playerNumber = 1) {
         super()
         this.playerNumber = playerNumber
+        this.hasLost = false  // true after endGame(); prevents showing victory if opponent loses after you
         console.log('Player Number:', this.playerNumber)
     }
 
@@ -65,6 +66,11 @@ export default class Game extends HTMLElement {
             console.log(`Player ${this.playerNumber}: Room code check - received: ${data.roomCode}, expected: ${roomCode}`);
             console.log(`Player ${this.playerNumber}: Player number check - received: ${data.playerNumber}, expected: ${this.playerNumber === 1 ? 2 : 1}`);
             
+            // Don't show victory if this player already lost (e.g. opponent lost right after)
+            if (this.hasLost) {
+                console.log(`Player ${this.playerNumber}: Ignoring opponentGameOver - already lost`);
+                return;
+            }
             // Validate that the event is for our room and from the correct opponent
             if (data.roomCode === roomCode && data.playerNumber === (this.playerNumber === 1 ? 2 : 1)) {
                 console.log(`Player ${this.playerNumber}: Conditions met! Showing win screen`);
@@ -93,6 +99,7 @@ export default class Game extends HTMLElement {
         // Start next round when both players are ready
         socket.on('startNextRound', (data) => {
             if (!data || data.roomCode !== roomCode) return;
+            this.hasLost = false;  // reset so this player can receive victory again next round
             // Store the shared game data globally
             window.sharedGameData = data.gameData;
 
@@ -234,6 +241,7 @@ export default class Game extends HTMLElement {
      */
     endGame() {
         console.log(`Player ${this.playerNumber}: endGame() METHOD CALLED!`);
+        this.hasLost = true
         this.board.blockInput = true
         clearInterval(this.interval)
         

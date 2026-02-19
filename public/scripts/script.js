@@ -30,7 +30,7 @@ import Game from "./Game.js";
  * and synchronization issues in multiplayer games.
  */
 if (window.scriptLoaded) {
-    console.log('Script already loaded, skipping...');
+
 } else {
     window.scriptLoaded = true;
 
@@ -66,9 +66,8 @@ if (window.scriptLoaded) {
         // Create only the game instance for the current player
         const game = new Game(playerNumber);
         gameContainer.append(game);
-        
+
         // Store game instance globally for later access
         window.currentGame = game;
     }
 }
-
