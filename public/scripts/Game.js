@@ -218,6 +218,8 @@ export default class Game extends HTMLElement {
         
         // Check if this is multiplayer mode
         if (typeof roomCode !== 'undefined' && roomCode) {
+            // Stop all game activity before showing victory
+            if (this.board) this.board.destroy()
             // In multiplayer, show victory alert and notify opponent
             this.showVictoryAlert()
             // Emit win event to server
@@ -271,12 +273,18 @@ export default class Game extends HTMLElement {
             return
         }
         
+        // Stop all game activity before showing defeat
+        if (this.board) this.board.destroy()
         // Show defeat alert immediately
         if (typeof showGameAlert === 'function') {
+            if (this.board) this.board.destroy()
             console.log(`Player ${this.playerNumber}: Showing defeat alert`);
             showGameAlert('💀 GAME OVER!', 'You have been defeated!', false);
         } else {
-            // Fallback to old method
+            // Fallback: use board data first, then stop game
+            if (this.board && this.board.score > this.board.topScore)
+                this.board.newTopScore()
+            if (this.board) this.board.destroy()
             this.gameOverMario = document.createElement("img")
             this.gameOverMario.src = './img/go_dr.png'
             this.gameOverMario.id = 'goMario'
@@ -286,8 +294,6 @@ export default class Game extends HTMLElement {
             this.gameOverImg.id = 'go'
             this.appendChild(this.gameOverImg)
             let clickedOnce = false
-            if (this.board.score > this.board.topScore)
-                this.board.newTopScore()
             this.dancingViruses.setMode(DancingMode.LAUGHING)
             
             setTimeout(() => {
@@ -324,6 +330,8 @@ export default class Game extends HTMLElement {
      * Called when opponent loses (opponentGameOver event received)
      */
     showWinScreen() {
+        // Stop all game activity before showing victory (opponent lost)
+        if (this.board) this.board.destroy()
         // Show custom win alert
         if (typeof showGameAlert === 'function') {
             showGameAlert('🎉 VICTORY!', 'You cleared all the viruses first!', true);
@@ -350,6 +358,8 @@ export default class Game extends HTMLElement {
      * Called when opponent wins (opponentWin event received)
      */
     showOpponentWinScreen() {
+        // Stop all game activity before showing defeat (opponent won)
+        if (this.board) this.board.destroy()
         // Show custom lose alert
         if (typeof showGameAlert === 'function') {
             showGameAlert('💀 DEFEAT!', 'Your opponent cleared all the viruses first!', false);
@@ -473,6 +483,8 @@ export default class Game extends HTMLElement {
     }
 
     showOpponentWinScreen() {
+        // Stop all game activity (handled in first definition; this is fallback duplicate)
+        if (this.board) this.board.destroy()
         // Create loss overlay
         const overlay = document.createElement('div');
         overlay.style.cssText = `

@@ -389,6 +389,14 @@ export class PlayingBoard extends Board {
             clearInterval(this.fastDamageDropInterval)
             this.fastDamageDropInterval = null
         }
+        if (this.gravitationInterval) {
+            clearInterval(this.gravitationInterval)
+            this.gravitationInterval = null
+        }
+        if (this.throwingBoardInterval) {
+            clearInterval(this.throwingBoardInterval)
+            this.throwingBoardInterval = null
+        }
         // Reset creation guards so a fresh board can be created next round
         if (typeof this.playerNumber !== 'undefined') {
             delete window[`playingBoard${this.playerNumber}Created`];
