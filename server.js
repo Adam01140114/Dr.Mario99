@@ -266,6 +266,12 @@ io.on('connection', (socket) => {
             const player1 = lobby.shift();
             const player2 = lobby.shift();
 
+            // Join both players to the room so win/lose events (opponentGameOver, opponentWin) are received by both
+            const socket1 = io.sockets.sockets.get(player1);
+            const socket2 = io.sockets.sockets.get(player2);
+            if (socket1) socket1.join(roomCode);
+            if (socket2) socket2.join(roomCode);
+
             activeRooms[roomCode] = { players: [player1, player2] };
             io.to(player1).emit('startFreePlay', { player: 1, roomCode });
             io.to(player2).emit('startFreePlay', { player: 2, roomCode });

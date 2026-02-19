@@ -1,0 +1,299 @@
+================================================================================
+                        DR. MARIO 99 - GAME DOCUMENTATION
+                        Detailed Game Mechanics Reference
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. Overview
+2. Board & Grid
+3. Pills
+4. Viruses
+5. Matching & Clearing
+6. Scoring & Damage System
+7. Gravity & Cascades
+8. Game Flow & States
+9. Single Player vs Multiplayer
+10. Timing & Delays
+11. Technical Architecture Summary
+
+================================================================================
+1. OVERVIEW
+================================================================================
+
+Dr. Mario 99 is a match-based puzzle game inspired by the classic Dr. Mario.
+Players clear colored viruses by matching them with falling two-part pills of
+the same colors. The game supports single-player (clear all viruses to advance
+levels) and two-player multiplayer (race to clear your board; clearing sends
+damage to the opponent).
+
+Core loop:
+  - Pills spawn and fall on an 8×17 playing board.
+  - Place pills so that 4+ same-colored pieces align in a line (horizontal or vertical).
+  - Matching clears those pieces; clearing viruses reduces the virus count and scores.
+  - In multiplayer, clearing 4+ sends damage (extra viruses) to the opponent.
+  - Win by clearing all viruses (single player: next level; multiplayer: you win).
+
+================================================================================
+2. BOARD & GRID
+================================================================================
+
+PLAYING BOARD (Main game area)
+------------------------------
+- Dimensions: 8 columns (x: 0–7) × 17 rows (y: 0–16).
+- Coordinate system: (0,0) is bottom-left; y increases upward.
+- Each cell is a "field" (24×24 pixels in the UI).
+- The bottom row (y = 16) is special: only columns x = 3 and x = 4 are used for
+  pill spawn; all other cells in that row (x = 0,1,2,5,6,7) are locked and never
+  hold pieces.
+
+Pill spawn position:
+  - New pills enter at (3, 15) and (4, 15) — i.e., the two center columns just
+    above the bottom row. A pill occupies two adjacent cells.
+  - Game over is triggered when both (3, 15) and (4, 15) are blocked (locked),
+    so no new pill can spawn.
+
+THROWING BOARD (Pill entry area)
+--------------------------------
+- A separate 12×8 grid where the "next" pill is shown and animated.
+- The pill is thrown from an "arm" animation (hand sprites) into the main board.
+- Pill appears at (10, 4) on the throwing board, then goes through a fixed
+  sequence of frames (rotate/move) before being transferred to the playing
+  board at (3, 15)/(4, 15).
+
+================================================================================
+3. PILLS
+================================================================================
+
+Structure
+---------
+- A pill is made of two pieces (halves), each with a color.
+- Colors: Blue (bl), Brown (br), Yellow (yl) — corresponding to Color.FIRST,
+  Color.SECOND, Color.THIRD in code.
+- A pill can be horizontal (left–right) or vertical (up–down), with four rotation
+  states: VERTICAL, HORIZONTAL, VERTICAL_REVERSED, HORIZONTAL_REVERSED.
+
+Movement
+--------
+- Left/Right: Arrow keys or A/D. Moves one column.
+- Down: Arrow Down or S. Drops the pill until it lands (move until stopped).
+- Rotation: Arrow Up or W rotates left; Shift rotates right.
+- Movement is blocked by: board edges, locked fields (placed pills/viruses).
+- The main game loop (nextFrame) moves the current pill down one row at a fixed
+  interval (see Timing). If it cannot move down, the pill is "placed" (locked).
+
+Placement
+---------
+- When the pill can no longer move down, it is placed: both pieces are locked
+  on their fields. Then the game runs clear check, gravity, and spawns the next
+  pill (after gravity/cascades settle).
+
+Pill color source
+-----------------
+- Single player: colors come from a random list (requested from server or local).
+- Multiplayer: both players receive the same list of pill colors (server-
+  generated, 100 entries, values 0/1/2 mapping to blue/brown/yellow). Both
+  consume from the same list in the same order (numberPosition) so pill
+  sequences are identical for fairness.
+
+================================================================================
+4. VIRUSES
+================================================================================
+
+What they are
+-------------
+- Viruses are single-cell pieces in one of the three colors (bl, br, yl).
+- They are obstacles: you clear them by including them in a line of 4+ matching
+  same-colored pieces (virus + pill pieces of that color).
+
+Initial spawn (level start)
+---------------------------
+- At game start, a set number of viruses are placed on the board (default 5 in
+  multiplayer; can be set per room).
+- Virus spawn area: x in [0–7], y limited by maxVirusHeight (5 by default;
+  increases at levels 15, 17, 19).
+- Colors alternate in sequence: first virus one color, next another, then the
+  third, then repeat (so even distribution).
+- In multiplayer, virus positions are shared: the server generates one set of
+  positions per room; both players get the same positions so both boards start
+  identically.
+
+Damage viruses (multiplayer)
+----------------------------
+- When you clear 4+ in a row, you send "damage" to the opponent (see Damage System).
+- Damage is applied as extra viruses on the opponent’s board.
+- Damage viruses spawn at the bottom: they appear at y = 15 in random columns
+  (from [1–7], no duplicate columns per batch). They then "fall" upward in the
+  animation (nextFrame): the sprite moves up one row per frame until it hits
+  another piece or the top. When settled, they are added to virusList and
+  virusCount, and behave like normal viruses.
+- Up to 4 damage viruses can be in flight at once (hurting1–hurting4); each
+  corresponds to one spawn slot. Damage per clear is capped at 1 virus, but
+  multiple clears can queue multiple spawns (spawn counter).
+
+================================================================================
+5. MATCHING & CLEARING
+================================================================================
+
+Clear condition
+---------------
+- A field is cleared if it is part of a line (horizontal or vertical) of at
+  least 4 connected same-colored pieces (same color value).
+- "Same-colored" means the field’s color (bl, br, or yl); both virus and pill
+  pieces count.
+- Horizontal: count same color left and right from the cell.
+- Vertical: count same color up and down from the cell.
+- If horizontal >= 3 additional (total 4+) OR vertical >= 3 additional (total 4+),
+  that field is marked for clearing (shouldBeCleared returns true).
+
+Clear process
+-------------
+- After a pill is placed, clearIfNeeded() runs: it finds all fields that
+  shouldBeCleared() and calls clearAnimated() on each.
+- clearAnimated():
+  - Clears the field (removes piece, unlocks, updates shape/virus lists).
+  - For each cleared piece: adds 1 to localpoints (for damage calculation).
+  - If the piece was a virus: also calls increaseScore (+100), decreaseVirusCount,
+    and dancingViruses.lay(color) for the bottom-row virus animation.
+  - If localpoints >= 4: sends damage to the opponent (see below), then resets
+    localpoints to 0.
+  - Shows a brief "pop" graphic (color_x.png or color_o.png) then clears the
+    cell after DELAY.oxDisappear (175 ms).
+
+Gravity and cascades
+--------------------
+- After clearing, useGravitation() runs: locked pieces (pill or virus) that have
+  empty space below them fall down one row at a time (gravitation interval
+  90 ms). When nothing can fall further, clearIfNeeded() runs again. This
+  repeats until no more clears are possible, then the next pill is spawned.
+
+================================================================================
+6. SCORING & DAMAGE SYSTEM
+================================================================================
+
+Scoring
+-------
+- +100 points per virus cleared (only viruses give score when cleared).
+- Score is displayed as 7 digits (e.g. 0000100).
+- Top score can be stored in localStorage and shown separately.
+
+Damage (multiplayer only)
+-------------------------
+- When you clear a line of 4+ pieces, each cleared piece adds 1 to localpoints.
+- When localpoints >= 4, damage is sent to the opponent:
+  - Emit: updatePoints{N} with the other player’s number and localpoints, plus
+    roomCode.
+- Server (or receiver) computes: damage = floor(opponent_points / 4).
+- Damage is capped at 1 virus per clear event (Math.min(calculatedDamage, 1)).
+- The opponent receives this via socket event p{N}damage; their board sets
+  realdamage and damageProcessed = false.
+- When the opponent’s next pill is about to enter (ThrowingBoard frame 0),
+  if realdamage > 0 and not damageProcessed, they call hurt(): spawn one (or
+  more, if multiple damage events queued) damage virus(es), set
+  damageProcessed = true, realdamage = 0. So damage is applied on "next pill
+  spawn" rather than instantly.
+
+================================================================================
+7. GRAVITY & CASCADES
+================================================================================
+- After any clear, gravity runs in steps (interval 90 ms):
+  - For each locked piece that is a pill, temporarily unlock its pieces, try
+    to move the pill down one row; if it moves, relock and set moved = true.
+  - When no piece can move (moved stays false), gravity stops. Then clearIfNeeded()
+    is run again. If new matches exist, they clear and gravity runs again.
+  - When there are no more matches after gravity, spawnPill() is called and
+    the next pill enters via the throwing board.
+
+================================================================================
+8. GAME FLOW & STATES
+================================================================================
+
+Single player
+------------
+- Start: Board created, viruses spawned (from server or local data), first pill
+  requested via throwing board.
+- Play: Pills fall and are moved/rotated; on land → clear → gravity → repeat →
+  spawn next pill.
+- Stage complete: When virus count (actual viruses on board) reaches 0. A 7-second
+  minimum from game start is required before victory can trigger (prevents
+  instant win before board is fully loaded). Then nextStage(): show stage
+  complete screen, then advance level (new board, new viruses, same score).
+- Game over: When (3,15) and (4,15) are both locked. endGame(): show game over,
+  optionally save top score, allow key press to restart (new board, new game).
+
+Multiplayer
+-----------
+- Lobby: Create or join room with room code (and optional virus count). When
+  two players are in the same room, both receive shared game data (virus
+  positions, pill color list, virus count).
+- Play: Same as single player, plus damage send/receive. First to clear all
+  viruses wins.
+- Victory: You clear all viruses → showVictoryAlert(), emit playerWin. Opponent
+  receives opponentGameOver → showWinScreen() ("You won").
+- Defeat: Opponent clears all viruses → you receive opponentWin →
+  showOpponentWinScreen() ("You lost").
+- Game over: Your stack reaches spawn → you get game over, emit playerGameOver;
+  opponent receives opponentGameOver and sees win screen.
+- Next round: startNextRound can reset both boards with new shared data and
+  continue (same room).
+
+================================================================================
+9. SINGLE PLAYER VS MULTIPLAYER
+================================================================================
+
+- roomCode: If undefined or falsy, game runs in single-player mode (no damage,
+  no opponent events, advance level on stage complete). If set (e.g. from
+  join/create room), multiplayer logic and socket events apply.
+- Shared data: In multiplayer, virus positions and pill color list are generated
+  once per room on the server (generateVirusPositions, generateRandomList) and
+  sent to both players so boards and pill sequences are identical.
+- Socket events (multiplayer): createRoom, joinRoom, requestNewGameData,
+  receiveNewGameData, updatePoints1/2, p1damage/p2damage, playerWin,
+  playerGameOver, opponentWin, opponentGameOver, startNextRound.
+
+================================================================================
+10. TIMING & DELAYS (from components.js DELAY)
+================================================================================
+
+- frame: 600 ms — main game loop interval (nextFrame: move pill down one row).
+- readInput: 166 ms — key repeat rate when holding left/right/down/rotate.
+- nextStage: 100 ms — delay before calling game.nextStage() after stage complete.
+- gameOver: 100 ms — delay before calling game.endGame() after game over.
+- nextStageListener: 2500 ms — how long stage complete screen is shown before
+  accepting key to continue.
+- endGameListener: 1000 ms — similar for game over screen.
+- throwFrame: 25 ms — interval between throwing board animation frames (pill
+  entrance animation).
+- gravitation: 90 ms — interval between gravity steps (pieces falling after clear).
+- oxDisappear: 175 ms — time the clear "pop" graphic is shown before the cell
+  is set empty.
+
+Dancing viruses (bottom of screen) animate on 250 ms (nextAnimation) and 1000 ms
+(nextMove) when in NORMAL mode.
+
+================================================================================
+11. TECHNICAL ARCHITECTURE SUMMARY
+================================================================================
+
+- Game (Game.js): Top-level element; creates PlayingBoard, ThrowingBoard (via
+  board), background, dancing viruses; runs main interval (nextFrame); handles
+  nextStage/endGame and multiplayer socket listeners.
+- PlayingBoard (Board.js): 8×17 grid, keyboard input, pill movement/placement,
+  virus spawn (initial + damage), clear check, gravity, score/virus/level UI,
+  damage listener and hurt().
+- ThrowingBoard (Board.js): 12×8 grid, fixed-frame animation that ends by
+  moving pill to main board and spawning next pill; frame 0 also processes
+  received damage (hurt) and resets localpoints.
+- Field (Board.js): Single cell; holds shapePiece, color, locked state;
+  setColor, clear, clearAnimated, shouldBeCleared.
+- Pill, Virus, ShapePiece (Shape.js): Pill = two pieces, rotation, move/rotate
+  logic. Virus = one piece. ShapePiece = one cell of a shape, color, place/move.
+- Colors and directions (components.js): Color (NONE, FIRST/SECOND/THIRD),
+  Direction (UP/DOWN/LEFT/RIGHT), Rotation (four states), DELAY constants.
+- Server (server.js): Rooms, shared game data (virus positions, pill list,
+  virus count), damage relay (updatePoints → p{N}damage), win/game over and
+  next round events.
+
+================================================================================
+End of Game Documentation
+================================================================================
