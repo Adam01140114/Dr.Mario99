@@ -410,14 +410,16 @@
 
         #rotateLeft .rotate-left-icon {
             display: inline-block;
-            font-size: inherit;
+            font-size: 30px;
+            line-height: 1;
             transform: rotate(-70deg);
         }
 
         #rotateRight .rotate-right-icon {
             display: inline-block;
-            font-size: inherit;
-            transform: rotate(70deg);
+            font-size: 30px;
+            line-height: 1;
+            transform: rotate(-70deg);
         }
 
         .drop-btn {
@@ -827,7 +829,6 @@
             const activeGame = getActiveGameContainer();
             if (!activeGame) return;
 
-            const touchControls = document.getElementById('touchControls');
             const viewportPadding = 16;
             const targetWidth = GAME_CANVAS_WIDTH + 14; // 960 canvas + 2*7 border
             const availableWidth = Math.max(300, window.innerWidth - viewportPadding);
@@ -836,16 +837,10 @@
             // Keep existing centering transform and append scale.
             activeGame.style.transform = `translate(-50%, -50%) scale(${scale})`;
             activeGame.style.transformOrigin = 'center center';
-
-            if (touchControls) {
-                touchControls.style.transform = `translateX(-50%) scale(${scale})`;
-                touchControls.style.transformOrigin = 'bottom center';
-            }
         }
         function restoreViewport() {
             const game1 = document.getElementById('game1');
             const game2 = document.getElementById('game2');
-            const touchControls = document.getElementById('touchControls');
 
             if (game1) {
                 game1.style.transform = '';
@@ -854,10 +849,6 @@
             if (game2) {
                 game2.style.transform = '';
                 game2.style.transformOrigin = '';
-            }
-            if (touchControls) {
-                touchControls.style.transform = '';
-                touchControls.style.transformOrigin = '';
             }
         }
 
