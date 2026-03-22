@@ -462,9 +462,10 @@ export class PlayingBoard extends Board {
             if (this.intervals[e.key])
                 return
             this.movementFromKey(e.key)
+            const repeatDelay = (e.key == "ArrowDown" || e.key == 's') ? 60 : DELAY.readInput
             this.intervals[e.key] = setInterval(() => {
                 this.movementFromKey(e.key)
-            }, DELAY.readInput)
+            }, repeatDelay)
         })
         document.addEventListener("keyup", e => {
             clearInterval(this.intervals[e.key])
@@ -572,7 +573,14 @@ export class PlayingBoard extends Board {
 		}
 
         if (key == "ArrowDown" || key == 's'){
-            this.currentPill.moveUntilStopped(Direction.DOWN)
+            const moved = this.currentPill.move(Direction.DOWN)
+            if (!moved) {
+                this.currentPill.place()
+                this.clearIfNeeded()
+                this.useGravitation()
+                if (this.gameOver()) return
+                if (this.stageCompleted()) return
+            }
 			this.pilly -= this.pilly
 			this.pilly2 -= this.pilly2
 		}
