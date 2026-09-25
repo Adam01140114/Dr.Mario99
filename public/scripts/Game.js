@@ -40,6 +40,7 @@ export default class Game extends HTMLElement {
         super()
         this.playerNumber = playerNumber
         this.isAIOpponentView = !!options.isAIOpponentView
+        this.isTVControlled = !!options.isTVControlled  // TV Room: a phone drives this board, the TV page decides the winner
         this.hasLost = false  // true after endGame(); prevents showing victory if opponent loses after you
         console.log('Player Number:', this.playerNumber)
     }
@@ -65,7 +66,7 @@ export default class Game extends HTMLElement {
      * Handles opponent game events (victory/defeat) and validates room/player data
      */
     setupSocketListeners() {
-        if (this.isAIOpponentView) return
+        if (this.isAIOpponentView || this.isTVControlled) return
         // Listen for opponent game over (opponent lost, you won)
         socket.on('opponentGameOver', (data) => {
             console.log(`Player ${this.playerNumber}: Received opponentGameOver event`);
@@ -199,6 +200,24 @@ export default class Game extends HTMLElement {
     }
 
     /**
+     * Stops everything that moves on this board but leaves it on screen
+     * (TV Room: both boards stay visible behind the victory message)
+     */
+    freeze() {
+        this.stopInterval()
+        const board = this.board
+        if (!board) return
+        board.blockInput = true
+        board.currentPill = null
+        for (const name of ['gravitationInterval', 'throwingBoardInterval', 'fastDamageDropInterval']) {
+            if (board[name]) {
+                clearInterval(board[name])
+                board[name] = null
+            }
+        }
+    }
+
+    /**
      * Handles stage completion (all viruses cleared)
      * Different behavior for single player vs multiplayer:
      * - Single player: Shows stage complete screen and advances to next level
@@ -216,6 +235,11 @@ export default class Game extends HTMLElement {
                 this.createDancingViruses()
                 this.startInterval()
             }, DELAY.nextStage)
+            return
+        }
+
+        if (this.isTVControlled) {
+            window.tvHost.playerFinished(this.playerNumber, true)
             return
         }
         
@@ -273,6 +297,12 @@ export default class Game extends HTMLElement {
                 this.createDancingViruses()
                 this.startInterval()
             }, DELAY.endGameListener)
+            return
+        }
+
+        if (this.isTVControlled) {
+            this.dancingViruses.setMode(DancingMode.LAUGHING)
+            window.tvHost.playerFinished(this.playerNumber, false)
             return
         }
         

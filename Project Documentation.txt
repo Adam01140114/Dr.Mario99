@@ -241,6 +241,29 @@ REAL-TIME COMMUNICATION
 'opponentWin'    // Opponent victory notification
 ```
 
+TV ROOM (PHONES AS CONTROLLERS)
+-------------------------------
+- **Start**: "Start TV Room" on the computer opens a lobby with a QR code
+- **Joining**: The QR code links to `/controller.html?room=CODE&player=N` on the
+  computer's Wi-Fi address (from `os.networkInterfaces()` when the page is opened
+  on localhost), so a phone on the same Wi-Fi can reach it. The phone enters a
+  name; the name appears on the computer and the QR switches to the next player
+- **Playing**: Both boards run on the computer page (`isTVControlled` games).
+  Phone buttons go phone -> server (`tvInput`) -> computer, which moves that
+  player's pill and repeats while a button is held. Each player keeps their own
+  place in the shared pill list (`window.tvColorPositions`), so both get the
+  same pills. The computer keyboard does nothing in this mode
+- **Winning**: The computer decides (`tvHost.playerFinished`), freezes both
+  boards, shows the winner's name, and tells each phone (`tvResult`): victory
+  or game over. "New Game" reloads with `?tv=new`, which opens a new room with a
+  new code
+- **Phones that sleep**: A phone keeps an id in localStorage and gets its slot
+  back when it reconnects. In the lobby a disconnected slot can be taken by
+  another phone
+- **Server events**: tvCreateRoom, tvJoin, tvStartGame, tvInput, tvGameOver
+  (in); tvRoomCreated, tvLobby, tvJoined, tvJoinError, tvGameStarted, tvInput,
+  tvResult, tvRoomClosed (out). QR images come from `GET /tv/qr.svg?text=`
+
 GAME MECHANICS
 ==============
 

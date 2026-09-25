@@ -451,7 +451,8 @@ export class PlayingBoard extends Board {
 
     createKeyboardListeners() {
         // AI opponent preview board is autoplayed and should not react to user keyboard.
-        if (this.game && this.game.isAIOpponentView) return
+        // TV Room boards are driven by the players' phones (see tvInput in index.html).
+        if (this.game && (this.game.isAIOpponentView || this.game.isTVControlled)) return
         this.intervals = []
         document.addEventListener("keydown", e => {
             e.preventDefault()
@@ -1131,8 +1132,8 @@ class ThrowingBoard extends Board {
             color1 = aiColors[Math.floor(Math.random() * aiColors.length)]
             color2 = aiColors[Math.floor(Math.random() * aiColors.length)]
         } else {
-            color1 = randomColor();
-            color2 = randomColor();
+            color1 = randomColor(this.playerNumber);
+            color2 = randomColor(this.playerNumber);
         }
 
         this.currentPill = new Pill(this, color1, color2)

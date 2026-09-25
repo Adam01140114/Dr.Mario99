@@ -175,7 +175,7 @@ function updateNumber() {
  * 
  * @returns {string} The color constant for the pill
  */
-export function randomColor() {
+export function randomColor(playerNumber) {
 	// Use window variables to ensure they're shared across modules
 	const currentList = window.myRandomList || myRandomList;
 	const currentPosition = window.numberPosition || numberPosition;
@@ -186,9 +186,17 @@ export function randomColor() {
 		return Color.FIRST; // Default to blue while waiting for server data
 	}
 
-	// Use the server-provided shared random list
-	updateNumber(); 
-	pill = number;
+	// TV Room: both boards live on one page, so each player keeps their own
+	// place in the shared list and both get the same pill sequence.
+	const tvPositions = window.tvColorPositions;
+	if (tvPositions && tvPositions[playerNumber]) {
+		pill = currentList[(tvPositions[playerNumber] - 1) % currentList.length];
+		tvPositions[playerNumber]++;
+	} else {
+		// Use the server-provided shared random list
+		updateNumber(); 
+		pill = number;
+	}
 
 	// Map number values to color constants
 	if(pill == 0){	

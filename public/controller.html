@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Dr. Mario 99 - Controller</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; }
+        body {
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            color: #fff;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+            overscroll-behavior: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            touch-action: manipulation;
+        }
+        body.p1 { --accent: #ff4d6d; --accent-soft: rgba(255, 77, 109, 0.35); }
+        body.p2 { --accent: #4dc3ff; --accent-soft: rgba(77, 195, 255, 0.35); }
+        body { --accent: #00ffff; --accent-soft: rgba(0, 255, 255, 0.35); }
+
+        .screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 22px;
+            padding: max(20px, env(safe-area-inset-top)) 20px max(20px, env(safe-area-inset-bottom));
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+
+        .badge {
+            display: inline-block;
+            border: 3px solid var(--accent);
+            color: var(--accent);
+            border-radius: 12px;
+            padding: 10px 16px;
+            font-size: 14px;
+            text-shadow: 0 0 8px var(--accent);
+            box-shadow: 0 0 18px var(--accent-soft);
+        }
+        h1 {
+            font-size: 20px;
+            line-height: 1.5;
+            color: #00ffff;
+            text-shadow: 0 0 12px #00ffff;
+        }
+        p { font-size: 11px; line-height: 1.8; color: #cfd8ff; max-width: 320px; }
+
+        #nameForm { display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 320px; }
+        #nameInput {
+            font-family: inherit;
+            font-size: 16px; /* 16px stops iOS from zooming on focus */
+            padding: 16px;
+            border-radius: 12px;
+            border: 3px solid var(--accent);
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            text-align: center;
+            outline: none;
+            -webkit-user-select: text;
+            user-select: text;
+        }
+        .big-button {
+            font-family: inherit;
+            font-size: 16px;
+            padding: 18px;
+            border-radius: 14px;
+            border: 3px solid #fff;
+            color: #fff;
+            background: linear-gradient(45deg, #ff00ff, #00ffff);
+            cursor: pointer;
+        }
+        .big-button:disabled { opacity: 0.5; }
+        .error { color: #ff6b6b; font-size: 11px; min-height: 1em; line-height: 1.6; }
+
+        /* Controller */
+        #controllerScreen {
+            justify-content: stretch;
+            gap: 12px;
+            padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+        }
+        .controller-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            gap: 10px;
+            font-size: 12px;
+        }
+        .controller-top .name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--accent);
+        }
+        .pad {
+            flex: 1;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1.1fr;
+            gap: 12px;
+            touch-action: none;
+        }
+        .pad button {
+            font-family: inherit;
+            border-radius: 20px;
+            border: 4px solid var(--c);
+            color: var(--c);
+            background: linear-gradient(145deg, #1a1a2e, #16213e);
+            box-shadow: 0 6px 20px var(--glow);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-size: 11px;
+            touch-action: none;
+            transition: transform 0.05s, background 0.05s;
+        }
+        .pad button svg { width: 56px; height: 56px; stroke: currentColor; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+        .pad button.down { transform: scale(0.95); background: var(--glow); }
+        .pad .rotate { --c: #ff00ff; --glow: rgba(255, 0, 255, 0.35); }
+        .pad .move { --c: #00ff66; --glow: rgba(0, 255, 102, 0.3); }
+        .pad .drop { --c: #ff4444; --glow: rgba(255, 68, 68, 0.35); grid-column: 1 / span 2; }
+
+        /* Results */
+        .result-title { font-size: 34px; line-height: 1.3; }
+        .result-title.win { color: #00ff00; text-shadow: 0 0 20px #00ff00, 0 0 40px #00ff00; animation: pulse 1.2s ease-in-out infinite alternate; }
+        .result-title.lose { color: #ff4444; text-shadow: 0 0 20px #ff4444, 0 0 40px #ff4444; }
+        .result-emoji { font-size: 72px; }
+        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+    </style>
+</head>
+<body>
+    <!-- Enter your name -->
+    <section id="joinScreen" class="screen">
+        <div class="badge" id="joinBadge">PLAYER ?</div>
+        <h1>DR. MARIO 99<br>TV ROOM</h1>
+        <form id="nameForm" autocomplete="off">
+            <input id="nameInput" maxlength="16" placeholder="YOUR NAME" autocapitalize="words" enterkeyhint="done" required>
+            <button class="big-button" id="joinButton" type="submit">JOIN</button>
+        </form>
+        <div class="error" id="joinError"></div>
+    </section>
+
+    <!-- Joined, waiting for the TV to start -->
+    <section id="waitScreen" class="screen hidden">
+        <div class="badge" id="waitBadge">PLAYER ?</div>
+        <h1 id="waitName"></h1>
+        <p>You're in! Look at the TV.<br>The game starts when both players have joined.</p>
+    </section>
+
+    <!-- The controller -->
+    <section id="controllerScreen" class="screen hidden">
+        <div class="controller-top">
+            <span class="badge" id="padBadge">P?</span>
+            <span class="name" id="padName"></span>
+        </div>
+        <div class="pad">
+            <button class="rotate" data-action="rotateLeft" aria-label="Rotate left">
+                <svg viewBox="0 0 24 24"><path d="M7 8a7 7 0 1 1-1 8"></path><polyline points="12 8 7 8 7 3"></polyline></svg>
+                ROTATE
+            </button>
+            <button class="rotate" data-action="rotateRight" aria-label="Rotate right">
+                <svg viewBox="0 0 24 24"><path d="M17 8a7 7 0 1 0 1 8"></path><polyline points="12 8 17 8 17 3"></polyline></svg>
+                ROTATE
+            </button>
+            <button class="move" data-action="left" aria-label="Move left">
+                <svg viewBox="0 0 24 24"><line x1="20" y1="12" x2="4" y2="12"></line><polyline points="10 6 4 12 10 18"></polyline></svg>
+                LEFT
+            </button>
+            <button class="move" data-action="right" aria-label="Move right">
+                <svg viewBox="0 0 24 24"><line x1="4" y1="12" x2="20" y2="12"></line><polyline points="14 6 20 12 14 18"></polyline></svg>
+                RIGHT
+            </button>
+            <button class="drop" data-action="drop" aria-label="Drop">
+                <svg viewBox="0 0 24 24"><line x1="12" y1="4" x2="12" y2="20"></line><polyline points="6 14 12 20 18 14"></polyline></svg>
+                DROP
+            </button>
+        </div>
+    </section>
+
+    <!-- Victory / game over -->
+    <section id="resultScreen" class="screen hidden">
+        <div class="result-emoji" id="resultEmoji"></div>
+        <div class="result-title" id="resultTitle"></div>
+        <p id="resultMessage"></p>
+        <p id="resultNext" class="hidden">Scan the new QR code on the TV to play again.</p>
+    </section>
+
+    <!-- Room closed or full -->
+    <section id="errorScreen" class="screen hidden">
+        <h1>HOLD ON</h1>
+        <p id="errorMessage"></p>
+    </section>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const params = new URLSearchParams(location.search);
+        const code = (params.get('room') || '').toUpperCase();
+        let player = parseInt(params.get('player'), 10) === 2 ? 2 : 1;
+        let myName = '';
+        let joined = false;
+        let screen = 'join';
+
+        // Identifies this phone so it gets its slot back after the screen locks
+        function getClientId() {
+            try {
+                let id = localStorage.getItem('tvClientId');
+                if (!id) {
+                    id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+                    localStorage.setItem('tvClientId', id);
+                }
+                return id;
+            } catch (e) {
+                return window.__tvClientId || (window.__tvClientId = Math.random().toString(36).slice(2));
+            }
+        }
+        const clientId = getClientId();
+
+        function show(id) {
+            screen = id;
+            for (const el of document.querySelectorAll('.screen')) el.classList.add('hidden');
+            document.getElementById(id + 'Screen').classList.remove('hidden');
+        }
+
+        function setPlayer(n) {
+            player = n;
+            document.body.classList.remove('p1', 'p2');
+            document.body.classList.add('p' + n);
+            document.getElementById('joinBadge').textContent = 'PLAYER ' + n;
+            document.getElementById('waitBadge').textContent = 'PLAYER ' + n;
+            document.getElementById('padBadge').textContent = 'P' + n;
+        }
+        setPlayer(player);
+
+        try { document.getElementById('nameInput').value = localStorage.getItem('tvName') || ''; } catch (e) {}
+
+        if (!code) {
+            document.getElementById('errorMessage').textContent = 'This link has no room code. Scan the QR code on the TV.';
+            show('error');
+        }
+
+        const socket = io(location.origin, { reconnectionDelayMax: 2000 });
+
+        function join() {
+            socket.emit('tvJoin', { code, player, name: myName, clientId });
+        }
+
+        document.getElementById('nameForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('nameInput').value.trim().replace(/\s+/g, ' ');
+            if (!name) {
+                document.getElementById('joinError').textContent = 'Enter your name.';
+                return;
+            }
+            myName = name;
+            try { localStorage.setItem('tvName', name); } catch (e) {}
+            document.getElementById('joinButton').disabled = true;
+            document.getElementById('joinError').textContent = '';
+            join();
+        });
+
+        socket.on('connect', () => {
+            // Came back after the phone slept or the Wi-Fi blinked: take the same slot again
+            if (joined) join();
+        });
+
+        socket.on('tvJoined', (data) => {
+            joined = true;
+            myName = data.name;
+            setPlayer(data.player);
+            document.getElementById('joinButton').disabled = false;
+            document.getElementById('waitName').textContent = data.name;
+            document.getElementById('padName').textContent = data.name;
+            if (data.result) showResult(data.result);
+            else if (data.state === 'playing') show('controller');
+            else show('wait');
+        });
+
+        socket.on('tvJoinError', (data) => {
+            document.getElementById('joinButton').disabled = false;
+            if (data.reason === 'name') {
+                document.getElementById('joinError').textContent = data.message;
+                return;
+            }
+            joined = false;
+            if (screen === 'result') {
+                document.getElementById('resultNext').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('errorMessage').textContent = data.message;
+            show('error');
+        });
+
+        socket.on('tvGameStarted', () => {
+            releaseAll();
+            show('controller');
+        });
+
+        socket.on('tvResult', showResult);
+
+        socket.on('tvRoomClosed', () => {
+            joined = false;
+            releaseAll();
+            if (screen === 'result') {
+                document.getElementById('resultNext').classList.remove('hidden');
+            } else {
+                document.getElementById('errorMessage').textContent = 'The TV closed this room. Scan the new QR code on the TV.';
+                show('error');
+            }
+        });
+
+        function showResult(result) {
+            releaseAll();
+            const title = document.getElementById('resultTitle');
+            if (result.won) {
+                document.getElementById('resultEmoji').textContent = '🏆';
+                title.textContent = 'VICTORY!';
+                title.className = 'result-title win';
+                document.getElementById('resultMessage').textContent = 'You beat the viruses first, ' + myName + '!';
+            } else {
+                document.getElementById('resultEmoji').textContent = '💀';
+                title.textContent = 'GAME OVER';
+                title.className = 'result-title lose';
+                document.getElementById('resultMessage').textContent = result.winnerName + ' won this one.';
+            }
+            if (navigator.vibrate) navigator.vibrate(result.won ? [80, 60, 80, 60, 200] : [400]);
+            show('result');
+        }
+
+        // Buttons: send "down" when pressed and "up" when released; the TV repeats while held
+        const held = new Map(); // pointerId -> button
+        function press(button) {
+            button.classList.add('down');
+            socket.emit('tvInput', { action: button.dataset.action, pressed: true });
+            if (navigator.vibrate) navigator.vibrate(12);
+        }
+        function release(button) {
+            button.classList.remove('down');
+            socket.emit('tvInput', { action: button.dataset.action, pressed: false });
+        }
+        function releaseAll() {
+            for (const button of new Set(held.values())) release(button);
+            held.clear();
+        }
+        for (const button of document.querySelectorAll('.pad button')) {
+            button.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                if (held.has(e.pointerId)) return;
+                try { button.setPointerCapture(e.pointerId); } catch (err) {}
+                const alreadyDown = [...held.values()].includes(button);
+                held.set(e.pointerId, button);
+                if (!alreadyDown) press(button);
+            });
+            const end = (e) => {
+                if (held.get(e.pointerId) !== button) return;
+                held.delete(e.pointerId);
+                if (![...held.values()].includes(button)) release(button);
+            };
+            button.addEventListener('pointerup', end);
+            button.addEventListener('pointercancel', end);
+            button.addEventListener('lostpointercapture', end);
+            button.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+        document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
+        window.addEventListener('blur', releaseAll);
+        // Stop double-tap zoom and pull-to-refresh on the pad
+        document.addEventListener('touchmove', (e) => { if (screen === 'controller') e.preventDefault(); }, { passive: false });
+    </script>
+</body>
+</html>
