@@ -84,11 +84,34 @@
         .error { color: #ff6b6b; font-size: 11px; min-height: 1em; line-height: 1.6; }
 
         /* Controller */
+        /* Buttons only in the bottom 60% of the screen, where a thumb reaches
+           without looking; the top 40% is just who you are */
         #controllerScreen {
             justify-content: stretch;
-            gap: 12px;
-            padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+            gap: 0;
+            padding: 0;
         }
+        .controller-info {
+            flex: 0 0 40%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: max(12px, env(safe-area-inset-top)) 12px 12px;
+            gap: 10px;
+        }
+        .controller-info .big-name {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            font-size: 24px;
+            color: var(--accent);
+            text-shadow: 0 0 14px var(--accent);
+            max-width: 100%;
+        }
+        .controller-info .big-name small { font-size: 10px; color: #9fb3ff; text-shadow: none; }
         .controller-top {
             display: flex;
             align-items: center;
@@ -97,15 +120,20 @@
             gap: 10px;
             font-size: 12px;
         }
-        .controller-top .name {
+        .controller-info .big-name span {
+            /* room for the glow, so cutting off a long name doesn't clip it into a box */
+            padding: 16px;
+            margin: -16px 0;
+            box-sizing: border-box;
+            max-width: 100%;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            color: var(--accent);
         }
         .pad {
-            flex: 1;
+            flex: 0 0 60%;
             width: 100%;
+            padding: 0 12px max(12px, env(safe-area-inset-bottom));
             display: grid;
             grid-template-columns: 1fr 1fr;
             grid-template-rows: 1fr 1fr 1.1fr;
@@ -210,10 +238,12 @@
 
     <!-- The controller -->
     <section id="controllerScreen" class="screen hidden">
-        <div class="controller-top">
-            <span class="badge" id="padBadge">P?</span>
-            <span class="link" id="linkBadge" title="How your buttons reach the TV">☁ SERVER</span>
-            <span class="name" id="padName"></span>
+        <div class="controller-info">
+            <div class="controller-top">
+                <span class="badge" id="padBadge">P?</span>
+                <span class="link" id="linkBadge" title="How your buttons reach the TV">☁ SERVER</span>
+            </div>
+            <div class="big-name"><span id="padName"></span><small>WATCH THE TV</small></div>
         </div>
         <div class="pad">
             <button class="rotate" data-action="rotateLeft" aria-label="Rotate left">
