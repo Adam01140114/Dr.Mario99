@@ -255,14 +255,49 @@ TV ROOM (PHONES AS CONTROLLERS)
   same pills. The computer keyboard does nothing in this mode
 - **Winning**: The computer decides (`tvHost.playerFinished`), freezes both
   boards, shows the winner's name, and tells each phone (`tvResult`): victory
-  or game over. "New Game" reloads with `?tv=new`, which opens a new room with a
-  new code
+  or game over. "Restart" (`tvRestart`) deals new viruses and pills to the same
+  two players in the same room - no rescan; each Game rebuilds its board in
+  place (`Game.restart()`), and `PlayingBoard.destroy()` removes everything the
+  old board added, including its damage listener. "Exit" reloads to the menu,
+  which closes the room
+- **Rematch**: each phone's result screen has a Rematch button (`tvRematch`).
+  The TV shows who asked; when both have, the server starts the next game
+  (`startTvRound`, the same path as the TV's Restart button)
+- **Anywhere, not just this computer**: on the public site the join link is the
+  site's own address, so anyone can open a TV Room. To keep it feeling like a
+  LAN party, each phone opens a WebRTC data channel straight to the TV page
+  (`tvSignal` carries only the set-up; STUN: stun.l.google.com). Presses then
+  go phone -> TV over their own Wi-Fi instead of through the server; the phone
+  shows "⚡ DIRECT" and the TV a ⚡ by the name. If the channel can't open or
+  closes, presses fall back to the server (`tvInput`) automatically
+- **Copy link**: under the QR code, for a player who can't scan it
+- **Attack effect**: when a clear sends junk, `scripts/attackFx.js` shows a
+  shockwave and "ATTACK!" on the attacker's bottle, a comet flying to the
+  target's bottle, and a red flash, shake and "INCOMING!" when it lands. Phones
+  flash too (`tvFx`): "ATTACK SENT!" for the attacker, "INCOMING!" and a buzz
+  for the target. It also runs in AI mode and online rooms (comet off the top /
+  in from the top when the opponent is on another screen). It animates only
+  transform and opacity
 - **Phones that sleep**: A phone keeps an id in localStorage and gets its slot
   back when it reconnects. In the lobby a disconnected slot can be taken by
   another phone
-- **Server events**: tvCreateRoom, tvJoin, tvStartGame, tvInput, tvGameOver
-  (in); tvRoomCreated, tvLobby, tvJoined, tvJoinError, tvGameStarted, tvInput,
-  tvResult, tvRoomClosed (out). QR images come from `GET /tv/qr.svg?text=`
+- **Server events**: tvCreateRoom, tvJoin, tvStartGame, tvInput, tvGameOver,
+  tvRestart, tvFx, tvRematch, tvSignal (in); tvRoomCreated, tvLobby, tvJoined,
+  tvJoinError, tvGameStarted, tvInput, tvResult, tvFx, tvRematch, tvSignal,
+  tvRoomClosed (out). QR images come
+  from `GET /tv/qr.svg?text=`
+
+KEEPING IT SMOOTH
+-----------------
+Measured with two boards on a 1920x1080 page: the old animated background
+(`background-position` on a 400% gradient) made the browser re-rasterize the
+screen every frame - about 1.4 s of raster work per second, which showed up as
+stutter. It is now two fixed gradients with the top one fading (opacity only):
+about 10 ms per second. Rules that follow from it:
+- Animate only `transform` and `opacity`. Animating backgrounds, filters,
+  box-shadows or sizes repaints every frame
+- Decorative animations that repaint (the logo glow) stop while a game is on
+  screen (`body.in-game`)
 
 GAME MECHANICS
 ==============

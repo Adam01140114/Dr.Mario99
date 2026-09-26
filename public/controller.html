@@ -134,6 +134,49 @@
         .pad .move { --c: #00ff66; --glow: rgba(0, 255, 102, 0.3); }
         .pad .drop { --c: #ff4444; --glow: rgba(255, 68, 68, 0.35); grid-column: 1 / span 2; }
 
+        /* Attack flashes */
+        .fx-flash {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0;
+            background: radial-gradient(ellipse at center, transparent 20%, var(--fx-bg) 100%);
+            box-shadow: inset 0 0 60px 20px var(--fx);
+        }
+        .fx-flash span {
+            width: 100%;
+            padding: 22px 0;
+            text-align: center;
+            font-size: 26px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.8);
+            border-top: 4px solid var(--fx);
+            border-bottom: 4px solid var(--fx);
+            text-shadow: 0 0 12px var(--fx), 3px 3px 0 #000;
+        }
+        .fx-flash.attack { --fx: #00ff66; --fx-bg: rgba(0, 255, 102, 0.55); }
+        .fx-flash.hit { --fx: #ff3b3b; --fx-bg: rgba(255, 40, 40, 0.7); }
+
+        /* How the buttons reach the TV: straight over the Wi-Fi, or through the server */
+        .controller-top .link {
+            font-size: 9px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            border: 2px solid #8892b0;
+            color: #8892b0;
+            white-space: nowrap;
+        }
+        .controller-top .link.direct { border-color: #00ff66; color: #00ff66; text-shadow: 0 0 6px #00ff66; }
+
+        .rematch-button { width: 100%; max-width: 320px; font-size: 18px; padding: 22px; }
+        .rematch-button.waiting { background: rgba(0, 0, 0, 0.5); border-color: #00ff66; color: #00ff66; font-size: 12px; }
+        .rematch-button.asked { animation: pulse 0.8s ease-in-out infinite alternate; }
+        .rematch-status { min-height: 1.8em; color: #ffd60a; }
+
         /* Results */
         .result-title { font-size: 34px; line-height: 1.3; }
         .result-title.win { color: #00ff00; text-shadow: 0 0 20px #00ff00, 0 0 40px #00ff00; animation: pulse 1.2s ease-in-out infinite alternate; }
@@ -165,6 +208,7 @@
     <section id="controllerScreen" class="screen hidden">
         <div class="controller-top">
             <span class="badge" id="padBadge">P?</span>
+            <span class="link" id="linkBadge" title="How your buttons reach the TV">☁ SERVER</span>
             <span class="name" id="padName"></span>
         </div>
         <div class="pad">
@@ -196,6 +240,8 @@
         <div class="result-emoji" id="resultEmoji"></div>
         <div class="result-title" id="resultTitle"></div>
         <p id="resultMessage"></p>
+        <button class="big-button rematch-button" id="rematchButton" type="button">🔁 REMATCH</button>
+        <p id="rematchStatus" class="rematch-status"></p>
         <p id="resultNext" class="hidden">Scan the new QR code on the TV to play again.</p>
     </section>
 
@@ -284,6 +330,7 @@
             document.getElementById('joinButton').disabled = false;
             document.getElementById('waitName').textContent = data.name;
             document.getElementById('padName').textContent = data.name;
+            openDirect();
             if (data.result) showResult(data.result);
             else if (data.state === 'playing') show('controller');
             else show('wait');
@@ -297,6 +344,7 @@
             }
             joined = false;
             if (screen === 'result') {
+                document.getElementById('rematchButton').classList.add('hidden');
                 document.getElementById('resultNext').classList.remove('hidden');
                 return;
             }
@@ -306,15 +354,62 @@
 
         socket.on('tvGameStarted', () => {
             releaseAll();
+            document.getElementById('resultNext').classList.add('hidden');
             show('controller');
         });
 
+        // Rematch: when both phones ask, the TV starts the next game by itself
+        let iAskedRematch = false;
+        document.getElementById('rematchButton').addEventListener('click', () => {
+            if (iAskedRematch) return;
+            iAskedRematch = true;
+            socket.emit('tvRematch');
+            showRematch([player]);
+            if (navigator.vibrate) navigator.vibrate(20);
+        });
+        function showRematch(players) {
+            const button = document.getElementById('rematchButton');
+            const status = document.getElementById('rematchStatus');
+            const mine = players.includes(player);
+            const theirs = players.some(n => n !== player);
+            iAskedRematch = mine;
+            button.disabled = mine;
+            button.classList.toggle('waiting', mine);
+            button.classList.toggle('asked', !mine && theirs);
+            button.textContent = mine ? 'WAITING FOR ' + (otherName || 'THE OTHER PLAYER') + '...' : '🔁 REMATCH';
+            status.textContent = mine && theirs ? 'Starting!' : (!mine && theirs ? (otherName || 'The other player') + ' wants a rematch!' : '');
+        }
+        socket.on('tvRematch', ({ players }) => showRematch(players));
+
         socket.on('tvResult', showResult);
+
+        // You sent junk, or junk hit you: flash the whole screen (the pad keeps working underneath)
+        socket.on('tvFx', ({ kind }) => {
+            if (screen !== 'controller') return;
+            const el = document.createElement('div');
+            el.className = 'fx-flash ' + kind;
+            const label = document.createElement('span');
+            label.textContent = kind === 'attack' ? 'ATTACK SENT!' : 'INCOMING!';
+            el.appendChild(label);
+            document.body.appendChild(el);
+            const anim = el.animate([
+                { opacity: 0, transform: 'scale(1.15)' },
+                { opacity: 1, transform: 'scale(1)', offset: 0.1 },
+                { opacity: 1, transform: 'scale(1)', offset: 0.55 },
+                { opacity: 0, transform: 'scale(1)' },
+            ], { duration: kind === 'attack' ? 800 : 1000, easing: 'ease-out' });
+            anim.onfinish = () => el.remove();
+            if (navigator.vibrate) navigator.vibrate(kind === 'attack' ? 30 : [120, 60, 120]);
+        });
 
         socket.on('tvRoomClosed', () => {
             joined = false;
             releaseAll();
+            closeDirect();
             if (screen === 'result') {
+                // The room is gone, so there is nothing to rematch in
+                document.getElementById('rematchButton').classList.add('hidden');
+                document.getElementById('rematchStatus').textContent = '';
                 document.getElementById('resultNext').classList.remove('hidden');
             } else {
                 document.getElementById('errorMessage').textContent = 'The TV closed this room. Scan the new QR code on the TV.';
@@ -322,8 +417,12 @@
             }
         });
 
+        let otherName = '';
         function showResult(result) {
             releaseAll();
+            otherName = result.otherName || (result.won ? '' : result.winnerName);
+            document.getElementById('rematchButton').classList.remove('hidden');
+            showRematch(result.rematch || []);
             const title = document.getElementById('resultTitle');
             if (result.won) {
                 document.getElementById('resultEmoji').textContent = '🏆';
@@ -340,16 +439,63 @@
             show('result');
         }
 
+        /**
+         * Direct link to the TV (WebRTC data channel). The server only passes the
+         * set-up messages; after that, presses go straight from this phone to the
+         * TV page over the Wi-Fi they share - fast even when the site is hosted
+         * far away. If it can't connect, presses keep going through the server.
+         */
+        let pc = null;
+        let channel = null;
+        function closeDirect() {
+            if (channel) { try { channel.close(); } catch (e) {} }
+            if (pc) { try { pc.close(); } catch (e) {} }
+            pc = null;
+            channel = null;
+            showLink('server');
+        }
+        function showLink(kind) {
+            const el = document.getElementById('linkBadge');
+            el.classList.toggle('direct', kind !== 'server');
+            el.textContent = kind === 'direct' ? '⚡ DIRECT' : '☁ SERVER';
+        }
+        function openDirect() {
+            if (!window.RTCPeerConnection) return;
+            closeDirect();
+            const myPc = pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+            const myChannel = channel = pc.createDataChannel('input', { ordered: true });
+            myChannel.onopen = () => { if (pc === myPc) showLink('direct'); };
+            myChannel.onclose = () => { if (channel === myChannel) { channel = null; showLink('server'); } };
+            pc.onicecandidate = (e) => { if (e.candidate && pc === myPc) socket.emit('tvSignal', { candidate: e.candidate }); };
+            pc.createOffer()
+                .then(offer => myPc.setLocalDescription(offer))
+                .then(() => { if (pc === myPc) socket.emit('tvSignal', { description: myPc.localDescription }); })
+                .catch(() => closeDirect());
+        }
+        // Apply the TV's answer before its network candidates, in the order they came
+        let signalChain = Promise.resolve();
+        socket.on('tvSignal', ({ description, candidate }) => {
+            const myPc = pc;
+            if (!myPc) return;
+            signalChain = signalChain.then(() => description
+                ? myPc.setRemoteDescription(description)
+                : candidate && myPc.addIceCandidate(candidate)).catch(() => {});
+        });
+
         // Buttons: send "down" when pressed and "up" when released; the TV repeats while held
         const held = new Map(); // pointerId -> button
+        function sendInput(action, pressed) {
+            if (channel && channel.readyState === 'open') channel.send(JSON.stringify({ action, pressed }));
+            else socket.emit('tvInput', { action, pressed });
+        }
         function press(button) {
             button.classList.add('down');
-            socket.emit('tvInput', { action: button.dataset.action, pressed: true });
+            sendInput(button.dataset.action, true);
             if (navigator.vibrate) navigator.vibrate(12);
         }
         function release(button) {
             button.classList.remove('down');
-            socket.emit('tvInput', { action: button.dataset.action, pressed: false });
+            sendInput(button.dataset.action, false);
         }
         function releaseAll() {
             for (const button of new Set(held.values())) release(button);

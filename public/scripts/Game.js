@@ -187,6 +187,7 @@ export default class Game extends HTMLElement {
      * Starts the main game loop that updates the board every frame
      */
     startInterval() {
+        clearInterval(this.interval)
         this.interval = setInterval(() => {
             this.board.nextFrame()
         }, DELAY.frame)
@@ -197,6 +198,20 @@ export default class Game extends HTMLElement {
      */
     stopInterval() {
         clearInterval(this.interval)
+    }
+
+    /**
+     * TV Room restart: a fresh board from window.sharedGameData, same player
+     */
+    restart() {
+        this.freeze()
+        this.hasLost = false
+        const level = this.board ? this.board.level : 0
+        if (this.board) this.board.destroy()
+        this.setBg(level)
+        this.createBoard(level, 0)
+        this.createDancingViruses()
+        this.startInterval()
     }
 
     /**

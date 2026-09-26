@@ -30,6 +30,7 @@
 import { Pill, Virus, randomColor } from "./Shape.js"
 import { Color, Direction, Rotation, DELAY } from "./components.js"
 import { getSpriteUrl, preloadGameplaySprites } from "./spriteCache.js"
+import { attackSent, attackReceived } from "./attackFx.js"
 
 // Global game state variables
 var pillnum = 1;        // Current pill number
@@ -269,7 +270,8 @@ export class PlayingBoard extends Board {
              * Damage is calculated as: floor(opponent_points / 4)
              * Damage is capped at 1 virus maximum per clear.
              */
-            socket.on(`p${this.playerNumber}damage`, (data) => {
+            this.damageEvent = `p${this.playerNumber}damage`;
+            this.damageHandler = (data) => {
 
                 // Validate room code to ensure damage is for the correct game
                 if (data.roomCode === roomCode) {
@@ -281,11 +283,13 @@ export class PlayingBoard extends Board {
                         // Cap damage at 1 virus maximum per clear
                         this.realdamage = Math.min(calculatedDamage, 1);
                         this.damageProcessed = false;
+                        attackReceived(this.playerNumber);
                     } else {
                     }
                 } else {
                 }
-            });
+            };
+            socket.on(this.damageEvent, this.damageHandler);
         } else {
         }
 
@@ -408,9 +412,13 @@ export class PlayingBoard extends Board {
             window.currentPlayingBoard = null;
         }
 
+        // A destroyed board stops listening for damage (otherwise every new round adds one more listener)
+        if (this.damageHandler) socket.off(this.damageEvent, this.damageHandler)
+
         this.topElement.remove()
         this.scoreElement.remove()
         this.virusCountElement.remove()
+        if (this.levelCountElement) this.levelCountElement.remove()
         for (let row of this.fields) {
             for (let field of row) {
                 field.remove()
@@ -422,6 +430,7 @@ export class PlayingBoard extends Board {
 
             }
         }
+        this.throwingBoard.remove()
         this.remove()
     }
 
@@ -988,6 +997,8 @@ class Field extends HTMLElement {
                 [`player${this.board.playerNumber === 1 ? 2 : 1}points`]: this.board.localpoints, 
                 roomCode: roomCode 
             });
+            // Single player has nobody to attack
+            if (typeof roomCode !== 'undefined' && roomCode) attackSent(this.board.playerNumber);
         }
 
         // Reset points after sending damage
@@ -1181,14 +1192,6 @@ class ThrowingBoard extends Board {
 					pillx2 = 4;
 					this.pilly = 15;
 					this.pilly2 = 15;
-
-					// Send points update to opponent
-                    if (!(this.playingBoard && this.playingBoard.game && this.playingBoard.game.isAIOpponentView)) {
-					    socket.emit(`updatePoints${this.playerNumber === 1 ? 2 : 1}`, { [`player${this.playerNumber === 1 ? 2 : 1}points`]: this.localpoints, roomCode: roomCode });
-                    }
-
-					// Reset local points
-					this.localpoints = 0;
 
 					// DAMAGE PROCESSING: Check for received damage
 

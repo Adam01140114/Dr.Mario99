@@ -20,19 +20,36 @@
         }
 
         body {
-            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
-            background-size: 400% 400%;
-            animation: gradientShift 8s ease infinite;
+            background: #16213e;
             min-height: 100vh;
             font-family: 'Press Start 2P', cursive;
             overflow-x: hidden;
             position: relative;
         }
 
-        @keyframes gradientShift {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+        /* The shifting background: two fixed gradients, the top one fading in and out.
+           Animating opacity costs nothing; animating background-position made the
+           browser repaint the whole screen every frame, which made the game stutter. */
+        body::before,
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+        }
+        body::before {
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+        }
+        body::after {
+            background: linear-gradient(315deg, #1a1a2e, #16213e, #0f3460);
+            animation: gradientFade 8s ease-in-out infinite alternate;
+            will-change: opacity;
+        }
+
+        @keyframes gradientFade {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
 
         /* Animated background particles */
@@ -92,6 +109,9 @@
             from { filter: drop-shadow(0 0 20px #00ffff); }
             to { filter: drop-shadow(0 0 40px #ff00ff); }
         }
+
+        /* The glow animates a filter, which repaints every frame: menu only */
+        body.in-game .logo-container { animation: none; filter: drop-shadow(0 0 20px #00ffff); }
 
         .logo {
             width: 500px;
@@ -938,6 +958,18 @@
         .tv-qr-frame img { width: 100%; height: 100%; image-rendering: pixelated; }
         .tv-qr-label { color: var(--tv-slot-color, #00ffff); font-size: 1.1rem; text-shadow: 0 0 10px currentColor; }
         .tv-qr-url { color: #9fb3ff; font-size: 0.6rem; line-height: 1.6; word-break: break-all; max-width: 400px; }
+        .tv-copy-button {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 0.75rem;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid var(--tv-slot-color, #00ffff);
+            border-radius: 10px;
+            padding: 12px 18px;
+            cursor: pointer;
+        }
+        .tv-copy-button:hover { background: var(--tv-slot-glow, rgba(0, 255, 255, 0.4)); }
+        .tv-copy-button.copied { border-color: #00ff66; color: #00ff66; }
         .tv-warning { color: #ffb703; font-size: 0.6rem; line-height: 1.7; max-width: 400px; }
         .tv-side {
             display: flex;
@@ -1039,6 +1071,24 @@
         .tv-victory .tv-victory-reason { font-size: 1.2rem; }
         .tv-victory-buttons { display: flex; flex-direction: column; align-items: center; gap: 18px; position: relative; z-index: 1; }
         .tv-victory .alert-button { font-family: 'Press Start 2P', cursive; font-size: 1.4rem; padding: 22px 44px; min-width: 360px; }
+        .tv-rematch { display: flex; gap: 18px; justify-content: center; margin: 4px 0 10px; position: relative; z-index: 1; }
+        .tv-rematch .tv-rematch-chip {
+            font-size: 1rem;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 3px dashed rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.5);
+        }
+        .tv-rematch .tv-rematch-chip.ready {
+            border-style: solid;
+            border-color: var(--tv-slot-color);
+            color: var(--tv-slot-color);
+            box-shadow: 0 0 18px var(--tv-slot-glow);
+            animation: tvPop 0.45s cubic-bezier(.2, 1.6, .4, 1);
+        }
+        .tv-rematch .tv-rematch-chip.ready::after { content: ' ✔ REMATCH'; }
+        .tv-victory .tv-rematch-hint { font-size: 0.7rem; color: #9fb3ff; margin-bottom: 22px; position: relative; z-index: 1; }
+        .tv-name-tag .tv-link { font-size: 1.6rem; color: #00ff66; text-shadow: 0 0 10px #00ff66; }
         .tv-victory .alert-button.secondary { font-size: 0.9rem; padding: 14px 28px; min-width: 0; background: transparent; color: #00ffff; }
     </style>
 </head>
@@ -1102,6 +1152,7 @@
                     <div class="tv-qr-frame"><img id="tvQrImg" alt="QR code to join"><span id="tvQrWait">Opening room...</span></div>
                     <div class="tv-qr-label" id="tvQrLabel">SCAN WITH YOUR PHONE</div>
                     <div class="tv-qr-url" id="tvQrUrl"></div>
+                    <button id="tvCopyLink" class="tv-copy-button" type="button">📋 COPY LINK</button>
                     <div class="tv-warning hidden" id="tvWarning"></div>
                 </div>
                 <div class="tv-side">
@@ -1126,14 +1177,14 @@
 
         <div class="ai-boards-row">
             <div class="game-container hidden" id="game1">
-                <div class="tv-name-tag tv-p1"><span class="tv-slot-num">P1</span><span id="tvName1"></span></div>
+                <div class="tv-name-tag tv-p1"><span class="tv-slot-num">P1</span><span id="tvName1"></span><span class="tv-link hidden" id="tvLink1" title="Controller connected straight over the Wi-Fi">⚡</span></div>
                 <div id="top-player1"></div>
                 <div id="score-player1"></div>
                 <div id="virusCount-player1"></div>
             </div>
 
             <div class="game-container hidden" id="game2">
-                <div class="tv-name-tag tv-p2"><span class="tv-slot-num">P2</span><span id="tvName2"></span></div>
+                <div class="tv-name-tag tv-p2"><span class="tv-slot-num">P2</span><span id="tvName2"></span><span class="tv-link hidden" id="tvLink2" title="Controller connected straight over the Wi-Fi">⚡</span></div>
                 <div id="top-player2"></div>
                 <div id="score-player2"></div>
                 <div id="virusCount-player2"></div>
@@ -1278,6 +1329,7 @@
         function applyMobileGameZoom() {
             const activeGame = getActiveGameContainer();
             if (!activeGame) return;
+            document.body.classList.add('in-game');
 
             // TV Room: both boards and their name tags, as big as the screen allows
             if (document.body.classList.contains('tv-mode')) {
@@ -1362,6 +1414,7 @@
             activeGame.style.width = '';
         }
         function restoreViewport() {
+            document.body.classList.remove('in-game');
             const game1 = document.getElementById('game1');
             const game2 = document.getElementById('game2');
             const row = document.querySelector('.ai-boards-row');
@@ -1917,17 +1970,26 @@
             setTimeout(() => { this.disabled = false; }, 2000);
         };
 
+        // Give each player a copy of this round's shared data: same viruses, same pills
+        function useTvGameData(gameData) {
+            window.sharedGameData = gameData;
+            window.myRandomList = [...gameData.randomList];
+            window.numberPosition = 1;
+            window.tvColorPositions = { 1: 1, 2: 1 }; // each player walks the same pill list
+        }
+
         socket.on('tvGameStarted', (data) => {
-            if (data.code !== tvHost.code || tvHost.started) return;
-            tvHost.started = true;
+            if (data.code !== tvHost.code) return;
             tvHost.names = data.names;
+            if (tvHost.started) {
+                restartTvGame(data);
+                return;
+            }
+            tvHost.started = true;
 
             // The same set-up as an online room, with both boards on this page
             roomCode = data.code;
-            window.sharedGameData = data.gameData;
-            window.myRandomList = [...data.gameData.randomList];
-            window.numberPosition = 1;
-            window.tvColorPositions = { 1: 1, 2: 1 }; // each player walks the same pill list
+            useTvGameData(data.gameData);
             window.gameInstanceOptions = {
                 1: { isTVControlled: true },
                 2: { isTVControlled: true },
@@ -1950,8 +2012,10 @@
             applyMobileGameZoom();
         });
 
-        // A phone button went down or up: move that player's pill, repeating while held
-        socket.on('tvInput', ({ player, action, pressed }) => {
+        // A phone button went down or up: move that player's pill, repeating while held.
+        // Presses arrive over the direct Wi-Fi link when there is one, else through the server.
+        socket.on('tvInput', handleTvInput);
+        function handleTvInput({ player, action, pressed }) {
             if (!tvHost.started || tvHost.finished || !tvHost.holds[player]) return;
             const holds = tvHost.holds[player];
             if (action === 'all') {
@@ -1973,7 +2037,80 @@
             };
             move();
             if (TV_REPEAT[action]) holds[action] = setInterval(move, TV_REPEAT[action]);
+        }
+
+        /**
+         * Direct links from the phones (WebRTC data channels). Each phone offers a
+         * connection through the server; once it opens, its presses come straight
+         * over the Wi-Fi. The server keeps carrying everything else.
+         */
+        const tvPeers = {};
+        function closeTvPeer(player) {
+            const peer = tvPeers[player];
+            if (!peer) return;
+            try { peer.pc.close(); } catch (e) {}
+            delete tvPeers[player];
+            showTvLink(player, false);
+        }
+        function showTvLink(player, direct) {
+            const tag = document.getElementById('tvLink' + player);
+            if (tag) tag.classList.toggle('hidden', !direct);
+        }
+        socket.on('tvSignal', ({ player, description, candidate }) => {
+            if (player !== 1 && player !== 2 || !window.RTCPeerConnection) return;
+            if (description && description.type === 'offer') {
+                closeTvPeer(player);
+                const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+                const peer = tvPeers[player] = { pc, chain: Promise.resolve() };
+                pc.onicecandidate = (e) => { if (e.candidate && tvPeers[player] === peer) socket.emit('tvSignal', { player, candidate: e.candidate }); };
+                pc.ondatachannel = (e) => {
+                    const channel = e.channel;
+                    channel.onopen = () => showTvLink(player, true);
+                    channel.onmessage = (m) => {
+                        try {
+                            const data = JSON.parse(m.data);
+                            handleTvInput({ player, action: String(data.action), pressed: !!data.pressed });
+                        } catch (err) {}
+                    };
+                    channel.onclose = () => {
+                        if (tvPeers[player] !== peer) return;
+                        showTvLink(player, false);
+                        handleTvInput({ player, action: 'all', pressed: false }); // let go of anything held
+                    };
+                };
+                peer.chain = pc.setRemoteDescription(description)
+                    .then(() => pc.createAnswer())
+                    .then(answer => pc.setLocalDescription(answer))
+                    .then(() => socket.emit('tvSignal', { player, description: pc.localDescription }))
+                    .catch(() => closeTvPeer(player));
+            } else if (candidate && tvPeers[player]) {
+                const peer = tvPeers[player];
+                peer.chain = peer.chain.then(() => peer.pc.addIceCandidate(candidate)).catch(() => {});
+            }
         });
+
+        // Phones asked for a rematch: show it under the victory message
+        socket.on('tvRematch', ({ players }) => {
+            for (const n of [1, 2]) {
+                const chip = document.getElementById('tvRematch' + n);
+                if (chip) chip.classList.toggle('ready', players.includes(n));
+            }
+        });
+
+        // Restart: fresh boards for the same two players, no new QR code
+        function restartTvGame(data) {
+            const overlay = document.querySelector('.tv-victory');
+            if (overlay) overlay.remove();
+            for (const n of [1, 2]) {
+                for (const id of Object.values(tvHost.holds[n])) clearInterval(id);
+                tvHost.holds[n] = {};
+            }
+            useTvGameData(data.gameData);
+            document.getElementById('tvName1').textContent = data.names[1];
+            document.getElementById('tvName2').textContent = data.names[2];
+            tvHost.finished = false;
+            for (const n of [1, 2]) window.gameInstances[n].restart();
+        }
 
         // Called by Game.js when a board clears its last virus (won) or fills up (lost)
         tvHost.playerFinished = function(player, won) {
@@ -2014,21 +2151,40 @@
 
             const buttons = document.createElement('div');
             buttons.className = 'tv-victory-buttons';
-            const newGame = document.createElement('button');
-            newGame.className = 'alert-button';
-            newGame.textContent = 'NEW GAME';
-            // A fresh page opens a new TV room with a new QR code
-            newGame.onclick = () => { location.href = location.pathname + '?tv=new'; };
+            const restart = document.createElement('button');
+            restart.className = 'alert-button';
+            restart.textContent = 'RESTART';
+            // Same room, same players: the server deals new viruses and pills to both
+            restart.onclick = () => {
+                restart.disabled = true;
+                restart.textContent = 'STARTING...';
+                socket.emit('tvRestart');
+            };
             const exit = document.createElement('button');
             exit.className = 'alert-button secondary';
             exit.textContent = 'EXIT';
+            // Reloading closes the room and goes back to the menu
             exit.onclick = () => { location.href = location.pathname; };
-            buttons.append(newGame, exit);
+            buttons.append(restart, exit);
 
-            modal.append(title, name, message, buttons);
+            // Each phone has a Rematch button; both pressed = the next game starts
+            const rematch = document.createElement('div');
+            rematch.className = 'tv-rematch';
+            for (const n of [1, 2]) {
+                const chip = document.createElement('div');
+                chip.id = 'tvRematch' + n;
+                chip.className = 'tv-rematch-chip tv-p' + n;
+                chip.textContent = tvHost.names[n];
+                rematch.appendChild(chip);
+            }
+            const hint = document.createElement('div');
+            hint.className = 'tv-rematch-hint';
+            hint.textContent = 'Both press REMATCH on your phones to play again';
+
+            modal.append(title, name, message, rematch, hint, buttons);
             overlay.appendChild(modal);
             document.body.appendChild(overlay);
-            setTimeout(() => newGame.focus(), 100);
+            setTimeout(() => restart.focus(), 100);
         }
 
         // Lost the server before the game started: the room is gone, so open a new one
@@ -2039,11 +2195,32 @@
             }
         });
 
-        // "New Game" reloads with ?tv=new: go straight to a new TV room
-        if (new URLSearchParams(location.search).get('tv') === 'new') {
-            history.replaceState(null, '', location.pathname);
-            startTvRoom();
-        }
+        // Copy the join link, for a player who can't scan the QR code
+        document.getElementById('tvCopyLink').onclick = function() {
+            const url = tvHost.qrUrl;
+            if (!url) return;
+            const done = () => {
+                this.textContent = '✅ COPIED!';
+                this.classList.add('copied');
+                clearTimeout(this.resetTimer);
+                this.resetTimer = setTimeout(() => {
+                    this.textContent = '📋 COPY LINK';
+                    this.classList.remove('copied');
+                }, 1800);
+            };
+            // The clipboard API only works on https or localhost; fall back to a hidden text box
+            const fallback = () => {
+                const box = document.createElement('textarea');
+                box.value = url;
+                box.style.cssText = 'position:fixed;opacity:0;';
+                document.body.appendChild(box);
+                box.select();
+                try { document.execCommand('copy'); done(); } catch (e) { prompt('Copy this link:', url); }
+                box.remove();
+            };
+            if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(url).then(done, fallback);
+            else fallback();
+        };
 
         // Touch Controls Functionality
         function setupTouchControls() {

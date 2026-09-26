@@ -644,10 +644,54 @@ function registerTvRoomHandlers(socket) {
         if (!room || room.state !== 'playing' || (winner !== 1 && winner !== 2)) return;
         room.state = 'over';
         room.winner = winner;
+        room.rematch = new Set();
         for (const n of [1, 2]) {
             const p = room.players[n];
             if (p && p.connected) io.to(p.socketId).emit('tvResult', tvResultFor(room, n));
         }
+    });
+
+    // Host: an attack effect happened; tell that player's phone
+    socket.on('tvFx', (payload = {}) => {
+        const code = socket.data.tvHostOf;
+        const room = code && tvRooms[code];
+        const p = room && room.players[parseInt(payload.player, 10)];
+        const kind = payload.kind === 'attack' ? 'attack' : 'hit';
+        if (p && p.connected) io.to(p.socketId).emit('tvFx', { kind });
+    });
+
+    // Host: play again with the same two players (no new QR code)
+    socket.on('tvRestart', () => {
+        const code = socket.data.tvHostOf;
+        if (code && tvRooms[code] && tvRooms[code].state === 'over') startTvRound(code);
+    });
+
+    // Phone: "Rematch" on the result screen. When both players ask, the next game starts
+    socket.on('tvRematch', () => {
+        const me = socket.data.tvPlayer;
+        const room = me && tvRooms[me.code];
+        if (!room || room.state !== 'over') return;
+        room.rematch.add(me.player);
+        const status = { players: [...room.rematch] };
+        io.to(room.hostId).emit('tvRematch', status);
+        io.to(`tvp:${me.code}`).emit('tvRematch', status);
+        if (room.rematch.size >= 2) startTvRound(me.code);
+    });
+
+    // WebRTC set-up between a phone and the TV page, so button presses travel
+    // straight over their Wi-Fi instead of through this server. Only a room's
+    // host and its players can reach each other.
+    socket.on('tvSignal', (payload = {}) => {
+        const signal = { description: payload.description, candidate: payload.candidate };
+        if (socket.data.tvHostOf) {
+            const room = tvRooms[socket.data.tvHostOf];
+            const p = room && room.players[parseInt(payload.player, 10)];
+            if (p && p.connected) io.to(p.socketId).emit('tvSignal', signal);
+            return;
+        }
+        const me = socket.data.tvPlayer;
+        const room = me && tvRooms[me.code];
+        if (room) io.to(room.hostId).emit('tvSignal', { player: me.player, ...signal });
     });
 
     socket.on('disconnect', () => {
@@ -663,9 +707,27 @@ function registerTvRoomHandlers(socket) {
     });
 }
 
+/** Deal a new game to the same two players (TV "Restart", or both phones asked for a rematch) */
+function startTvRound(code) {
+    const room = tvRooms[code];
+    if (!room) return;
+    room.state = 'playing';
+    room.winner = null;
+    room.rematch = new Set();
+    const gameData = generateNewGameData(code, true);
+    const names = { 1: room.players[1].name, 2: room.players[2].name };
+    io.to(room.hostId).emit('tvGameStarted', { code, gameData, names });
+    io.to(`tvp:${code}`).emit('tvGameStarted', { code, names });
+}
+
 function tvResultFor(room, player) {
     if (room.state !== 'over') return null;
-    return { won: room.winner === player, winnerName: room.players[room.winner].name };
+    return {
+        won: room.winner === player,
+        winnerName: room.players[room.winner].name,
+        otherName: room.players[player === 1 ? 2 : 1].name,
+        rematch: [...(room.rematch || [])],
+    };
 }
 
 function generateRoomCode() {
