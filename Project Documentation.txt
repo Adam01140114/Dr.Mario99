@@ -243,7 +243,13 @@ REAL-TIME COMMUNICATION
 
 TV ROOM (PHONES AS CONTROLLERS)
 -------------------------------
-- **Start**: "Start TV Room" on the computer opens a lobby with a QR code
+- **Start**: "Start TV Room" on the computer opens a lobby with a QR code.
+  `/tv` (e.g. https://dr-mario99.onrender.com/tv) does it by itself: the
+  server redirects to `/?tv=new`, which opens a new room on load
+- **Ready**: each phone's waiting screen has a READY button (`tvReady`, tap
+  again to undo). When both players are in and ready, the server tells the TV
+  (`tvAutoStart`) and it starts the game - nobody touches the computer. The
+  TV's Start Game button still works
 - **Joining**: The QR code links to `/controller.html?room=CODE&player=N` on the
   computer's Wi-Fi address (from `os.networkInterfaces()` when the page is opened
   on localhost), so a phone on the same Wi-Fi can reach it. The phone enters a
@@ -282,8 +288,8 @@ TV ROOM (PHONES AS CONTROLLERS)
   back when it reconnects. In the lobby a disconnected slot can be taken by
   another phone
 - **Server events**: tvCreateRoom, tvJoin, tvStartGame, tvInput, tvGameOver,
-  tvRestart, tvFx, tvRematch, tvSignal (in); tvRoomCreated, tvLobby, tvJoined,
-  tvJoinError, tvGameStarted, tvInput, tvResult, tvFx, tvRematch, tvSignal,
+  tvRestart, tvFx, tvRematch, tvSignal, tvReady (in); tvRoomCreated, tvLobby
+  (host and phones), tvAutoStart, tvJoined, tvJoinError, tvGameStarted, tvInput, tvResult, tvFx, tvRematch, tvSignal,
   tvRoomClosed (out). QR images come
   from `GET /tv/qr.svg?text=`
 

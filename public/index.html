@@ -931,8 +931,12 @@
             gap: 48px;
             align-items: center;
             justify-content: center;
-            flex-wrap: wrap;
-            max-width: 1200px;
+            flex-wrap: nowrap;
+            margin: auto;
+        }
+        /* Stack the QR code above the players only when the screen is too narrow for both */
+        @media (max-width: 1100px) {
+            .tv-lobby-panel { flex-wrap: wrap; }
         }
         .tv-qr-card {
             display: flex;
@@ -947,7 +951,8 @@
             padding: 16px;
             border: 6px solid var(--tv-slot-color, #00ffff);
             box-shadow: 0 0 40px var(--tv-slot-glow, rgba(0, 255, 255, 0.5));
-            width: min(380px, 70vw);
+            width: min(760px, 45vw, 68vh);
+            min-width: min(300px, 80vw);
             aspect-ratio: 1;
             display: flex;
             align-items: center;
@@ -957,7 +962,7 @@
         }
         .tv-qr-frame img { width: 100%; height: 100%; image-rendering: pixelated; }
         .tv-qr-label { color: var(--tv-slot-color, #00ffff); font-size: 1.1rem; text-shadow: 0 0 10px currentColor; }
-        .tv-qr-url { color: #9fb3ff; font-size: 0.6rem; line-height: 1.6; word-break: break-all; max-width: 400px; }
+        .tv-qr-url { color: #9fb3ff; font-size: 0.6rem; line-height: 1.6; word-break: break-all; max-width: 700px; }
         .tv-copy-button {
             font-family: 'Press Start 2P', cursive;
             font-size: 0.75rem;
@@ -975,7 +980,7 @@
             display: flex;
             flex-direction: column;
             gap: 22px;
-            min-width: min(460px, 90vw);
+            width: min(440px, 90vw);
         }
         .tv-title { color: #00ffff; font-size: 2.2rem; text-shadow: 0 0 20px #00ffff; }
         .tv-code { color: #ff00ff; font-size: 0.9rem; text-shadow: 0 0 10px #ff00ff; }
@@ -1006,6 +1011,8 @@
             animation: tvPop 0.45s cubic-bezier(.2, 1.6, .4, 1);
         }
         .tv-slot.joined.offline { opacity: 0.5; animation: none; }
+        .tv-slot .tv-slot-ready { margin-left: auto; font-size: 0.8rem; flex: none; color: rgba(255, 255, 255, 0.4); }
+        .tv-slot.ready .tv-slot-ready { color: #00ff66; text-shadow: 0 0 10px #00ff66; }
         .tv-p1 { --tv-slot-color: #ff4d6d; --tv-slot-glow: rgba(255, 77, 109, 0.55); }
         .tv-p2 { --tv-slot-color: #4dc3ff; --tv-slot-glow: rgba(77, 195, 255, 0.55); }
         @keyframes tvPop {
@@ -1923,6 +1930,14 @@
                 nameEl.textContent = text;
                 slot.classList.toggle('joined', !!p.name);
                 slot.classList.toggle('offline', !!p.name && !p.connected);
+                slot.classList.toggle('ready', !!p.ready);
+                let readyTag = slot.querySelector('.tv-slot-ready');
+                if (!readyTag) {
+                    readyTag = document.createElement('span');
+                    readyTag.className = 'tv-slot-ready';
+                    slot.appendChild(readyTag);
+                }
+                readyTag.textContent = !p.name ? '' : p.ready ? '✔ READY' : 'NOT READY';
                 if (p.name && !wasJoined) {
                     // Replay the pop animation when a name arrives
                     slot.style.animation = 'none';
@@ -1962,13 +1977,19 @@
 
         document.getElementById('tvRoom').onclick = startTvRoom;
         document.getElementById('tvCancel').onclick = () => { location.href = location.pathname; };
-        document.getElementById('tvStart').onclick = function() {
-            this.disabled = true;
+        function startTvGame() {
+            const button = document.getElementById('tvStart');
+            button.disabled = true;
             let virusCount = parseInt(document.getElementById('tvVirusCount').value, 10);
             if (isNaN(virusCount) || virusCount <= 0) virusCount = 5;
             socket.emit('tvStartGame', { virusCount });
-            setTimeout(() => { this.disabled = false; }, 2000);
-        };
+            setTimeout(() => { button.disabled = false; }, 2000);
+        }
+        document.getElementById('tvStart').onclick = startTvGame;
+        // Both phones pressed READY: start without anyone touching the computer
+        socket.on('tvAutoStart', ({ code }) => {
+            if (code === tvHost.code && !tvHost.started) startTvGame();
+        });
 
         // Give each player a copy of this round's shared data: same viruses, same pills
         function useTvGameData(gameData) {
@@ -2194,6 +2215,12 @@
                 socket.emit('tvCreateRoom');
             }
         });
+
+        // /tv (or ?tv=new) opens straight into a new TV Room
+        if (new URLSearchParams(location.search).get('tv') === 'new') {
+            history.replaceState(null, '', location.pathname);
+            startTvRoom();
+        }
 
         // Copy the join link, for a player who can't scan the QR code
         document.getElementById('tvCopyLink').onclick = function() {

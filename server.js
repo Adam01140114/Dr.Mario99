@@ -39,6 +39,9 @@ const io = socketIo(server, {
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
+// TV Room shortcut: /tv opens the game and starts a TV Room right away
+app.get('/tv', (req, res) => res.redirect('/?tv=new'));
+
 // TV Room: the QR code a phone scans to join (an SVG of the given link)
 app.get('/tv/qr.svg', (req, res) => {
     const text = String(req.query.text || '');
@@ -549,13 +552,16 @@ function lanOrigins(port) {
 
 function tvPlayerList(room) {
     return [1, 2].map(n => room.players[n]
-        ? { player: n, name: room.players[n].name, connected: room.players[n].connected }
-        : { player: n, name: null, connected: false });
+        ? { player: n, name: room.players[n].name, connected: room.players[n].connected, ready: room.ready.has(n) }
+        : { player: n, name: null, connected: false, ready: false });
 }
 
 function tvSendLobby(code) {
     const room = tvRooms[code];
-    if (room) io.to(room.hostId).emit('tvLobby', { code, state: room.state, players: tvPlayerList(room) });
+    if (!room) return;
+    const lobby = { code, state: room.state, players: tvPlayerList(room) };
+    io.to(room.hostId).emit('tvLobby', lobby);
+    io.to(`tvp:${code}`).emit('tvLobby', lobby);
 }
 
 function closeTvRoom(code) {
@@ -570,7 +576,7 @@ function registerTvRoomHandlers(socket) {
         if (socket.data.tvHostOf) closeTvRoom(socket.data.tvHostOf);
         let code = generateRoomCode();
         while (tvRooms[code] || activeRooms[code]) code = generateRoomCode();
-        tvRooms[code] = { hostId: socket.id, state: 'lobby', players: {}, winner: null };
+        tvRooms[code] = { hostId: socket.id, state: 'lobby', players: {}, winner: null, ready: new Set() };
         socket.data.tvHostOf = code;
         socket.join(`tvh:${code}`);
         socket.emit('tvRoomCreated', { code, lanOrigins: lanOrigins(PORT) });
@@ -610,6 +616,19 @@ function registerTvRoomHandlers(socket) {
         socket.join(`tvp:${code}`);
         socket.emit('tvJoined', { code, player: slot, name, state: room.state, result: tvResultFor(room, slot) });
         tvSendLobby(code);
+    });
+
+    // Phone: "Ready" on the waiting screen (press again to take it back).
+    // When both players are in and ready, the TV starts the game by itself.
+    socket.on('tvReady', (payload = {}) => {
+        const me = socket.data.tvPlayer;
+        const room = me && tvRooms[me.code];
+        if (!room || room.state !== 'lobby') return;
+        if (payload.ready === false) room.ready.delete(me.player);
+        else room.ready.add(me.player);
+        tvSendLobby(me.code);
+        const both = [1, 2].every(n => room.players[n] && room.players[n].connected && room.ready.has(n));
+        if (both) io.to(room.hostId).emit('tvAutoStart', { code: me.code });
     });
 
     // Host: both players are in, go
@@ -701,6 +720,7 @@ function registerTvRoomHandlers(socket) {
         const p = room && room.players[me.player];
         if (p && p.socketId === socket.id) {
             p.connected = false;
+            if (room.state === 'lobby') room.ready.delete(me.player);
             if (room.state === 'playing') io.to(room.hostId).emit('tvInput', { player: me.player, action: 'all', pressed: false });
             tvSendLobby(me.code);
         }

@@ -172,6 +172,8 @@
         }
         .controller-top .link.direct { border-color: #00ff66; color: #00ff66; text-shadow: 0 0 6px #00ff66; }
 
+        .ready-button { width: 100%; max-width: 320px; font-size: 22px; padding: 26px; }
+        .ready-button.on { background: rgba(0, 0, 0, 0.5); border-color: #00ff66; color: #00ff66; font-size: 14px; box-shadow: 0 0 20px rgba(0, 255, 102, 0.4); }
         .rematch-button { width: 100%; max-width: 320px; font-size: 18px; padding: 22px; }
         .rematch-button.waiting { background: rgba(0, 0, 0, 0.5); border-color: #00ff66; color: #00ff66; font-size: 12px; }
         .rematch-button.asked { animation: pulse 0.8s ease-in-out infinite alternate; }
@@ -201,7 +203,9 @@
     <section id="waitScreen" class="screen hidden">
         <div class="badge" id="waitBadge">PLAYER ?</div>
         <h1 id="waitName"></h1>
-        <p>You're in! Look at the TV.<br>The game starts when both players have joined.</p>
+        <p id="waitText">You're in! Press READY.<br>The game starts when both players are ready.</p>
+        <button class="big-button ready-button" id="readyButton" type="button">READY</button>
+        <p id="readyStatus" class="rematch-status"></p>
     </section>
 
     <!-- The controller -->
@@ -356,6 +360,34 @@
             releaseAll();
             document.getElementById('resultNext').classList.add('hidden');
             show('controller');
+        });
+
+        // Ready: when both players are in and ready, the TV starts the game by itself
+        let iAmReady = false;
+        let lobbyOther = null; // the other player, as of the last lobby update
+        document.getElementById('readyButton').addEventListener('click', () => {
+            iAmReady = !iAmReady;
+            socket.emit('tvReady', { ready: iAmReady });
+            showReady(iAmReady, lobbyOther);
+            if (navigator.vibrate) navigator.vibrate(20);
+        });
+        function showReady(mine, other) {
+            const button = document.getElementById('readyButton');
+            button.classList.toggle('on', mine);
+            button.textContent = mine ? 'READY ✔ (TAP TO UNDO)' : 'READY';
+            const status = document.getElementById('readyStatus');
+            if (!other || !other.name) status.textContent = 'Waiting for the other player to join...';
+            else if (!other.connected) status.textContent = other.name + ' dropped out...';
+            else if (other.ready && mine) status.textContent = 'Starting!';
+            else if (other.ready) status.textContent = other.name + ' is ready!';
+            else status.textContent = 'Waiting for ' + other.name + ' to press READY...';
+        }
+        socket.on('tvLobby', ({ players }) => {
+            if (screen !== 'wait') return;
+            const me = players.find(p => p.player === player);
+            const other = lobbyOther = players.find(p => p.player !== player);
+            iAmReady = !!(me && me.ready);
+            showReady(iAmReady, other);
         });
 
         // Rematch: when both phones ask, the TV starts the next game by itself
