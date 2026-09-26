@@ -404,7 +404,7 @@
         function showReady(mine, other) {
             const button = document.getElementById('readyButton');
             button.classList.toggle('on', mine);
-            button.textContent = mine ? 'READY ✔ (TAP TO UNDO)' : 'READY';
+            button.textContent = mine ? 'READY ✔' : 'READY';
             const status = document.getElementById('readyStatus');
             if (!other || !other.name) status.textContent = 'Waiting for the other player to join...';
             else if (!other.connected) status.textContent = other.name + ' dropped out...';
