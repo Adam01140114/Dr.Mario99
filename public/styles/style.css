@@ -134,3 +134,35 @@ dancing-virus {
     position: absolute;
     background-size: 96px 72px;
 }
+/* HOLD box: sits over "SPEED LOW" in the right-hand panel (speed never changes here).
+   Label where SPEED was, the held pill where LOW was. */
+#holdBox {
+    position: absolute;
+    left: 692px;
+    top: 398px;
+    width: 222px;
+    height: 64px;
+    background: #000;
+    z-index: 10;
+}
+#holdBox .hold-label {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 24px;
+    line-height: 24px;
+    color: #a5a5ff;
+}
+#holdBox .hold-pill {
+    position: absolute;
+    left: 152px;
+    top: 34px;
+    display: flex;
+}
+#holdBox .hold-pill img {
+    width: 24px;
+    height: 24px;
+    image-rendering: pixelated;
+}
+#holdBox.used .hold-pill { opacity: 0.35; }

@@ -90,3 +90,25 @@ export const DELAY = {
     gravitation: 90,           // Gravity effect timing
     oxDisappear: 175,          // Clear animation duration
 }
+/**
+ * BOARD PICTURES FOR PHONES
+ * =========================
+ *
+ * TV Room phones that show their own game get each cell as one character:
+ * '.' = empty, otherwise the sprite at that index. controller.html keeps the
+ * same list - change both together.
+ */
+export const SPRITE_CODES = (() => {
+    const list = []
+    for (const color of ["bl", "br", "yl"])
+        for (const kind of ["dot", "covid", "left", "right", "up", "down", "x", "o"])
+            list.push(color + "_" + kind)
+    return list
+})()
+
+/** The one-character code for a cell's background-image value ('.' = empty) */
+export function spriteCodeOf(imageValue) {
+    const match = /\/img\/((?:bl|br|yl)_[a-z]+)\.png/.exec(imageValue || "")
+    const index = match ? SPRITE_CODES.indexOf(match[1]) : -1
+    return index < 0 ? "." : String.fromCharCode(97 + index)
+}

@@ -602,6 +602,16 @@
             transform: rotate(0deg);
         }
 
+        .hold-btn {
+            border-color: #ffd60a;
+            color: #ffd60a;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 12px;
+            width: calc((60px * 4) + (15px * 3));
+            height: 44px;
+            box-shadow: 0 4px 15px rgba(255, 214, 10, 0.3);
+        }
+
         .drop-btn {
             border-color: #ff4444;
             color: #ff4444;
@@ -652,7 +662,7 @@
                 width: 100%;
                 justify-content: center;
             }
-            #dropFast {
+            #dropFast, #holdPill {
                 width: calc((50px * 4) + (10px * 3));
                 max-width: calc(100vw - 24px);
             }
@@ -1013,8 +1023,25 @@
         .tv-slot.joined.offline { opacity: 0.5; animation: none; }
         .tv-slot .tv-slot-ready { margin-left: auto; font-size: 0.8rem; flex: none; color: rgba(255, 255, 255, 0.4); }
         .tv-slot.ready .tv-slot-ready { color: #00ff66; text-shadow: 0 0 10px #00ff66; }
+        /* Player colours: same list in attackFx.js and controller.html */
         .tv-p1 { --tv-slot-color: #ff4d6d; --tv-slot-glow: rgba(255, 77, 109, 0.55); }
         .tv-p2 { --tv-slot-color: #4dc3ff; --tv-slot-glow: rgba(77, 195, 255, 0.55); }
+        .tv-p3 { --tv-slot-color: #ffd60a; --tv-slot-glow: rgba(255, 214, 10, 0.5); }
+        .tv-p4 { --tv-slot-color: #00ff66; --tv-slot-glow: rgba(0, 255, 102, 0.45); }
+        .tv-p5 { --tv-slot-color: #c77dff; --tv-slot-glow: rgba(199, 125, 255, 0.55); }
+        .tv-p6 { --tv-slot-color: #ff9f1c; --tv-slot-glow: rgba(255, 159, 28, 0.5); }
+        .tv-p7 { --tv-slot-color: #2ee6d6; --tv-slot-glow: rgba(46, 230, 214, 0.5); }
+        .tv-p8 { --tv-slot-color: #ff70d9; --tv-slot-glow: rgba(255, 112, 217, 0.55); }
+        .tv-count { color: #9fb3ff; font-size: 0.75rem; }
+        .tv-slots { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        .tv-slots.many { grid-template-columns: 1fr 1fr; gap: 10px; }
+        .tv-slots.many .tv-slot { padding: 12px; gap: 10px; }
+        .tv-slots.many .tv-slot .tv-slot-name { font-size: 0.75rem; }
+        .tv-slots.many .tv-slot .tv-slot-ready { font-size: 0.55rem; }
+        .tv-phone-option { cursor: pointer; flex-wrap: wrap; line-height: 1.6; }
+        .tv-phone-option input { width: 26px; height: 26px; accent-color: #00ffff; }
+        .tv-phone-option.locked { opacity: 0.55; cursor: not-allowed; }
+        .tv-option-note { width: 100%; color: #ffb703; font-size: 0.65rem; }
         @keyframes tvPop {
             from { transform: scale(0.6); opacity: 0; }
             to { transform: scale(1); opacity: 1; }
@@ -1046,10 +1073,23 @@
             left: 50%;
             margin: 0;
             flex-direction: row;
+            flex-wrap: wrap;
+            justify-content: center;
             align-items: flex-start;
             gap: 40px;
             transform-origin: center center;
+            transition: transform 0.5s ease;
         }
+        body.tv-mode .game-container.leaving { animation: tvLeave 0.6s ease-in forwards; }
+        @keyframes tvLeave {
+            0% { opacity: 1; transform: scale(1); filter: none; }
+            30% { opacity: 1; transform: scale(1.03); }
+            100% { opacity: 0; transform: scale(0.6) translateY(80px); }
+        }
+        body.tv-mode .game-container.out game-element { filter: grayscale(1) brightness(0.5); }
+        .tv-name-tag .tv-target { font-size: 1.7rem; color: #fff; opacity: 0.85; }
+        .tv-name-tag .tv-target:empty { display: none; }
+        .tv-name-tag .tv-out { font-size: 1.6rem; color: #ff3b3b; text-shadow: 0 0 12px #ff3b3b; }
         body.tv-mode .game-container {
             position: relative !important;
             top: auto !important;
@@ -1165,9 +1205,13 @@
                 <div class="tv-side">
                     <div class="tv-title">📺 TV ROOM</div>
                     <div class="tv-code" id="tvCode"></div>
-                    <div class="tv-slot tv-p1" id="tvSlot1"><span class="tv-slot-num">P1</span><span class="tv-slot-name">Waiting...</span></div>
-                    <div class="tv-slot tv-p2" id="tvSlot2"><span class="tv-slot-num">P2</span><span class="tv-slot-name">Waiting...</span></div>
+                    <div class="tv-count" id="tvCount">0 / 8 PLAYERS</div>
+                    <div class="tv-slots" id="tvSlots"></div>
                     <label class="tv-options">VIRUSES <input type="number" id="tvVirusCount" min="1" max="30" value="5"></label>
+                    <label class="tv-options tv-phone-option" id="tvShowOnPhoneLabel">
+                        <input type="checkbox" id="tvShowOnPhone"> SHOW GAME ON PHONE SCREEN
+                        <span class="tv-option-note" id="tvShowOnPhoneNote"></span>
+                    </label>
                     <div class="tv-actions">
                         <button id="tvStart" class="menu-button primary-button tv-start hidden">
                             <span class="emoji">▶️</span>START GAME
@@ -1184,14 +1228,12 @@
 
         <div class="ai-boards-row">
             <div class="game-container hidden" id="game1">
-                <div class="tv-name-tag tv-p1"><span class="tv-slot-num">P1</span><span id="tvName1"></span><span class="tv-link hidden" id="tvLink1" title="Controller connected straight over the Wi-Fi">⚡</span></div>
                 <div id="top-player1"></div>
                 <div id="score-player1"></div>
                 <div id="virusCount-player1"></div>
             </div>
 
             <div class="game-container hidden" id="game2">
-                <div class="tv-name-tag tv-p2"><span class="tv-slot-num">P2</span><span id="tvName2"></span><span class="tv-link hidden" id="tvLink2" title="Controller connected straight over the Wi-Fi">⚡</span></div>
                 <div id="top-player2"></div>
                 <div id="score-player2"></div>
                 <div id="virusCount-player2"></div>
@@ -1200,6 +1242,9 @@
 
         <!-- Touch Controls -->
         <div class="touch-controls hidden" id="touchControls">
+            <div class="control-row hold-row">
+                <button class="control-btn hold-btn" id="holdPill" aria-label="Hold pill">HOLD</button>
+            </div>
             <div class="control-row top-row">
                 <button class="control-btn move-btn" id="moveLeft" aria-label="Move left">
                     <svg viewBox="0 0 24 24" class="control-icon" aria-hidden="true">
@@ -1334,19 +1379,15 @@
             return containers;
         }
         function applyMobileGameZoom() {
+            // TV Room: every player's board, laid out by scripts/tvHost.js
+            if (document.body.classList.contains('tv-mode')) {
+                if (window.tvHost && window.tvHost.layout) window.tvHost.layout();
+                return;
+            }
             const activeGame = getActiveGameContainer();
             if (!activeGame) return;
             document.body.classList.add('in-game');
 
-            // TV Room: both boards and their name tags, as big as the screen allows
-            if (document.body.classList.contains('tv-mode')) {
-                const row = document.querySelector('.ai-boards-row');
-                const rowWidth = 2 * (GAME_CANVAS_WIDTH + 14) + 40;
-                const rowHeight = 576 + 14 + 70;
-                const scale = Math.min(1.6, (window.innerWidth - 32) / rowWidth, (window.innerHeight - 32) / rowHeight);
-                row.style.transform = `translate(-50%, -50%) scale(${scale})`;
-                return;
-            }
 
             const viewportPadding = 16;
             const touchControlsHeight = 100;
@@ -1866,389 +1907,6 @@
             setTimeout(() => (typeof roomCode !== 'undefined' && roomCode ? nextRoundBtn : exitBtn).focus(), 100);
         }
 
-        /**
-         * TV ROOM
-         * =======
-         * This computer shows both boards; each player scans a QR code and
-         * uses their phone as the controller (public/controller.html).
-         * This page runs both games and decides who won.
-         */
-        const tvHost = window.tvHost = {
-            code: null,
-            joinOrigin: null,
-            players: [],
-            names: {},
-            started: false,
-            finished: false,
-            holds: { 1: {}, 2: {} },
-            qrUrl: null,
-        };
-        const TV_KEYS = { left: 'a', right: 'd', rotateLeft: 'w', rotateRight: 'Shift', drop: 's' };
-        const TV_REPEAT = { left: 166, right: 166, drop: 60 }; // held-key repeat, as on the keyboard (Board.js)
-
-        function startTvRoom() {
-            document.body.classList.remove('ai-mode');
-            hideRoomCode();
-            document.getElementById('tvLobby').classList.remove('hidden');
-            socket.emit('tvCreateRoom');
-        }
-
-        socket.on('tvRoomCreated', (data) => {
-            tvHost.code = data.code;
-            tvHost.players = [];
-            tvHost.qrUrl = null;
-            // A phone cannot reach "localhost": use this computer's Wi-Fi address instead
-            const localNames = ['localhost', '127.0.0.1', '::1', '[::1]'];
-            const isLocal = localNames.includes(location.hostname);
-            const lan = (data.lanOrigins || [])[0];
-            tvHost.joinOrigin = isLocal && lan ? lan : location.origin;
-            const warning = document.getElementById('tvWarning');
-            if (isLocal && !lan) {
-                warning.textContent = 'This computer is not on a network, so phones cannot reach it. Connect it to Wi-Fi and press New Game.';
-                warning.classList.remove('hidden');
-            } else {
-                warning.classList.add('hidden');
-            }
-            document.getElementById('tvCode').textContent = 'ROOM ' + data.code;
-            renderTvLobby();
-        });
-
-        socket.on('tvLobby', (data) => {
-            if (data.code !== tvHost.code) return;
-            tvHost.players = data.players;
-            renderTvLobby();
-        });
-
-        function renderTvLobby() {
-            const players = tvHost.players.length ? tvHost.players
-                : [{ player: 1, name: null, connected: false }, { player: 2, name: null, connected: false }];
-            for (const p of players) {
-                const slot = document.getElementById('tvSlot' + p.player);
-                const nameEl = slot.querySelector('.tv-slot-name');
-                const text = p.name ? p.name + (p.connected ? '' : ' (away)') : 'Waiting...';
-                const wasJoined = slot.classList.contains('joined');
-                nameEl.textContent = text;
-                slot.classList.toggle('joined', !!p.name);
-                slot.classList.toggle('offline', !!p.name && !p.connected);
-                slot.classList.toggle('ready', !!p.ready);
-                let readyTag = slot.querySelector('.tv-slot-ready');
-                if (!readyTag) {
-                    readyTag = document.createElement('span');
-                    readyTag.className = 'tv-slot-ready';
-                    slot.appendChild(readyTag);
-                }
-                readyTag.textContent = !p.name ? '' : p.ready ? '✔ READY' : 'NOT READY';
-                if (p.name && !wasJoined) {
-                    // Replay the pop animation when a name arrives
-                    slot.style.animation = 'none';
-                    void slot.offsetWidth;
-                    slot.style.animation = '';
-                }
-            }
-
-            const open = players.find(p => !p.name || !p.connected);
-            const qrCard = document.getElementById('tvQrCard');
-            const startBtn = document.getElementById('tvStart');
-            if (open && tvHost.code) {
-                const url = `${tvHost.joinOrigin}/controller.html?room=${tvHost.code}&player=${open.player}`;
-                qrCard.classList.remove('hidden');
-                qrCard.classList.remove('tv-p1', 'tv-p2');
-                qrCard.classList.add('tv-p' + open.player);
-                document.getElementById('tvQrLabel').textContent = 'PLAYER ' + open.player + ': SCAN TO JOIN';
-                document.getElementById('tvQrUrl').textContent = url;
-                if (tvHost.qrUrl !== url) {
-                    tvHost.qrUrl = url;
-                    const img = document.getElementById('tvQrImg');
-                    img.classList.add('hidden');
-                    document.getElementById('tvQrWait').classList.remove('hidden');
-                    img.onload = () => {
-                        img.classList.remove('hidden');
-                        document.getElementById('tvQrWait').classList.add('hidden');
-                    };
-                    img.src = '/tv/qr.svg?text=' + encodeURIComponent(url);
-                }
-                startBtn.classList.add('hidden');
-            } else if (tvHost.code) {
-                qrCard.classList.add('hidden');
-                startBtn.classList.remove('hidden');
-                startBtn.focus();
-            }
-        }
-
-        document.getElementById('tvRoom').onclick = startTvRoom;
-        document.getElementById('tvCancel').onclick = () => { location.href = location.pathname; };
-        function startTvGame() {
-            const button = document.getElementById('tvStart');
-            button.disabled = true;
-            let virusCount = parseInt(document.getElementById('tvVirusCount').value, 10);
-            if (isNaN(virusCount) || virusCount <= 0) virusCount = 5;
-            socket.emit('tvStartGame', { virusCount });
-            setTimeout(() => { button.disabled = false; }, 2000);
-        }
-        document.getElementById('tvStart').onclick = startTvGame;
-        // Both phones pressed READY: start without anyone touching the computer
-        socket.on('tvAutoStart', ({ code }) => {
-            if (code === tvHost.code && !tvHost.started) startTvGame();
-        });
-
-        // Give each player a copy of this round's shared data: same viruses, same pills
-        function useTvGameData(gameData) {
-            window.sharedGameData = gameData;
-            window.myRandomList = [...gameData.randomList];
-            window.numberPosition = 1;
-            window.tvColorPositions = { 1: 1, 2: 1 }; // each player walks the same pill list
-        }
-
-        socket.on('tvGameStarted', (data) => {
-            if (data.code !== tvHost.code) return;
-            tvHost.names = data.names;
-            if (tvHost.started) {
-                restartTvGame(data);
-                return;
-            }
-            tvHost.started = true;
-
-            // The same set-up as an online room, with both boards on this page
-            roomCode = data.code;
-            useTvGameData(data.gameData);
-            window.gameInstanceOptions = {
-                1: { isTVControlled: true },
-                2: { isTVControlled: true },
-            };
-
-            document.getElementById('tvLobby').classList.add('hidden');
-            document.getElementById('playbuttons').classList.add('hidden');
-            document.body.classList.add('tv-mode');
-            document.getElementById('tvName1').textContent = data.names[1];
-            document.getElementById('tvName2').textContent = data.names[2];
-            document.getElementById('game1').classList.remove('hidden');
-            document.getElementById('game2').classList.remove('hidden');
-
-            if (!window.scriptLoaded) {
-                const script = document.createElement('script');
-                script.src = './scripts/script.js';
-                script.type = 'module';
-                document.head.appendChild(script);
-            }
-            applyMobileGameZoom();
-        });
-
-        // A phone button went down or up: move that player's pill, repeating while held.
-        // Presses arrive over the direct Wi-Fi link when there is one, else through the server.
-        socket.on('tvInput', handleTvInput);
-        function handleTvInput({ player, action, pressed }) {
-            if (!tvHost.started || tvHost.finished || !tvHost.holds[player]) return;
-            const holds = tvHost.holds[player];
-            if (action === 'all') {
-                for (const id of Object.values(holds)) clearInterval(id);
-                tvHost.holds[player] = {};
-                return;
-            }
-            const key = TV_KEYS[action];
-            if (!key) return;
-            if (!pressed) {
-                clearInterval(holds[action]);
-                delete holds[action];
-                return;
-            }
-            if (holds[action]) return;
-            const move = () => {
-                const game = window.gameInstances && window.gameInstances[player];
-                if (game && game.board && !tvHost.finished) game.board.movementFromKey(key);
-            };
-            move();
-            if (TV_REPEAT[action]) holds[action] = setInterval(move, TV_REPEAT[action]);
-        }
-
-        /**
-         * Direct links from the phones (WebRTC data channels). Each phone offers a
-         * connection through the server; once it opens, its presses come straight
-         * over the Wi-Fi. The server keeps carrying everything else.
-         */
-        const tvPeers = {};
-        function closeTvPeer(player) {
-            const peer = tvPeers[player];
-            if (!peer) return;
-            try { peer.pc.close(); } catch (e) {}
-            delete tvPeers[player];
-            showTvLink(player, false);
-        }
-        function showTvLink(player, direct) {
-            const tag = document.getElementById('tvLink' + player);
-            if (tag) tag.classList.toggle('hidden', !direct);
-        }
-        socket.on('tvSignal', ({ player, description, candidate }) => {
-            if (player !== 1 && player !== 2 || !window.RTCPeerConnection) return;
-            if (description && description.type === 'offer') {
-                closeTvPeer(player);
-                const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-                const peer = tvPeers[player] = { pc, chain: Promise.resolve() };
-                pc.onicecandidate = (e) => { if (e.candidate && tvPeers[player] === peer) socket.emit('tvSignal', { player, candidate: e.candidate }); };
-                pc.ondatachannel = (e) => {
-                    const channel = e.channel;
-                    channel.onopen = () => showTvLink(player, true);
-                    channel.onmessage = (m) => {
-                        try {
-                            const data = JSON.parse(m.data);
-                            handleTvInput({ player, action: String(data.action), pressed: !!data.pressed });
-                        } catch (err) {}
-                    };
-                    channel.onclose = () => {
-                        if (tvPeers[player] !== peer) return;
-                        showTvLink(player, false);
-                        handleTvInput({ player, action: 'all', pressed: false }); // let go of anything held
-                    };
-                };
-                peer.chain = pc.setRemoteDescription(description)
-                    .then(() => pc.createAnswer())
-                    .then(answer => pc.setLocalDescription(answer))
-                    .then(() => socket.emit('tvSignal', { player, description: pc.localDescription }))
-                    .catch(() => closeTvPeer(player));
-            } else if (candidate && tvPeers[player]) {
-                const peer = tvPeers[player];
-                peer.chain = peer.chain.then(() => peer.pc.addIceCandidate(candidate)).catch(() => {});
-            }
-        });
-
-        // Phones asked for a rematch: show it under the victory message
-        socket.on('tvRematch', ({ players }) => {
-            for (const n of [1, 2]) {
-                const chip = document.getElementById('tvRematch' + n);
-                if (chip) chip.classList.toggle('ready', players.includes(n));
-            }
-        });
-
-        // Restart: fresh boards for the same two players, no new QR code
-        function restartTvGame(data) {
-            const overlay = document.querySelector('.tv-victory');
-            if (overlay) overlay.remove();
-            for (const n of [1, 2]) {
-                for (const id of Object.values(tvHost.holds[n])) clearInterval(id);
-                tvHost.holds[n] = {};
-            }
-            useTvGameData(data.gameData);
-            document.getElementById('tvName1').textContent = data.names[1];
-            document.getElementById('tvName2').textContent = data.names[2];
-            tvHost.finished = false;
-            for (const n of [1, 2]) window.gameInstances[n].restart();
-        }
-
-        // Called by Game.js when a board clears its last virus (won) or fills up (lost)
-        tvHost.playerFinished = function(player, won) {
-            if (tvHost.finished) return;
-            tvHost.finished = true;
-            const winner = won ? player : (player === 1 ? 2 : 1);
-            for (const n of [1, 2]) {
-                for (const id of Object.values(tvHost.holds[n])) clearInterval(id);
-                tvHost.holds[n] = {};
-                const game = window.gameInstances && window.gameInstances[n];
-                if (game) game.freeze();
-            }
-            socket.emit('tvGameOver', { winner });
-            showTvVictory(winner, won ? null : player);
-        };
-
-        function showTvVictory(winner, loserWhoFilledUp) {
-            const winnerName = tvHost.names[winner];
-            const overlay = document.createElement('div');
-            overlay.className = 'alert-overlay tv-victory';
-            overlay.style.zIndex = '3000';
-            const modal = document.createElement('div');
-            modal.className = 'alert-modal';
-
-            const title = document.createElement('div');
-            title.className = 'alert-title win';
-            title.textContent = '🏆 VICTORY! 🏆';
-
-            const name = document.createElement('div');
-            name.className = 'alert-message tv-winner-name';
-            name.textContent = winnerName + ' WINS!';
-
-            const message = document.createElement('div');
-            message.className = 'alert-message tv-victory-reason';
-            message.textContent = loserWhoFilledUp
-                ? tvHost.names[loserWhoFilledUp] + "'s bottle filled up."
-                : winnerName + ' cleared all the viruses first.';
-
-            const buttons = document.createElement('div');
-            buttons.className = 'tv-victory-buttons';
-            const restart = document.createElement('button');
-            restart.className = 'alert-button';
-            restart.textContent = 'RESTART';
-            // Same room, same players: the server deals new viruses and pills to both
-            restart.onclick = () => {
-                restart.disabled = true;
-                restart.textContent = 'STARTING...';
-                socket.emit('tvRestart');
-            };
-            const exit = document.createElement('button');
-            exit.className = 'alert-button secondary';
-            exit.textContent = 'EXIT';
-            // Reloading closes the room and goes back to the menu
-            exit.onclick = () => { location.href = location.pathname; };
-            buttons.append(restart, exit);
-
-            // Each phone has a Rematch button; both pressed = the next game starts
-            const rematch = document.createElement('div');
-            rematch.className = 'tv-rematch';
-            for (const n of [1, 2]) {
-                const chip = document.createElement('div');
-                chip.id = 'tvRematch' + n;
-                chip.className = 'tv-rematch-chip tv-p' + n;
-                chip.textContent = tvHost.names[n];
-                rematch.appendChild(chip);
-            }
-            const hint = document.createElement('div');
-            hint.className = 'tv-rematch-hint';
-            hint.textContent = 'Both press REMATCH on your phones to play again';
-
-            modal.append(title, name, message, rematch, hint, buttons);
-            overlay.appendChild(modal);
-            document.body.appendChild(overlay);
-            setTimeout(() => restart.focus(), 100);
-        }
-
-        // Lost the server before the game started: the room is gone, so open a new one
-        socket.on('connect', () => {
-            if (tvHost.code && !tvHost.started) {
-                tvHost.code = null;
-                socket.emit('tvCreateRoom');
-            }
-        });
-
-        // /tv (or ?tv=new) opens straight into a new TV Room
-        if (new URLSearchParams(location.search).get('tv') === 'new') {
-            history.replaceState(null, '', location.pathname);
-            startTvRoom();
-        }
-
-        // Copy the join link, for a player who can't scan the QR code
-        document.getElementById('tvCopyLink').onclick = function() {
-            const url = tvHost.qrUrl;
-            if (!url) return;
-            const done = () => {
-                this.textContent = '✅ COPIED!';
-                this.classList.add('copied');
-                clearTimeout(this.resetTimer);
-                this.resetTimer = setTimeout(() => {
-                    this.textContent = '📋 COPY LINK';
-                    this.classList.remove('copied');
-                }, 1800);
-            };
-            // The clipboard API only works on https or localhost; fall back to a hidden text box
-            const fallback = () => {
-                const box = document.createElement('textarea');
-                box.value = url;
-                box.style.cssText = 'position:fixed;opacity:0;';
-                document.body.appendChild(box);
-                box.select();
-                try { document.execCommand('copy'); done(); } catch (e) { prompt('Copy this link:', url); }
-                box.remove();
-            };
-            if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(url).then(done, fallback);
-            else fallback();
-        };
-
         // Touch Controls Functionality
         function setupTouchControls() {
             const moveLeft = document.getElementById('moveLeft');
@@ -2256,6 +1914,18 @@
             const rotateLeft = document.getElementById('rotateLeft');
             const rotateRight = document.getElementById('rotateRight');
             const dropFast = document.getElementById('dropFast');
+            const holdPill = document.getElementById('holdPill');
+
+            if (holdPill) {
+                holdPill.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyC');
+                });
+                holdPill.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    triggerKeyEvent('KeyC');
+                });
+            }
 
             if (moveLeft) {
                 moveLeft.addEventListener('touchstart', (e) => {
@@ -2320,6 +1990,7 @@
                 'KeyD': 'd', 
                 'KeyW': 'w',
                 'KeyS': 's',
+                'KeyC': 'c',      // hold the pill
                 'Space': 'Shift'  // Space maps to Shift for right rotation
             };
             
@@ -2354,6 +2025,7 @@
                 'KeyD': 68,
                 'KeyW': 87,
                 'KeyS': 83,
+                'KeyC': 67,
                 'Space': 32
             };
             return keyMap[keyCode] || 0;
@@ -2370,5 +2042,7 @@
             setupTouchControls();
         });
     </script>
+    <!-- TV Room: the computer shows the boards, phones are the controllers -->
+    <script type="module" src="./scripts/tvHost.js"></script>
 </body>
 </html>

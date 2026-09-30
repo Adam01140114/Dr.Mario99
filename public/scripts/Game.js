@@ -201,17 +201,29 @@ export default class Game extends HTMLElement {
     }
 
     /**
-     * TV Room restart: a fresh board from window.sharedGameData, same player
+     * TV Room: a fresh board from window.sharedGameData for the same player
+     * (a new round, or the next level of a solo game, which keeps its score)
      */
-    restart() {
+    restart(level = this.board ? this.board.level : 0, score = 0) {
         this.freeze()
         this.hasLost = false
-        const level = this.board ? this.board.level : 0
         if (this.board) this.board.destroy()
         this.setBg(level)
-        this.createBoard(level, 0)
+        this.createBoard(level, score)
         this.createDancingViruses()
         this.startInterval()
+    }
+
+    /**
+     * TV Room: this game is leaving the screen for good (player out, or a new round)
+     */
+    teardown() {
+        this.freeze()
+        if (this.board) this.board.destroy()
+        this.board = null
+        if (this.dancingViruses) this.dancingViruses.destroy()
+        this.dancingViruses = null
+        this.remove()
     }
 
     /**

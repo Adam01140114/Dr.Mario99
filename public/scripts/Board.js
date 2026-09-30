@@ -28,7 +28,7 @@
 
 "use strict"
 import { Pill, Virus, randomColor } from "./Shape.js"
-import { Color, Direction, Rotation, DELAY } from "./components.js"
+import { Color, Direction, Rotation, DELAY, spriteCodeOf } from "./components.js"
 import { getSpriteUrl, preloadGameplaySprites } from "./spriteCache.js"
 import { attackSent, attackReceived } from "./attackFx.js"
 
@@ -258,8 +258,9 @@ export class PlayingBoard extends Board {
         this.spawnViruses()
         this.initImageCounters()
 
-		// Add damage listener to PlayingBoard instance
-        if (!this.isDamageListenerAdded) {
+		// Add damage listener to PlayingBoard instance.
+        // TV Room boards are attacked by the TV page itself (tvHost.sendAttack).
+        if (!this.isDamageListenerAdded && !this.game.isTVControlled) {
             this.isDamageListenerAdded = true;
 
             /**
@@ -274,25 +275,98 @@ export class PlayingBoard extends Board {
             this.damageHandler = (data) => {
 
                 // Validate room code to ensure damage is for the correct game
-                if (data.roomCode === roomCode) {
-
-                    // Calculate damage: every 4 points = 1 virus
-                    const calculatedDamage = Math.floor(data[`p${this.playerNumber}damage`] / 4);
-
-                    if (calculatedDamage > 0) {
-                        // Cap damage at 1 virus maximum per clear
-                        this.realdamage = Math.min(calculatedDamage, 1);
-                        this.damageProcessed = false;
-                        attackReceived(this.playerNumber);
-                    } else {
-                    }
-                } else {
+                if (data.roomCode === roomCode && this.receiveDamage(data[`p${this.playerNumber}damage`])) {
+                    attackReceived(this.playerNumber, this.playerNumber === 1 ? 2 : 1);
                 }
             };
             socket.on(this.damageEvent, this.damageHandler);
         } else {
         }
 
+    }
+
+    /**
+     * An opponent's clear: every 4 points = 1 virus, capped at 1 per clear.
+     * The virus drops in when the next pill is thrown. Returns true if it counted.
+     */
+    receiveDamage(points) {
+        const calculatedDamage = Math.floor((points || 0) / 4)
+        if (calculatedDamage <= 0) return false
+        this.realdamage = Math.min(calculatedDamage, 1)
+        this.damageProcessed = false
+        return true
+    }
+
+    /**
+     * HOLD (like Tetris): put the falling pill in the hold box and play the next
+     * pill - or swap it with the one already held. Once per pill: it comes back
+     * when the next pill is thrown in.
+     */
+    hold() {
+        const pill = this.currentPill
+        if (!pill || pill.placed || this.holdUsed || this.blockInput) return false
+        // The pill that comes in needs the two spawn cells free
+        for (const field of [this.fields[3][15], this.fields[4][15]]) {
+            if (field.locked || (field.shapePiece && field.shapePiece.shape !== pill)) return false
+        }
+        const colors = [pill.pieces[0].color, pill.pieces[1].color]
+        for (const piece of pill.pieces) {
+            piece.destroyed = true
+            if (piece.field && piece.field.shapePiece === piece) {
+                piece.field.shapePiece = null
+                piece.field.setColor(Color.NONE)
+            }
+        }
+        this.currentPill = null
+        if (this.heldPill) this.currentPill = new Pill(this, this.heldPill[0], this.heldPill[1])
+        else this.movePillFromThrowingBoard()
+        this.heldPill = colors
+        this.holdUsed = true
+        this.updateHoldBox()
+        return true
+    }
+
+    initHoldBox() {
+        this.holdElement = document.createElement("div")
+        this.holdElement.id = 'holdBox'
+        this.holdElement.innerHTML = '<span class="hold-label">HOLD</span><span class="hold-pill"></span>'
+        this.game.append(this.holdElement)
+        this.updateHoldBox()
+    }
+
+    updateHoldBox() {
+        if (!this.holdElement) return
+        const slot = this.holdElement.querySelector('.hold-pill')
+        slot.innerHTML = ''
+        if (this.heldPill) {
+            for (const [color, side] of [[this.heldPill[0], 'left'], [this.heldPill[1], 'right']]) {
+                const img = document.createElement("img")
+                img.src = getSpriteUrl("./img/" + color + "_" + side + ".png")
+                slot.appendChild(img)
+            }
+        }
+        this.holdElement.classList.toggle('used', !!this.holdUsed)
+    }
+
+    /**
+     * A compact picture of this board for a phone that shows its own game:
+     * one character per cell (top row first), the next pill, the held pill.
+     */
+    snapshot() {
+        let grid = ''
+        for (let y = this.height - 1; y >= 0; y--)
+            for (let x = 0; x < this.width; x++)
+                grid += this.fields[x][y].spriteCode || '.'
+        const next = this.throwingBoard && this.throwingBoard.currentPill && this.throwingBoard.currentPill.pieces
+        return {
+            g: grid,
+            n: next && next.length >= 2 ? [next[0].color, next[1].color] : null,
+            h: this.heldPill || null,
+            hu: !!this.holdUsed,
+            s: this.score,
+            v: this.virusCount,
+            l: this.level,
+        }
     }
 
     /**
@@ -316,6 +390,7 @@ export class PlayingBoard extends Board {
         this.initTopScore()
         this.initVirusCount()
         this.initLevelCount()
+        this.initHoldBox()
         this.spawnPill()
     }
 
@@ -372,6 +447,9 @@ export class PlayingBoard extends Board {
         this.throwingBoard.spawnPill()
         clearInterval(this.throwingBoardInterval)
         this.throwingBoardInterval = null
+        // A new pill is a new turn: HOLD can be used again
+        this.holdUsed = false
+        this.updateHoldBox()
     }
 
     increaseScore() {
@@ -419,6 +497,7 @@ export class PlayingBoard extends Board {
         this.scoreElement.remove()
         this.virusCountElement.remove()
         if (this.levelCountElement) this.levelCountElement.remove()
+        if (this.holdElement) this.holdElement.remove()
         for (let row of this.fields) {
             for (let field of row) {
                 field.remove()
@@ -603,6 +682,10 @@ export class PlayingBoard extends Board {
         if (key == "Shift"){
             this.currentPill.rotate(Direction.RIGHT)
 		}
+
+        if (key == "c" || key == "C"){
+            this.hold()
+        }
     }
 
     /**
@@ -940,6 +1023,7 @@ class Field extends HTMLElement {
         if (this.currentBackgroundImage === imageValue) return
         this.style.backgroundImage = imageValue
         this.currentBackgroundImage = imageValue
+        this.spriteCode = spriteCodeOf(imageValue) // for Board.snapshot()
     }
 
     isTaken() {
@@ -992,13 +1076,16 @@ class Field extends HTMLElement {
     if (this.board.localpoints >= 4) {
 
         // Send damage immediately when 4+ points are reached
-        if (!this.board.game.isAIOpponentView) {
+        if (this.board.game.isTVControlled) {
+            // TV Room: the TV page sends it to this player's current target
+            window.tvHost.sendAttack(this.board.playerNumber, this.board.localpoints);
+        } else if (!this.board.game.isAIOpponentView) {
             socket.emit(`updatePoints${this.board.playerNumber === 1 ? 2 : 1}`, { 
                 [`player${this.board.playerNumber === 1 ? 2 : 1}points`]: this.board.localpoints, 
                 roomCode: roomCode 
             });
             // Single player has nobody to attack
-            if (typeof roomCode !== 'undefined' && roomCode) attackSent(this.board.playerNumber);
+            if (typeof roomCode !== 'undefined' && roomCode) attackSent(this.board.playerNumber, this.board.playerNumber === 1 ? 2 : 1);
         }
 
         // Reset points after sending damage

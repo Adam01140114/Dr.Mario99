@@ -524,14 +524,21 @@ io.on('connection', (socket) => {
  * TV ROOM
  * =======
  *
- * The computer (the "host", usually on a TV) shows both boards; each player
- * scans a QR code and uses their phone as the controller. The host page runs
- * both games and decides the winner; the server only pairs phones with the
- * host and relays button presses and results.
+ * The computer (the "host", usually on a TV) shows every player's board; each
+ * player scans a QR code and uses their phone as the controller. The host page
+ * runs all the games, picks who attacks whom and decides the winner; the server
+ * pairs phones with the host and relays presses, results and (when a phone shows
+ * its own board) the board pictures.
+ *
+ * 1 to 8 players. One player plays solo (levels, like single player); five or
+ * more always show the game on their phones.
  *
  * Socket rooms: the host is alone in `tvh:<code>`, the phones share `tvp:<code>`.
  */
 const tvRooms = {};
+const TV_MAX_PLAYERS = 8;
+const TV_PHONE_SCREEN_ABOVE = 4; // more players than this: the game always shows on the phones
+const TV_ACTIONS = ['left', 'right', 'rotateLeft', 'rotateRight', 'drop', 'hold'];
 
 /** Addresses a phone on the same Wi-Fi can reach this computer at, best first */
 function lanOrigins(port) {
@@ -550,16 +557,28 @@ function lanOrigins(port) {
     return ips.sort((a, b) => rank(a) - rank(b)).map(ip => `http://${ip}:${port}`);
 }
 
+const tvSlots = () => Array.from({ length: TV_MAX_PLAYERS }, (_, i) => i + 1);
+const tvConnected = room => tvSlots().filter(n => room.players[n] && room.players[n].connected);
+
 function tvPlayerList(room) {
-    return [1, 2].map(n => room.players[n]
-        ? { player: n, name: room.players[n].name, connected: room.players[n].connected, ready: room.ready.has(n) }
-        : { player: n, name: null, connected: false, ready: false });
+    return tvSlots().filter(n => room.players[n]).map(n => ({
+        player: n,
+        name: room.players[n].name,
+        connected: room.players[n].connected,
+        ready: room.ready.has(n),
+    }));
+}
+
+function tvNames(room, roster) {
+    const names = {};
+    for (const n of roster) if (room.players[n]) names[n] = room.players[n].name;
+    return names;
 }
 
 function tvSendLobby(code) {
     const room = tvRooms[code];
     if (!room) return;
-    const lobby = { code, state: room.state, players: tvPlayerList(room) };
+    const lobby = { code, state: room.state, players: tvPlayerList(room), max: TV_MAX_PLAYERS };
     io.to(room.hostId).emit('tvLobby', lobby);
     io.to(`tvp:${code}`).emit('tvLobby', lobby);
 }
@@ -570,16 +589,36 @@ function closeTvRoom(code) {
     delete tvRooms[code];
 }
 
+/** The host of this socket's room, and the room */
+function tvHostRoom(socket) {
+    const code = socket.data.tvHostOf;
+    return code && tvRooms[code] ? { code, room: tvRooms[code] } : {};
+}
+
+/** The room this phone is in, and its player number */
+function tvPhoneRoom(socket) {
+    const me = socket.data.tvPlayer;
+    return me && tvRooms[me.code] ? { code: me.code, room: tvRooms[me.code], player: me.player } : {};
+}
+
+function tvToPlayer(room, n, event, data) {
+    const p = room.players[n];
+    if (p && p.connected) io.to(p.socketId).emit(event, data);
+}
+
 function registerTvRoomHandlers(socket) {
     // Host: open a new TV room
     socket.on('tvCreateRoom', () => {
         if (socket.data.tvHostOf) closeTvRoom(socket.data.tvHostOf);
         let code = generateRoomCode();
         while (tvRooms[code] || activeRooms[code]) code = generateRoomCode();
-        tvRooms[code] = { hostId: socket.id, state: 'lobby', players: {}, winner: null, ready: new Set() };
+        tvRooms[code] = {
+            hostId: socket.id, state: 'lobby', players: {}, ready: new Set(), solo: false,
+            roster: [], winner: null, places: {}, rematch: new Set(), settings: { virusCount: 5, showOnPhone: false },
+        };
         socket.data.tvHostOf = code;
         socket.join(`tvh:${code}`);
-        socket.emit('tvRoomCreated', { code, lanOrigins: lanOrigins(PORT) });
+        socket.emit('tvRoomCreated', { code, lanOrigins: lanOrigins(PORT), max: TV_MAX_PLAYERS });
         tvSendLobby(code);
     });
 
@@ -593,13 +632,14 @@ function registerTvRoomHandlers(socket) {
         if (!name) return socket.emit('tvJoinError', { reason: 'name', message: 'Enter your name.' });
 
         // Coming back: the same phone gets its old slot
-        let slot = [1, 2].find(n => room.players[n] && clientId && room.players[n].clientId === clientId);
+        let slot = tvSlots().find(n => room.players[n] && clientId && room.players[n].clientId === clientId);
         if (!slot) {
             if (room.state !== 'lobby') return socket.emit('tvJoinError', { reason: 'started', message: 'This game already started. Wait for the next QR code on the TV.' });
             const wanted = parseInt(payload.player, 10);
             const free = n => !room.players[n] || !room.players[n].connected;
-            slot = (wanted === 1 || wanted === 2) && free(wanted) ? wanted : [1, 2].find(free);
-            if (!slot) return socket.emit('tvJoinError', { reason: 'full', message: 'Two players are already in this room.' });
+            slot = wanted >= 1 && wanted <= TV_MAX_PLAYERS && free(wanted) ? wanted : tvSlots().find(free);
+            if (!slot) return socket.emit('tvJoinError', { reason: 'full', message: `This room is full (${TV_MAX_PLAYERS} players).` });
+            room.solo = false; // someone new: nobody is playing solo any more
         }
 
         const previous = room.players[slot];
@@ -610,143 +650,175 @@ function registerTvRoomHandlers(socket) {
                 old.leave(`tvp:${code}`);
                 old.emit('tvJoinError', { reason: 'replaced', message: 'Player ' + slot + ' joined from another phone.' });
             }
+            if (room.state === 'lobby') room.ready.delete(slot);
         }
         room.players[slot] = { name, clientId, socketId: socket.id, connected: true };
         socket.data.tvPlayer = { code, player: slot };
         socket.join(`tvp:${code}`);
-        socket.emit('tvJoined', { code, player: slot, name, state: room.state, result: tvResultFor(room, slot) });
+        socket.emit('tvJoined', {
+            code, player: slot, name, state: room.state,
+            inGame: room.state !== 'lobby' && room.roster.includes(slot),
+            showOnPhone: room.settings.showOnPhone,
+            eliminated: room.places[slot] && room.state === 'playing' ? { place: room.places[slot], of: room.roster.length } : null,
+            result: tvResultFor(room, slot),
+        });
         tvSendLobby(code);
     });
 
-    // Phone: "Ready" on the waiting screen (press again to take it back).
-    // When both players are in and ready, the TV starts the game by itself.
+    // Phone: "Ready" on the waiting screen (press again to take it back); "Play solo"
+    // when nobody else is in. When everyone in is ready, the TV starts the game by itself.
     socket.on('tvReady', (payload = {}) => {
-        const me = socket.data.tvPlayer;
-        const room = me && tvRooms[me.code];
+        const { code, room, player } = tvPhoneRoom(socket);
         if (!room || room.state !== 'lobby') return;
-        if (payload.ready === false) room.ready.delete(me.player);
-        else room.ready.add(me.player);
-        tvSendLobby(me.code);
-        const both = [1, 2].every(n => room.players[n] && room.players[n].connected && room.ready.has(n));
-        if (both) io.to(room.hostId).emit('tvAutoStart', { code: me.code });
+        if (payload.ready === false) room.ready.delete(player);
+        else room.ready.add(player);
+        const inRoom = tvConnected(room);
+        if (payload.solo && inRoom.length === 1) room.solo = true;
+        tvSendLobby(code);
+        const allReady = inRoom.length > 0 && inRoom.every(n => room.ready.has(n));
+        if (allReady && (inRoom.length >= 2 || room.solo)) io.to(room.hostId).emit('tvAutoStart', { code });
     });
 
-    // Host: both players are in, go
+    // Host: start with everyone who is in (one player = solo)
     socket.on('tvStartGame', (payload = {}) => {
-        const code = socket.data.tvHostOf;
-        const room = code && tvRooms[code];
-        const ready = n => room && room.players[n] && room.players[n].connected;
-        if (!room || room.state !== 'lobby' || !ready(1) || !ready(2)) return;
-        room.settings = { virusCount: Math.min(Math.max(parseInt(payload.virusCount, 10) || 5, 1), 30) };
-        const gameData = generateNewGameData(code, true);
-        room.state = 'playing';
-        const names = { 1: room.players[1].name, 2: room.players[2].name };
-        socket.emit('tvGameStarted', { code, gameData, names });
-        io.to(`tvp:${code}`).emit('tvGameStarted', { code, names });
+        const { code, room } = tvHostRoom(socket);
+        if (!room || room.state !== 'lobby') return;
+        const roster = tvConnected(room);
+        if (!roster.length) return;
+        for (const n of tvSlots()) if (room.players[n] && !roster.includes(n)) delete room.players[n];
+        room.roster = roster;
+        room.settings.virusCount = Math.min(Math.max(parseInt(payload.virusCount, 10) || 5, 1), 30);
+        room.settings.showOnPhoneChoice = !!payload.showOnPhone;
+        startTvRound(code);
     });
 
     // Phone: a controller button went down or up
     socket.on('tvInput', (payload = {}) => {
-        const me = socket.data.tvPlayer;
-        const room = me && tvRooms[me.code];
-        if (!room || room.state !== 'playing') return;
+        const { room, player } = tvPhoneRoom(socket);
+        if (!room || room.state !== 'playing' || !room.roster.includes(player)) return;
         const action = String(payload.action || '');
-        if (!['left', 'right', 'rotateLeft', 'rotateRight', 'drop'].includes(action)) return;
-        io.to(room.hostId).emit('tvInput', { player: me.player, action, pressed: !!payload.pressed });
+        if (!TV_ACTIONS.includes(action)) return;
+        io.to(room.hostId).emit('tvInput', { player, action, pressed: !!payload.pressed });
     });
 
-    // Host: someone won
+    // Host: a player's picture of their own board, for their phone (used when the
+    // direct Wi-Fi link to that phone is not open)
+    socket.on('tvState', (payload = {}) => {
+        const { room } = tvHostRoom(socket);
+        if (room && payload.state && typeof payload.state === 'object') tvToPlayer(room, parseInt(payload.player, 10), 'tvState', payload.state);
+    });
+
+    // Host: a player's bottle filled up and they are out
+    socket.on('tvEliminated', (payload = {}) => {
+        const { room } = tvHostRoom(socket);
+        const n = parseInt(payload.player, 10);
+        if (!room || room.state !== 'playing' || !room.roster.includes(n)) return;
+        room.places[n] = parseInt(payload.place, 10) || room.roster.length;
+        tvToPlayer(room, n, 'tvEliminated', { place: room.places[n], of: room.roster.length });
+    });
+
+    // Host: solo player cleared the board; deal the next level
+    socket.on('tvNextLevel', () => {
+        const { code, room } = tvHostRoom(socket);
+        if (!room || room.state !== 'playing' || room.roster.length !== 1) return;
+        socket.emit('tvLevelData', { code, gameData: generateNewGameData(code, true) });
+    });
+
+    // Host: the match is over (winner = null for a solo game over)
     socket.on('tvGameOver', (payload = {}) => {
-        const code = socket.data.tvHostOf;
-        const room = code && tvRooms[code];
+        const { room } = tvHostRoom(socket);
+        if (!room || room.state !== 'playing') return;
         const winner = parseInt(payload.winner, 10);
-        if (!room || room.state !== 'playing' || (winner !== 1 && winner !== 2)) return;
         room.state = 'over';
-        room.winner = winner;
-        room.rematch = new Set();
-        for (const n of [1, 2]) {
-            const p = room.players[n];
-            if (p && p.connected) io.to(p.socketId).emit('tvResult', tvResultFor(room, n));
+        room.winner = room.roster.includes(winner) ? winner : null;
+        for (const [n, place] of Object.entries(payload.places || {})) {
+            if (room.roster.includes(+n)) room.places[n] = parseInt(place, 10) || room.places[n];
         }
+        room.soloStats = room.roster.length === 1 ? { level: parseInt(payload.level, 10) || 0, score: parseInt(payload.score, 10) || 0 } : null;
+        room.rematch = new Set();
+        for (const n of room.roster) tvToPlayer(room, n, 'tvResult', tvResultFor(room, n));
     });
 
-    // Host: an attack effect happened; tell that player's phone
+    // Host: an effect happened on a player's board; flash their phone
     socket.on('tvFx', (payload = {}) => {
-        const code = socket.data.tvHostOf;
-        const room = code && tvRooms[code];
-        const p = room && room.players[parseInt(payload.player, 10)];
-        const kind = payload.kind === 'attack' ? 'attack' : 'hit';
-        if (p && p.connected) io.to(p.socketId).emit('tvFx', { kind });
+        const { room } = tvHostRoom(socket);
+        const kind = ['attack', 'hit', 'level'].includes(payload.kind) ? payload.kind : 'hit';
+        if (room) tvToPlayer(room, parseInt(payload.player, 10), 'tvFx', { kind });
     });
 
-    // Host: play again with the same two players (no new QR code)
+    // Host: play again with the same players (no new QR code)
     socket.on('tvRestart', () => {
-        const code = socket.data.tvHostOf;
-        if (code && tvRooms[code] && tvRooms[code].state === 'over') startTvRound(code);
+        const { code, room } = tvHostRoom(socket);
+        if (room && room.state === 'over') startTvRound(code);
     });
 
-    // Phone: "Rematch" on the result screen. When both players ask, the next game starts
+    // Phone: "Rematch" on the result screen. When every player asks, the next game starts
     socket.on('tvRematch', () => {
-        const me = socket.data.tvPlayer;
-        const room = me && tvRooms[me.code];
-        if (!room || room.state !== 'over') return;
-        room.rematch.add(me.player);
+        const { code, room, player } = tvPhoneRoom(socket);
+        if (!room || room.state !== 'over' || !room.roster.includes(player)) return;
+        room.rematch.add(player);
         const status = { players: [...room.rematch] };
         io.to(room.hostId).emit('tvRematch', status);
-        io.to(`tvp:${me.code}`).emit('tvRematch', status);
-        if (room.rematch.size >= 2) startTvRound(me.code);
+        io.to(`tvp:${code}`).emit('tvRematch', status);
+        const stillHere = room.roster.filter(n => room.players[n] && room.players[n].connected);
+        if (stillHere.every(n => room.rematch.has(n))) startTvRound(code);
     });
 
-    // WebRTC set-up between a phone and the TV page, so button presses travel
-    // straight over their Wi-Fi instead of through this server. Only a room's
+    // WebRTC set-up between a phone and the TV page, so presses (and board pictures)
+    // travel straight over their Wi-Fi instead of through this server. Only a room's
     // host and its players can reach each other.
     socket.on('tvSignal', (payload = {}) => {
         const signal = { description: payload.description, candidate: payload.candidate };
-        if (socket.data.tvHostOf) {
-            const room = tvRooms[socket.data.tvHostOf];
-            const p = room && room.players[parseInt(payload.player, 10)];
-            if (p && p.connected) io.to(p.socketId).emit('tvSignal', signal);
-            return;
-        }
-        const me = socket.data.tvPlayer;
-        const room = me && tvRooms[me.code];
-        if (room) io.to(room.hostId).emit('tvSignal', { player: me.player, ...signal });
+        const host = tvHostRoom(socket);
+        if (host.room) return tvToPlayer(host.room, parseInt(payload.player, 10), 'tvSignal', signal);
+        const { room, player } = tvPhoneRoom(socket);
+        if (room) io.to(room.hostId).emit('tvSignal', { player, ...signal });
     });
 
     socket.on('disconnect', () => {
         if (socket.data.tvHostOf) closeTvRoom(socket.data.tvHostOf);
-        const me = socket.data.tvPlayer;
-        const room = me && tvRooms[me.code];
-        const p = room && room.players[me.player];
+        const { code, room, player } = tvPhoneRoom(socket);
+        const p = room && room.players[player];
         if (p && p.socketId === socket.id) {
             p.connected = false;
-            if (room.state === 'lobby') room.ready.delete(me.player);
-            if (room.state === 'playing') io.to(room.hostId).emit('tvInput', { player: me.player, action: 'all', pressed: false });
-            tvSendLobby(me.code);
+            if (room.state === 'lobby') room.ready.delete(player);
+            if (room.state === 'playing') io.to(room.hostId).emit('tvInput', { player, action: 'all', pressed: false });
+            tvSendLobby(code);
         }
     });
 }
 
-/** Deal a new game to the same two players (TV "Restart", or both phones asked for a rematch) */
+/** Deal a new game to the room's players (first start, TV "Restart", or everyone asked for a rematch) */
 function startTvRound(code) {
     const room = tvRooms[code];
     if (!room) return;
+    const roster = room.roster.filter(n => room.players[n] && room.players[n].connected);
+    if (!roster.length) return;
+    room.roster = roster;
     room.state = 'playing';
     room.winner = null;
+    room.places = {};
+    room.soloStats = null;
     room.rematch = new Set();
+    room.ready = new Set();
+    room.settings.showOnPhone = !!room.settings.showOnPhoneChoice || roster.length > TV_PHONE_SCREEN_ABOVE;
     const gameData = generateNewGameData(code, true);
-    const names = { 1: room.players[1].name, 2: room.players[2].name };
-    io.to(room.hostId).emit('tvGameStarted', { code, gameData, names });
-    io.to(`tvp:${code}`).emit('tvGameStarted', { code, names });
+    const round = { code, names: tvNames(room, roster), roster, showOnPhone: room.settings.showOnPhone };
+    io.to(room.hostId).emit('tvGameStarted', { ...round, gameData });
+    io.to(`tvp:${code}`).emit('tvGameStarted', round);
 }
 
 function tvResultFor(room, player) {
-    if (room.state !== 'over') return null;
+    if (room.state !== 'over' || !room.roster.includes(player)) return null;
     return {
         won: room.winner === player,
-        winnerName: room.players[room.winner].name,
-        otherName: room.players[player === 1 ? 2 : 1].name,
-        rematch: [...(room.rematch || [])],
+        winnerName: room.winner ? room.players[room.winner] && room.players[room.winner].name : null,
+        place: room.places[player] || null,
+        of: room.roster.length,
+        solo: room.roster.length === 1 ? room.soloStats : null,
+        names: tvNames(room, room.roster),
+        roster: room.roster,
+        rematch: [...room.rematch],
     };
 }
 

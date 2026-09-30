@@ -3,9 +3,9 @@
  * =============================
  *
  * The junk a clear sends is easy to miss, so it gets a show, Tetris 99 style:
- * - attackSent(player): a shockwave and "ATTACK!" over the attacker's bottle
+ * - attackSent(player, target): a shockwave and "ATTACK!" over the attacker's bottle
  *   (and, when the opponent is on another screen, a comet flying off the top)
- * - attackReceived(player): a comet flies into the target's bottle - from the
+ * - attackReceived(player, from): a comet flies into the target's bottle - from the
  *   attacker's bottle when both are on this screen (TV Room, AI mode), from the
  *   top otherwise - then the bottle flashes red, shakes and says "INCOMING!"
  *
@@ -15,7 +15,8 @@
 
 "use strict"
 
-const PLAYER_COLORS = { 1: "#ff4d6d", 2: "#4dc3ff" }
+// TV Room player colours (index.html .tv-p1 ... .tv-p8, controller.html body.p1 ... body.p8)
+const PLAYER_COLORS = { 1: "#ff4d6d", 2: "#4dc3ff", 3: "#ffd60a", 4: "#00ff66", 5: "#c77dff", 6: "#ff9f1c", 7: "#2ee6d6", 8: "#ff70d9" }
 const DEFAULT_COLOR = "#00ffff"
 const FLIGHT_MS = 520
 
@@ -165,7 +166,7 @@ function notifyPhone(player, kind) {
     }
 }
 
-export function attackSent(player) {
+export function attackSent(player, target) {
     try {
         addStyles()
         notifyPhone(player, "attack")
@@ -174,35 +175,35 @@ export function attackSent(player) {
         const color = playerColor(player)
         shockwave(me.rect, color)
         popText("ATTACK!", me.rect, color, Math.max(20, me.rect.width * 0.2))
-        // Opponent on another screen: send the comet off the top
-        const other = bottleOf(player === 1 ? 2 : 1)
-        if (!other) {
+        // Target on another screen: send the comet off the top
+        if (!bottleOf(target)) {
             const from = { x: me.rect.left + me.rect.width / 2, y: me.rect.top + me.rect.height * 0.2 }
             comet(from, { x: from.x + me.rect.width * 0.6, y: -120 }, color, null, me.rect.width / 192)
         }
     } catch (err) {
-        // Effects must never break the game
+        // Effects must never break the game - but say so, or a broken effect goes unnoticed
+        console.warn("Attack effect failed:", err)
     }
 }
 
-export function attackReceived(player) {
+export function attackReceived(player, from) {
     try {
         addStyles()
         const target = bottleOf(player)
         if (!target) return notifyPhone(player, "hit")
-        const attacker = player === 1 ? 2 : 1
-        const source = bottleOf(attacker)
-        const color = source ? playerColor(attacker) : "#ff3b3b"
+        const source = bottleOf(from)
+        const color = source ? playerColor(from) : "#ff3b3b"
         const to = { x: target.rect.left + target.rect.width / 2, y: target.rect.top + target.rect.height * 0.08 }
-        const from = source
+        const start = source
             ? { x: source.rect.left + source.rect.width / 2, y: source.rect.top + source.rect.height * 0.35 }
             : { x: to.x - target.rect.width * 0.6, y: -120 }
-        comet(from, to, color, () => {
+        comet(start, to, color, () => {
             const now = bottleOf(player) // the screen may have been rescaled mid-flight
             if (now) impact(now, color)
             notifyPhone(player, "hit") // the target's phone flashes as the junk lands
         }, target.rect.width / 192)
     } catch (err) {
-        // Effects must never break the game
+        // Effects must never break the game - but say so, or a broken effect goes unnoticed
+        console.warn("Attack effect failed:", err)
     }
 }

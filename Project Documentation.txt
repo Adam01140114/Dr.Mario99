@@ -243,55 +243,83 @@ REAL-TIME COMMUNICATION
 
 TV ROOM (PHONES AS CONTROLLERS)
 -------------------------------
+The computer (usually on a TV) shows every player's board; each player scans a
+QR code and uses their phone as the controller. 1 to 8 players. The TV side is
+`public/scripts/tvHost.js`, the phone is `public/controller.html`, the server
+side is the TV ROOM section of `server.js`.
+
 - **Start**: "Start TV Room" on the computer opens a lobby with a QR code.
   `/tv` (e.g. https://dr-mario99.onrender.com/tv) does it by itself: the
   server redirects to `/?tv=new`, which opens a new room on load
-- **Ready**: each phone's waiting screen has a READY button (`tvReady`, tap
-  again to undo). When both players are in and ready, the server tells the TV
-  (`tvAutoStart`) and it starts the game - nobody touches the computer. The
-  TV's Start Game button still works
-- **Joining**: The QR code links to `/controller.html?room=CODE&player=N` on the
-  computer's Wi-Fi address (from `os.networkInterfaces()` when the page is opened
-  on localhost), so a phone on the same Wi-Fi can reach it. The phone enters a
-  name; the name appears on the computer and the QR switches to the next player
-- **Playing**: Both boards run on the computer page (`isTVControlled` games).
-  Phone buttons go phone -> server (`tvInput`) -> computer, which moves that
-  player's pill and repeats while a button is held. Each player keeps their own
-  place in the shared pill list (`window.tvColorPositions`), so both get the
-  same pills. The computer keyboard does nothing in this mode
-- **Winning**: The computer decides (`tvHost.playerFinished`), freezes both
-  boards, shows the winner's name, and tells each phone (`tvResult`): victory
-  or game over. "Restart" (`tvRestart`) deals new viruses and pills to the same
-  two players in the same room - no rescan; each Game rebuilds its board in
-  place (`Game.restart()`), and `PlayingBoard.destroy()` removes everything the
-  old board added, including its damage listener. "Exit" reloads to the menu,
-  which closes the room
-- **Rematch**: each phone's result screen has a Rematch button (`tvRematch`).
-  The TV shows who asked; when both have, the server starts the next game
-  (`startTvRound`, the same path as the TV's Restart button)
-- **Anywhere, not just this computer**: on the public site the join link is the
-  site's own address, so anyone can open a TV Room. To keep it feeling like a
-  LAN party, each phone opens a WebRTC data channel straight to the TV page
-  (`tvSignal` carries only the set-up; STUN: stun.l.google.com). Presses then
-  go phone -> TV over their own Wi-Fi instead of through the server; the phone
-  shows "⚡ DIRECT" and the TV a ⚡ by the name. If the channel can't open or
-  closes, presses fall back to the server (`tvInput`) automatically
+- **Joining**: The QR code links to `/controller.html?room=CODE&player=N` for
+  the next open slot (1-8), on the computer's Wi-Fi address when the page is
+  opened on localhost (`os.networkInterfaces()`), otherwise the site's own
+  address. The phone enters a name; it appears on the TV and the QR moves on to
+  the next slot until 8 are in. A 9th phone is told the room is full
+- **Ready**: each phone's waiting screen has READY (`tvReady`, tap again to
+  undo). When everyone in is ready (2+ players), the server tells the TV
+  (`tvAutoStart`) and it starts - nobody touches the computer. Alone in the
+  room, the phone also shows PLAY SOLO. The TV's Start Game button still works
+  (START SOLO with one player)
+- **Show game on phone screen**: a checkbox over Start Game. On, the TV sends
+  each player a picture of their own board (`Board.snapshot()`: one character
+  per cell, next pill, held pill, score, viruses, level, target; the sprite
+  list is `SPRITE_CODES` in components.js and repeated in controller.html) and
+  the phone draws it on a canvas above the buttons. With 5+ players it is
+  always on and the box is locked. Pictures are sent only when they change, up
+  to 20 a second, over the direct link when there is one (else `tvState`)
+- **Playing**: every board runs on the TV page (`isTVControlled` games, made by
+  tvHost.js directly - not script.js). Phone buttons move that player's pill;
+  held buttons repeat. Each player keeps their own place in the shared pill
+  list (`window.tvColorPositions`), so everyone gets the same pills. The
+  computer keyboard does nothing in this mode
+- **Targets and junk**: each player attacks the next player still in, round the
+  circle (`tvHost.targets`, shown as "▸ name" on the TV and on the phone once 3+
+  are in). A clear of 4+ calls `tvHost.sendAttack`, which gives the target junk
+  on the TV page itself (`PlayingBoard.receiveDamage`) - TV boards do not use
+  the server's p1damage/p2damage events
+- **Out**: a bottle that fills up is out (`tvEliminated`): the board greys,
+  shows "OUT #place", then leaves the TV and the rest re-flow to fill the
+  screen (`tvHost.layout()` picks the rows and columns that make the boards
+  biggest). That phone shows YOU'RE OUT and its place. Targets are reassigned;
+  with two left they attack each other
+- **Winning**: clearing all your viruses wins outright; otherwise the last one
+  left wins (`tvHost.playerFinished`). The TV freezes the boards and shows the
+  winner; each phone gets `tvResult` (victory, or game over with the winner
+  and your place)
+- **Solo**: like single player - a cleared board shows STAGE CLEAR and the next
+  level starts by itself (`tvNextLevel` -> `tvLevelData`, score kept); a full
+  bottle is game over with the level and score
+- **Hold**: a HOLD button above the phone's controls (and on the regular mobile
+  controls, and the C key). It puts the falling pill in the hold box and brings
+  in the next one, or swaps with the held pill (`PlayingBoard.hold()`). Once
+  per pill: it comes back when the next pill is thrown in. The held pill shows
+  on the phone's button and in a HOLD box on the board, over "SPEED LOW"
+- **Rematch / Restart**: each phone's result screen has REMATCH (PLAY AGAIN
+  solo). When everyone still in the room has asked, the server starts the next
+  round (`startTvRound`); the TV shows who has asked. The TV's RESTART does the
+  same at once. EXIT reloads to the menu, which closes the room
+- **Anywhere, not just this computer**: on the public site anyone can open a
+  TV Room. Each phone opens a WebRTC data channel straight to the TV page
+  (`tvSignal` carries only the set-up; STUN: stun.l.google.com), so presses
+  and board pictures go over their own Wi-Fi. The phone shows "⚡ DIRECT" and
+  the TV a ⚡ by the name. If the channel can't open, everything goes through
+  the server automatically
 - **Copy link**: under the QR code, for a player who can't scan it
-- **Attack effect**: when a clear sends junk, `scripts/attackFx.js` shows a
-  shockwave and "ATTACK!" on the attacker's bottle, a comet flying to the
-  target's bottle, and a red flash, shake and "INCOMING!" when it lands. Phones
-  flash too (`tvFx`): "ATTACK SENT!" for the attacker, "INCOMING!" and a buzz
-  for the target. It also runs in AI mode and online rooms (comet off the top /
-  in from the top when the opponent is on another screen). It animates only
-  transform and opacity
-- **Phones that sleep**: A phone keeps an id in localStorage and gets its slot
-  back when it reconnects. In the lobby a disconnected slot can be taken by
-  another phone
-- **Server events**: tvCreateRoom, tvJoin, tvStartGame, tvInput, tvGameOver,
-  tvRestart, tvFx, tvRematch, tvSignal, tvReady (in); tvRoomCreated, tvLobby
-  (host and phones), tvAutoStart, tvJoined, tvJoinError, tvGameStarted, tvInput, tvResult, tvFx, tvRematch, tvSignal,
-  tvRoomClosed (out). QR images come
-  from `GET /tv/qr.svg?text=`
+- **Attack effect**: `scripts/attackFx.js` - "ATTACK!" and a shockwave on the
+  attacker, a comet to the target (`attackSent(player, target)`,
+  `attackReceived(player, from)`), a red flash, shake and "INCOMING!" when it
+  lands; the phones flash too (`tvFx`). Also used by AI mode and online rooms.
+  A failure inside an effect is caught (it must never stop the game) and logged
+  with console.warn - once, a broken effect hid silently behind that catch
+- **Phones that sleep**: a phone keeps an id in localStorage and gets its slot
+  back when it reconnects. In the lobby a disconnected slot can be taken
+- **Server events**: tvCreateRoom, tvJoin, tvReady, tvStartGame, tvInput,
+  tvState, tvEliminated, tvNextLevel, tvGameOver, tvFx, tvRestart, tvRematch,
+  tvSignal (in); tvRoomCreated, tvLobby (TV and phones), tvAutoStart,
+  tvJoined, tvJoinError, tvGameStarted, tvInput, tvState, tvEliminated,
+  tvLevelData, tvResult, tvFx, tvRematch, tvSignal, tvRoomClosed (out). QR
+  images come from `GET /tv/qr.svg?text=`
 
 KEEPING IT SMOOTH
 -----------------

@@ -20,10 +20,18 @@
             user-select: none;
             -webkit-touch-callout: none;
             touch-action: manipulation;
+            --accent: #00ffff;
+            --accent-soft: rgba(0, 255, 255, 0.35);
         }
+        /* Player colours: same list as the TV (index.html .tv-p1 ... and attackFx.js) */
         body.p1 { --accent: #ff4d6d; --accent-soft: rgba(255, 77, 109, 0.35); }
         body.p2 { --accent: #4dc3ff; --accent-soft: rgba(77, 195, 255, 0.35); }
-        body { --accent: #00ffff; --accent-soft: rgba(0, 255, 255, 0.35); }
+        body.p3 { --accent: #ffd60a; --accent-soft: rgba(255, 214, 10, 0.35); }
+        body.p4 { --accent: #00ff66; --accent-soft: rgba(0, 255, 102, 0.3); }
+        body.p5 { --accent: #c77dff; --accent-soft: rgba(199, 125, 255, 0.35); }
+        body.p6 { --accent: #ff9f1c; --accent-soft: rgba(255, 159, 28, 0.35); }
+        body.p7 { --accent: #2ee6d6; --accent-soft: rgba(46, 230, 214, 0.35); }
+        body.p8 { --accent: #ff70d9; --accent-soft: rgba(255, 112, 217, 0.35); }
 
         .screen {
             position: fixed;
@@ -83,9 +91,10 @@
         .big-button:disabled { opacity: 0.5; }
         .error { color: #ff6b6b; font-size: 11px; min-height: 1em; line-height: 1.6; }
 
-        /* Controller */
-        /* Buttons only in the bottom 60% of the screen, where a thumb reaches
-           without looking; the top 40% is just who you are */
+        /* Controller.
+           Buttons only in the bottom 60% of the screen, where a thumb reaches
+           without looking; the top 40% is just who you are. With the game on the
+           phone, the top part is the board and the buttons take the bottom half. */
         #controllerScreen {
             justify-content: stretch;
             gap: 0;
@@ -98,6 +107,7 @@
             flex-direction: column;
             padding: max(12px, env(safe-area-inset-top)) 12px 12px;
             gap: 10px;
+            min-height: 0;
         }
         .controller-info .big-name {
             flex: 1;
@@ -112,6 +122,7 @@
             max-width: 100%;
         }
         .controller-info .big-name small { font-size: 10px; color: #9fb3ff; text-shadow: none; }
+        .controller-info .big-name .target { color: #fff; text-shadow: none; }
         .controller-top {
             display: flex;
             align-items: center;
@@ -119,6 +130,16 @@
             width: 100%;
             gap: 10px;
             font-size: 12px;
+        }
+        .controller-top .top-name {
+            display: none;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--accent);
+            text-align: center;
         }
         .controller-info .big-name span {
             /* room for the glow, so cutting off a long name doesn't clip it into a box */
@@ -136,9 +157,10 @@
             padding: 0 12px max(12px, env(safe-area-inset-bottom));
             display: grid;
             grid-template-columns: 1fr 1fr;
-            grid-template-rows: 1fr 1fr 1.1fr;
-            gap: 12px;
+            grid-template-rows: 0.62fr 1fr 1fr 1.05fr;
+            gap: 10px;
             touch-action: none;
+            min-height: 0;
         }
         .pad button {
             font-family: inherit;
@@ -151,16 +173,82 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
             font-size: 11px;
             touch-action: none;
             transition: transform 0.05s, background 0.05s;
+            min-height: 0;
         }
-        .pad button svg { width: 56px; height: 56px; stroke: currentColor; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+        .pad button svg { width: 48px; height: 48px; flex: none; stroke: currentColor; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
         .pad button.down { transform: scale(0.95); background: var(--glow); }
         .pad .rotate { --c: #ff00ff; --glow: rgba(255, 0, 255, 0.35); }
         .pad .move { --c: #00ff66; --glow: rgba(0, 255, 102, 0.3); }
         .pad .drop { --c: #ff4444; --glow: rgba(255, 68, 68, 0.35); grid-column: 1 / span 2; }
+        /* HOLD: shows the pill in the hold box on the button itself */
+        .pad .hold {
+            --c: #ffd60a; --glow: rgba(255, 214, 10, 0.3);
+            grid-column: 1 / span 2;
+            flex-direction: row;
+            gap: 16px;
+            font-size: 14px;
+        }
+        .pad .hold .hold-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 64px;
+            height: 36px;
+            padding: 0 6px;
+            border: 2px solid currentColor;
+            border-radius: 8px;
+            background: #000;
+        }
+        .pad .hold .hold-box img { width: 24px; height: 24px; image-rendering: pixelated; }
+        .pad .hold .hold-box .empty { font-size: 9px; opacity: 0.6; }
+        .pad .hold.used { opacity: 0.45; }
+
+        /* The player's own board, when the TV sends it (Show Game on Phone Screen) */
+        .phone-game { display: none; }
+        #controllerScreen.show-game .controller-info { flex: 0 0 auto; padding-bottom: 6px; }
+        #controllerScreen.show-game .controller-info .big-name { display: none; }
+        #controllerScreen.show-game .controller-top .top-name { display: block; }
+        #controllerScreen.show-game .phone-game {
+            flex: 1 1 0;
+            min-height: 0;
+            width: 100%;
+            display: flex;
+            align-items: stretch;
+            justify-content: center;
+            gap: 10px;
+            padding: 0 12px 10px;
+        }
+        #controllerScreen.show-game .pad { flex: 0 0 50%; grid-template-rows: 0.78fr 1fr 1fr 1fr; }
+        #controllerScreen.show-game .pad button svg { width: 34px; height: 34px; }
+        #controllerScreen.show-game .pad button { gap: 4px; font-size: 9px; border-radius: 16px; }
+        .phone-game .side {
+            flex: 1 1 0;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 14px;
+            font-size: 9px;
+            color: #9fb3ff;
+        }
+        .phone-game .side.left { align-items: flex-end; text-align: right; }
+        .phone-game .side.right { align-items: flex-start; text-align: left; }
+        .phone-game .side b { display: block; margin-top: 6px; font-weight: normal; font-size: 12px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+        .phone-game .next { display: flex; margin-top: 6px; }
+        .phone-game .next img { width: 20px; height: 20px; image-rendering: pixelated; }
+        .phone-game .board-wrap { flex: none; height: 100%; display: flex; align-items: center; justify-content: center; }
+        #boardCanvas {
+            display: block;
+            background: #000;
+            image-rendering: pixelated;
+            border: 3px solid var(--accent);
+            border-radius: 6px;
+            box-shadow: 0 0 18px var(--accent-soft);
+        }
 
         /* Attack flashes */
         .fx-flash {
@@ -186,8 +274,12 @@
             border-bottom: 4px solid var(--fx);
             text-shadow: 0 0 12px var(--fx), 3px 3px 0 #000;
         }
+        /* With the board on screen, don't hide it behind the banner for long */
+        body.show-game .fx-flash { background: none; }
+        body.show-game .fx-flash span { background: rgba(0, 0, 0, 0.5); padding: 12px 0; font-size: 20px; }
         .fx-flash.attack { --fx: #00ff66; --fx-bg: rgba(0, 255, 102, 0.55); }
         .fx-flash.hit { --fx: #ff3b3b; --fx-bg: rgba(255, 40, 40, 0.7); }
+        .fx-flash.level { --fx: #ffd60a; --fx-bg: rgba(255, 214, 10, 0.5); }
 
         /* How the buttons reach the TV: straight over the Wi-Fi, or through the server */
         .controller-top .link {
@@ -202,6 +294,7 @@
 
         .ready-button { width: 100%; max-width: 320px; font-size: 22px; padding: 26px; }
         .ready-button.on { background: rgba(0, 0, 0, 0.5); border-color: #00ff66; color: #00ff66; font-size: 14px; box-shadow: 0 0 20px rgba(0, 255, 102, 0.4); }
+        .solo-button { width: 100%; max-width: 320px; font-size: 12px; padding: 16px; background: rgba(0, 0, 0, 0.45); border-color: #ffd60a; color: #ffd60a; }
         .rematch-button { width: 100%; max-width: 320px; font-size: 18px; padding: 22px; }
         .rematch-button.waiting { background: rgba(0, 0, 0, 0.5); border-color: #00ff66; color: #00ff66; font-size: 12px; }
         .rematch-button.asked { animation: pulse 0.8s ease-in-out infinite alternate; }
@@ -231,8 +324,9 @@
     <section id="waitScreen" class="screen hidden">
         <div class="badge" id="waitBadge">PLAYER ?</div>
         <h1 id="waitName"></h1>
-        <p id="waitText">You're in! Press READY.<br>The game starts when both players are ready.</p>
+        <p id="waitText">You're in! Press READY.<br>The game starts when everyone is ready.</p>
         <button class="big-button ready-button" id="readyButton" type="button">READY</button>
+        <button class="big-button solo-button hidden" id="soloButton" type="button">▶ PLAY SOLO</button>
         <p id="readyStatus" class="rematch-status"></p>
     </section>
 
@@ -241,11 +335,27 @@
         <div class="controller-info">
             <div class="controller-top">
                 <span class="badge" id="padBadge">P?</span>
+                <span class="top-name" id="topName"></span>
                 <span class="link" id="linkBadge" title="How your buttons reach the TV">☁ SERVER</span>
             </div>
-            <div class="big-name"><span id="padName"></span><small>WATCH THE TV</small></div>
+            <div class="big-name"><span id="padName"></span><small id="padHint">WATCH THE TV</small></div>
+        </div>
+        <div class="phone-game" id="phoneGame">
+            <div class="side left">
+                <div>SCORE<b id="gameScore">0</b></div>
+                <div>VIRUS<b id="gameVirus">0</b></div>
+                <div>LEVEL<b id="gameLevel">00</b></div>
+            </div>
+            <div class="board-wrap" id="boardWrap"><canvas id="boardCanvas" width="192" height="408"></canvas></div>
+            <div class="side right">
+                <div>NEXT<span class="next" id="gameNext"></span></div>
+                <div id="gameTargetBox" class="hidden">TARGET<b id="gameTarget"></b></div>
+            </div>
         </div>
         <div class="pad">
+            <button class="hold" data-action="hold" aria-label="Hold pill">
+                HOLD <span class="hold-box" id="holdBox"><span class="empty">EMPTY</span></span>
+            </button>
             <button class="rotate" data-action="rotateLeft" aria-label="Rotate left">
                 <svg viewBox="0 0 24 24"><path d="M7 8a7 7 0 1 1-1 8"></path><polyline points="12 8 7 8 7 3"></polyline></svg>
                 ROTATE
@@ -269,7 +379,7 @@
         </div>
     </section>
 
-    <!-- Victory / game over -->
+    <!-- Victory / game over / out -->
     <section id="resultScreen" class="screen hidden">
         <div class="result-emoji" id="resultEmoji"></div>
         <div class="result-title" id="resultTitle"></div>
@@ -287,12 +397,15 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
+        const MAX_PLAYERS = 8;
         const params = new URLSearchParams(location.search);
         const code = (params.get('room') || '').toUpperCase();
-        let player = parseInt(params.get('player'), 10) === 2 ? 2 : 1;
+        let player = Math.min(Math.max(parseInt(params.get('player'), 10) || 1, 1), MAX_PLAYERS);
         let myName = '';
         let joined = false;
         let screen = 'join';
+        let showGame = false;
+        const $ = id => document.getElementById(id);
 
         // Identifies this phone so it gets its slot back after the screen locks
         function getClientId() {
@@ -312,23 +425,24 @@
         function show(id) {
             screen = id;
             for (const el of document.querySelectorAll('.screen')) el.classList.add('hidden');
-            document.getElementById(id + 'Screen').classList.remove('hidden');
+            $(id + 'Screen').classList.remove('hidden');
+            if (id === 'controller') { fitBoard(); requestAnimationFrame(fitBoard); }
         }
 
         function setPlayer(n) {
             player = n;
-            document.body.classList.remove('p1', 'p2');
+            for (let i = 1; i <= MAX_PLAYERS; i++) document.body.classList.remove('p' + i);
             document.body.classList.add('p' + n);
-            document.getElementById('joinBadge').textContent = 'PLAYER ' + n;
-            document.getElementById('waitBadge').textContent = 'PLAYER ' + n;
-            document.getElementById('padBadge').textContent = 'P' + n;
+            $('joinBadge').textContent = 'PLAYER ' + n;
+            $('waitBadge').textContent = 'PLAYER ' + n;
+            $('padBadge').textContent = 'P' + n;
         }
         setPlayer(player);
 
-        try { document.getElementById('nameInput').value = localStorage.getItem('tvName') || ''; } catch (e) {}
+        try { $('nameInput').value = localStorage.getItem('tvName') || ''; } catch (e) {}
 
         if (!code) {
-            document.getElementById('errorMessage').textContent = 'This link has no room code. Scan the QR code on the TV.';
+            $('errorMessage').textContent = 'This link has no room code. Scan the QR code on the TV.';
             show('error');
         }
 
@@ -338,17 +452,17 @@
             socket.emit('tvJoin', { code, player, name: myName, clientId });
         }
 
-        document.getElementById('nameForm').addEventListener('submit', (e) => {
+        $('nameForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            const name = document.getElementById('nameInput').value.trim().replace(/\s+/g, ' ');
+            const name = $('nameInput').value.trim().replace(/\s+/g, ' ');
             if (!name) {
-                document.getElementById('joinError').textContent = 'Enter your name.';
+                $('joinError').textContent = 'Enter your name.';
                 return;
             }
             myName = name;
             try { localStorage.setItem('tvName', name); } catch (e) {}
-            document.getElementById('joinButton').disabled = true;
-            document.getElementById('joinError').textContent = '';
+            $('joinButton').disabled = true;
+            $('joinError').textContent = '';
             join();
         });
 
@@ -361,68 +475,200 @@
             joined = true;
             myName = data.name;
             setPlayer(data.player);
-            document.getElementById('joinButton').disabled = false;
-            document.getElementById('waitName').textContent = data.name;
-            document.getElementById('padName').textContent = data.name;
+            $('joinButton').disabled = false;
+            $('waitName').textContent = data.name;
+            $('padName').textContent = data.name;
+            $('topName').textContent = data.name;
             openDirect();
             if (data.result) showResult(data.result);
-            else if (data.state === 'playing') show('controller');
-            else show('wait');
+            else if (data.eliminated) showOut(data.eliminated);
+            else if (data.state === 'playing' && data.inGame) startController(data.showOnPhone);
+            else if (data.state === 'lobby') show('wait');
+            else {
+                $('errorMessage').textContent = 'A game is on. Wait for the next QR code on the TV.';
+                show('error');
+            }
         });
 
         socket.on('tvJoinError', (data) => {
-            document.getElementById('joinButton').disabled = false;
+            $('joinButton').disabled = false;
             if (data.reason === 'name') {
-                document.getElementById('joinError').textContent = data.message;
+                $('joinError').textContent = data.message;
                 return;
             }
             joined = false;
             if (screen === 'result') {
-                document.getElementById('rematchButton').classList.add('hidden');
-                document.getElementById('resultNext').classList.remove('hidden');
+                $('rematchButton').classList.add('hidden');
+                $('resultNext').classList.remove('hidden');
                 return;
             }
-            document.getElementById('errorMessage').textContent = data.message;
+            $('errorMessage').textContent = data.message;
             show('error');
         });
 
-        socket.on('tvGameStarted', () => {
+        socket.on('tvGameStarted', (data) => {
             releaseAll();
-            document.getElementById('resultNext').classList.add('hidden');
-            show('controller');
+            $('resultNext').classList.add('hidden');
+            startController(data.showOnPhone);
         });
 
-        // Ready: when both players are in and ready, the TV starts the game by itself
+        function startController(withGame) {
+            showGame = !!withGame;
+            $('controllerScreen').classList.toggle('show-game', showGame);
+            document.body.classList.toggle('show-game', showGame);
+            lastGrid = null;
+            applyState({ h: null, hu: false, t: null });
+            clearBoard();
+            show('controller');
+        }
+
+        /* ---------- Ready ---------- */
+
+        // When everyone in is ready, the TV starts the game by itself.
+        // Alone in the room: PLAY SOLO starts a one-player game.
         let iAmReady = false;
-        let lobbyOther = null; // the other player, as of the last lobby update
-        document.getElementById('readyButton').addEventListener('click', () => {
+        let lobbyPlayers = [];
+        $('readyButton').addEventListener('click', () => {
             iAmReady = !iAmReady;
             socket.emit('tvReady', { ready: iAmReady });
-            showReady(iAmReady, lobbyOther);
+            showReady();
             if (navigator.vibrate) navigator.vibrate(20);
         });
-        function showReady(mine, other) {
-            const button = document.getElementById('readyButton');
-            button.classList.toggle('on', mine);
-            button.textContent = mine ? 'READY ✔' : 'READY';
-            const status = document.getElementById('readyStatus');
-            if (!other || !other.name) status.textContent = 'Waiting for the other player to join...';
-            else if (!other.connected) status.textContent = other.name + ' dropped out...';
-            else if (other.ready && mine) status.textContent = 'Starting!';
-            else if (other.ready) status.textContent = other.name + ' is ready!';
-            else status.textContent = 'Waiting for ' + other.name + ' to press READY...';
+        $('soloButton').addEventListener('click', () => {
+            iAmReady = true;
+            socket.emit('tvReady', { ready: true, solo: true });
+            $('readyStatus').textContent = 'Starting!';
+            if (navigator.vibrate) navigator.vibrate(20);
+        });
+        function showReady() {
+            const button = $('readyButton');
+            button.classList.toggle('on', iAmReady);
+            button.textContent = iAmReady ? 'READY ✔' : 'READY';
+            const others = lobbyPlayers.filter(p => p.player !== player);
+            $('soloButton').classList.toggle('hidden', others.length > 0);
+            const status = $('readyStatus');
+            const waitingOn = others.filter(p => p.connected && !p.ready);
+            if (!others.length) status.textContent = 'Waiting for others to join...';
+            else if (!waitingOn.length) status.textContent = iAmReady ? 'Starting!'
+                : others.length === 1 ? others[0].name + ' is ready!' : 'Everyone else is ready!';
+            else if (waitingOn.length === 1) status.textContent = 'Waiting for ' + waitingOn[0].name + ' to press READY...';
+            else status.textContent = 'Waiting for ' + waitingOn.length + ' players to press READY...';
         }
         socket.on('tvLobby', ({ players }) => {
+            lobbyPlayers = players;
             if (screen !== 'wait') return;
             const me = players.find(p => p.player === player);
-            const other = lobbyOther = players.find(p => p.player !== player);
             iAmReady = !!(me && me.ready);
-            showReady(iAmReady, other);
+            showReady();
         });
 
-        // Rematch: when both phones ask, the TV starts the next game by itself
+        /* ---------- Board from the TV ---------- */
+
+        // One character per cell: '.' empty, 'a' + index into this list.
+        // Same list as SPRITE_CODES in scripts/components.js - change both together.
+        const SPRITES = [];
+        for (const color of ['bl', 'br', 'yl'])
+            for (const kind of ['dot', 'covid', 'left', 'right', 'up', 'down', 'x', 'o'])
+                SPRITES.push(color + '_' + kind);
+        const spriteImages = SPRITES.map(name => {
+            const img = new Image();
+            img.onload = () => { if (lastGrid) drawBoard(lastGrid); };
+            img.src = '/img/' + name + '.png';
+            return img;
+        });
+        const canvas = $('boardCanvas');
+        const ctx = canvas.getContext('2d');
+        let lastGrid = null;
+
+        function clearBoard() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        function drawBoard(grid) {
+            ctx.imageSmoothingEnabled = false;
+            clearBoard();
+            for (let i = 0; i < grid.length; i++) {
+                const ch = grid.charCodeAt(i);
+                if (ch === 46) continue; // '.'
+                const img = spriteImages[ch - 97];
+                if (img && img.complete && img.naturalWidth) ctx.drawImage(img, (i % 8) * 24, Math.floor(i / 8) * 24, 24, 24);
+            }
+        }
+        // Biggest board that fits its space, keeping the bottle's 8 x 17 shape
+        function fitBoard() {
+            if (!showGame) return;
+            const wrap = $('phoneGame');
+            const side = 2 * 64 + 20; // room for the score and NEXT columns
+            let h = wrap.clientHeight - 16;
+            let w = Math.round(h * 8 / 17);
+            if (w > wrap.clientWidth - side) {
+                w = Math.max(80, wrap.clientWidth - side);
+                h = Math.round(w * 17 / 8);
+            }
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+        }
+        window.addEventListener('resize', fitBoard);
+
+        function pillImages(colors, size) {
+            const frag = document.createDocumentFragment();
+            for (const [color, side] of [[colors[0], 'left'], [colors[1], 'right']]) {
+                const img = document.createElement('img');
+                img.src = '/img/' + color + '_' + side + '.png';
+                img.alt = '';
+                frag.appendChild(img);
+            }
+            return frag;
+        }
+
+        let lastHold = '';
+        function applyState(state) {
+            // HOLD: on the button, dimmed once it's been used for this pill
+            const holdKey = JSON.stringify([state.h, state.hu]);
+            if (holdKey !== lastHold) {
+                lastHold = holdKey;
+                const box = $('holdBox');
+                box.innerHTML = '';
+                if (state.h) box.appendChild(pillImages(state.h));
+                else box.innerHTML = '<span class="empty">EMPTY</span>';
+                document.querySelector('.pad .hold').classList.toggle('used', !!state.hu);
+            }
+            $('padHint').innerHTML = '';
+            if (state.t) {
+                $('padHint').append('TARGET ▸ ');
+                const t = document.createElement('span');
+                t.className = 'target';
+                t.textContent = state.t;
+                $('padHint').appendChild(t);
+            } else {
+                $('padHint').textContent = 'WATCH THE TV';
+            }
+            if (!showGame) return;
+            $('gameTargetBox').classList.toggle('hidden', !state.t);
+            $('gameTarget').textContent = state.t || '';
+            if (typeof state.s === 'number') $('gameScore').textContent = state.s;
+            if (typeof state.v === 'number') $('gameVirus').textContent = String(state.v).padStart(2, '0');
+            if (typeof state.l === 'number') $('gameLevel').textContent = String(state.l).padStart(2, '0');
+            const next = $('gameNext');
+            const nextKey = JSON.stringify(state.n || null);
+            if (next.dataset.key !== nextKey) {
+                next.dataset.key = nextKey;
+                next.innerHTML = '';
+                if (state.n) next.appendChild(pillImages(state.n));
+            }
+            if (state.g && state.g !== lastGrid) {
+                lastGrid = state.g;
+                drawBoard(state.g);
+            }
+        }
+        socket.on('tvState', (state) => { if (screen === 'controller') applyState(state); });
+
+        /* ---------- Results ---------- */
+
+        // Rematch: when every player asks, the TV starts the next game by itself
         let iAskedRematch = false;
-        document.getElementById('rematchButton').addEventListener('click', () => {
+        let lastResult = null;
+        $('rematchButton').addEventListener('click', () => {
             if (iAskedRematch) return;
             iAskedRematch = true;
             socket.emit('tvRematch');
@@ -430,28 +676,77 @@
             if (navigator.vibrate) navigator.vibrate(20);
         });
         function showRematch(players) {
-            const button = document.getElementById('rematchButton');
-            const status = document.getElementById('rematchStatus');
+            const button = $('rematchButton');
+            const status = $('rematchStatus');
+            const roster = (lastResult && lastResult.roster) || [player];
+            const names = (lastResult && lastResult.names) || {};
             const mine = players.includes(player);
-            const theirs = players.some(n => n !== player);
+            const asked = players.filter(n => n !== player);
+            const pending = roster.filter(n => !players.includes(n));
             iAskedRematch = mine;
             button.disabled = mine;
             button.classList.toggle('waiting', mine);
-            button.classList.toggle('asked', !mine && theirs);
-            button.textContent = mine ? 'WAITING FOR ' + (otherName || 'THE OTHER PLAYER') + '...' : '🔁 REMATCH';
-            status.textContent = mine && theirs ? 'Starting!' : (!mine && theirs ? (otherName || 'The other player') + ' wants a rematch!' : '');
+            button.classList.toggle('asked', !mine && asked.length > 0);
+            button.textContent = !mine ? (roster.length === 1 ? '🔁 PLAY AGAIN' : '🔁 REMATCH')
+                : pending.length === 0 ? 'STARTING...'
+                : 'WAITING FOR ' + (pending.length === 1 ? names[pending[0]] || 'THE OTHER PLAYER' : pending.length + ' PLAYERS') + '...';
+            status.textContent = mine && !pending.length ? 'Starting!'
+                : !mine && asked.length === 1 ? (names[asked[0]] || 'Someone') + ' wants a rematch!'
+                : !mine && asked.length > 1 ? asked.length + ' of ' + roster.length + ' want a rematch!'
+                : '';
         }
         socket.on('tvRematch', ({ players }) => showRematch(players));
 
         socket.on('tvResult', showResult);
+        socket.on('tvEliminated', showOut);
 
-        // You sent junk, or junk hit you: flash the whole screen (the pad keeps working underneath)
+        // Out of a bigger game: the others play on; the final result comes later
+        function showOut({ place, of }) {
+            releaseAll();
+            $('resultEmoji').textContent = '💀';
+            $('resultTitle').textContent = "YOU'RE OUT";
+            $('resultTitle').className = 'result-title lose';
+            $('resultMessage').textContent = 'You finished #' + place + ' of ' + of + '. Watch the rest on the TV!';
+            $('rematchButton').classList.add('hidden');
+            $('rematchStatus').textContent = '';
+            if (navigator.vibrate) navigator.vibrate([300]);
+            show('result');
+        }
+
+        function showResult(result) {
+            releaseAll();
+            lastResult = result;
+            $('rematchButton').classList.remove('hidden');
+            showRematch(result.rematch || []);
+            const title = $('resultTitle');
+            if (result.solo) {
+                $('resultEmoji').textContent = '💀';
+                title.textContent = 'GAME OVER';
+                title.className = 'result-title lose';
+                $('resultMessage').textContent = 'You reached level ' + String(result.solo.level).padStart(2, '0') + ' with ' + result.solo.score + ' points.';
+            } else if (result.won) {
+                $('resultEmoji').textContent = '🏆';
+                title.textContent = 'VICTORY!';
+                title.className = 'result-title win';
+                $('resultMessage').textContent = result.of > 2 ? 'You beat everyone, ' + myName + '!' : 'You beat the viruses first, ' + myName + '!';
+            } else {
+                $('resultEmoji').textContent = '💀';
+                title.textContent = 'GAME OVER';
+                title.className = 'result-title lose';
+                $('resultMessage').textContent = (result.winnerName || 'Someone') + ' won this one.'
+                    + (result.of > 2 && result.place ? ' You finished #' + result.place + ' of ' + result.of + '.' : '');
+            }
+            if (navigator.vibrate) navigator.vibrate(result.won ? [80, 60, 80, 60, 200] : [400]);
+            show('result');
+        }
+
+        // You sent junk, junk hit you, or you cleared a level: flash the screen (the pad keeps working underneath)
         socket.on('tvFx', ({ kind }) => {
             if (screen !== 'controller') return;
             const el = document.createElement('div');
             el.className = 'fx-flash ' + kind;
             const label = document.createElement('span');
-            label.textContent = kind === 'attack' ? 'ATTACK SENT!' : 'INCOMING!';
+            label.textContent = kind === 'attack' ? 'ATTACK SENT!' : kind === 'level' ? 'LEVEL CLEAR!' : 'INCOMING!';
             el.appendChild(label);
             document.body.appendChild(el);
             const anim = el.animate([
@@ -459,9 +754,9 @@
                 { opacity: 1, transform: 'scale(1)', offset: 0.1 },
                 { opacity: 1, transform: 'scale(1)', offset: 0.55 },
                 { opacity: 0, transform: 'scale(1)' },
-            ], { duration: kind === 'attack' ? 800 : 1000, easing: 'ease-out' });
+            ], { duration: kind === 'hit' ? 1000 : 800, easing: 'ease-out' });
             anim.onfinish = () => el.remove();
-            if (navigator.vibrate) navigator.vibrate(kind === 'attack' ? 30 : [120, 60, 120]);
+            if (navigator.vibrate) navigator.vibrate(kind === 'hit' ? [120, 60, 120] : 30);
         });
 
         socket.on('tvRoomClosed', () => {
@@ -470,42 +765,20 @@
             closeDirect();
             if (screen === 'result') {
                 // The room is gone, so there is nothing to rematch in
-                document.getElementById('rematchButton').classList.add('hidden');
-                document.getElementById('rematchStatus').textContent = '';
-                document.getElementById('resultNext').classList.remove('hidden');
+                $('rematchButton').classList.add('hidden');
+                $('rematchStatus').textContent = '';
+                $('resultNext').classList.remove('hidden');
             } else {
-                document.getElementById('errorMessage').textContent = 'The TV closed this room. Scan the new QR code on the TV.';
+                $('errorMessage').textContent = 'The TV closed this room. Scan the new QR code on the TV.';
                 show('error');
             }
         });
 
-        let otherName = '';
-        function showResult(result) {
-            releaseAll();
-            otherName = result.otherName || (result.won ? '' : result.winnerName);
-            document.getElementById('rematchButton').classList.remove('hidden');
-            showRematch(result.rematch || []);
-            const title = document.getElementById('resultTitle');
-            if (result.won) {
-                document.getElementById('resultEmoji').textContent = '🏆';
-                title.textContent = 'VICTORY!';
-                title.className = 'result-title win';
-                document.getElementById('resultMessage').textContent = 'You beat the viruses first, ' + myName + '!';
-            } else {
-                document.getElementById('resultEmoji').textContent = '💀';
-                title.textContent = 'GAME OVER';
-                title.className = 'result-title lose';
-                document.getElementById('resultMessage').textContent = result.winnerName + ' won this one.';
-            }
-            if (navigator.vibrate) navigator.vibrate(result.won ? [80, 60, 80, 60, 200] : [400]);
-            show('result');
-        }
-
         /**
          * Direct link to the TV (WebRTC data channel). The server only passes the
          * set-up messages; after that, presses go straight from this phone to the
-         * TV page over the Wi-Fi they share - fast even when the site is hosted
-         * far away. If it can't connect, presses keep going through the server.
+         * TV page over the Wi-Fi they share, and the TV sends the board back the
+         * same way. If it can't connect, both keep going through the server.
          */
         let pc = null;
         let channel = null;
@@ -517,7 +790,7 @@
             showLink('server');
         }
         function showLink(kind) {
-            const el = document.getElementById('linkBadge');
+            const el = $('linkBadge');
             el.classList.toggle('direct', kind !== 'server');
             el.textContent = kind === 'direct' ? '⚡ DIRECT' : '☁ SERVER';
         }
@@ -528,6 +801,12 @@
             const myChannel = channel = pc.createDataChannel('input', { ordered: true });
             myChannel.onopen = () => { if (pc === myPc) showLink('direct'); };
             myChannel.onclose = () => { if (channel === myChannel) { channel = null; showLink('server'); } };
+            myChannel.onmessage = (m) => {
+                try {
+                    const data = JSON.parse(m.data);
+                    if (data.type === 'state' && screen === 'controller') applyState(data.state);
+                } catch (e) {}
+            };
             pc.onicecandidate = (e) => { if (e.candidate && pc === myPc) socket.emit('tvSignal', { candidate: e.candidate }); };
             pc.createOffer()
                 .then(offer => myPc.setLocalDescription(offer))
@@ -544,7 +823,9 @@
                 : candidate && myPc.addIceCandidate(candidate)).catch(() => {});
         });
 
-        // Buttons: send "down" when pressed and "up" when released; the TV repeats while held
+        /* ---------- Buttons ---------- */
+
+        // Send "down" when pressed and "up" when released; the TV repeats while held
         const held = new Map(); // pointerId -> button
         function sendInput(action, pressed) {
             if (channel && channel.readyState === 'open') channel.send(JSON.stringify({ action, pressed }));
