@@ -531,7 +531,8 @@ io.on('connection', (socket) => {
  * its own board) the board pictures.
  *
  * 1 to 8 players. One player plays solo (levels, like single player); five or
- * more always show the game on their phones.
+ * more always show the game on their phones. Single player's PHONE choice opens
+ * a room for one phone (`solo`) that starts as soon as the phone joins.
  *
  * Socket rooms: the host is alone in `tvh:<code>`, the phones share `tvp:<code>`.
  */
@@ -607,18 +608,19 @@ function tvToPlayer(room, n, event, data) {
 }
 
 function registerTvRoomHandlers(socket) {
-    // Host: open a new TV room
-    socket.on('tvCreateRoom', () => {
+    // Host: open a new TV room ({ solo: true }: single player with one phone as the controller)
+    socket.on('tvCreateRoom', (payload = {}) => {
         if (socket.data.tvHostOf) closeTvRoom(socket.data.tvHostOf);
         let code = generateRoomCode();
         while (tvRooms[code] || activeRooms[code]) code = generateRoomCode();
+        const soloOnly = !!(payload && payload.solo);
         tvRooms[code] = {
-            hostId: socket.id, state: 'lobby', players: {}, ready: new Set(), solo: false,
+            hostId: socket.id, state: 'lobby', players: {}, ready: new Set(), solo: soloOnly, soloOnly,
             roster: [], winner: null, places: {}, rematch: new Set(), settings: { virusCount: 5, showOnPhone: false },
         };
         socket.data.tvHostOf = code;
         socket.join(`tvh:${code}`);
-        socket.emit('tvRoomCreated', { code, lanOrigins: lanOrigins(PORT), max: TV_MAX_PLAYERS });
+        socket.emit('tvRoomCreated', { code, lanOrigins: lanOrigins(PORT), max: soloOnly ? 1 : TV_MAX_PLAYERS, solo: soloOnly });
         tvSendLobby(code);
     });
 
@@ -636,10 +638,11 @@ function registerTvRoomHandlers(socket) {
         if (!slot) {
             if (room.state !== 'lobby') return socket.emit('tvJoinError', { reason: 'started', message: 'This game already started. Wait for the next QR code on the TV.' });
             const wanted = parseInt(payload.player, 10);
+            const max = room.soloOnly ? 1 : TV_MAX_PLAYERS;
             const free = n => !room.players[n] || !room.players[n].connected;
-            slot = wanted >= 1 && wanted <= TV_MAX_PLAYERS && free(wanted) ? wanted : tvSlots().find(free);
-            if (!slot) return socket.emit('tvJoinError', { reason: 'full', message: `This room is full (${TV_MAX_PLAYERS} players).` });
-            room.solo = false; // someone new: nobody is playing solo any more
+            slot = wanted >= 1 && wanted <= max && free(wanted) ? wanted : tvSlots().slice(0, max).find(free);
+            if (!slot) return socket.emit('tvJoinError', { reason: 'full', message: room.soloOnly ? 'Another phone is already the controller for this game.' : `This room is full (${TV_MAX_PLAYERS} players).` });
+            if (!room.soloOnly) room.solo = false; // someone new: nobody is playing solo any more
         }
 
         const previous = room.players[slot];
@@ -663,6 +666,8 @@ function registerTvRoomHandlers(socket) {
             result: tvResultFor(room, slot),
         });
         tvSendLobby(code);
+        // Single player with the phone as the controller: start as soon as the phone is in
+        if (room.soloOnly && room.state === 'lobby') io.to(room.hostId).emit('tvAutoStart', { code });
     });
 
     // Phone: "Ready" on the waiting screen (press again to take it back); "Play solo"

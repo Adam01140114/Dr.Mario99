@@ -321,6 +321,34 @@ side is the TV ROOM section of `server.js`.
   tvLevelData, tvResult, tvFx, tvRematch, tvSignal, tvRoomClosed (out). QR
   images come from `GET /tv/qr.svg?text=`
 
+SINGLE PLAYER: KEYBOARD, PHONE OR PRO CONTROLLER
+------------------------------------------------
+SINGLE PLAYER first asks how you want to play (`#controlPicker` in index.html;
+arrow keys move between the choices, Escape goes back):
+
+- **Keyboard** (TOUCH on a phone-sized screen): the single player game as
+  before (`startSinglePlayer`)
+- **Phone**: a TV Room for one phone (`tvHost.startPhoneSolo()`,
+  `tvCreateRoom({ solo: true })` - the room has `soloOnly`). The lobby shows
+  only the QR code; its link has `&solo=1`, so controller.html skips the name
+  and READY screens and joins at once (saved name, else "PLAYER 1"). The
+  server starts the game as soon as the phone is in (`tvAutoStart`) and turns
+  away a second phone. From there it is the TV Room's solo game: STAGE CLEAR
+  goes on to the next level, PLAY AGAIN on the phone, ⚡ direct link, etc.
+- **Pro Controller**: `scripts/gamepad.js` (`window.padInput`). The connect
+  screen (`#padConnect`) explains Bluetooth pairing and waits for the browser
+  to see a controller - browsers only show one after a button is pressed -
+  then A or + (or START) begins the regular single player game. Buttons become
+  the same key presses as the keyboard (keydown when pressed, keyup when let
+  go), so held buttons repeat like held keys and "press any key" screens work.
+  Standard layout, by position: D-pad / left stick move (down = drop), A and X
+  rotate right, B and Y rotate left, L R ZL ZR hold. While a message is up
+  (GAME OVER), A or + presses its button instead, after one second so mashing
+  A doesn't hit EXIT. Polling runs on requestAnimationFrame, only while
+  playing or while the connect screen is open
+- **EXIT** after a single player game reloads to the menu: a second game on
+  the same page used to get a dead board
+
 KEEPING IT SMOOTH
 -----------------
 Measured with two boards on a 1920x1080 page: the old animated background

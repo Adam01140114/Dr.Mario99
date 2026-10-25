@@ -423,6 +423,65 @@
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(0, 255, 255, 0.4);
         }
+        .rules-close-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+        .rules-close-btn.secondary { background: transparent; color: #00ffff; border-color: #00ffff; }
+
+        /* Single player: keyboard, phone or Pro Controller (same overlay as the rules) */
+        .control-modal { max-width: 920px; text-align: center; }
+        .control-title { color: #00ffff; font-size: 1.5rem; line-height: 1.5; margin-bottom: 28px; text-shadow: 0 0 10px #00ffff; }
+        .control-options { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-bottom: 28px; }
+        .control-option {
+            --option-color: #00ffff;
+            --option-glow: rgba(0, 255, 255, 0.35);
+            font-family: 'Press Start 2P', cursive;
+            flex: 1 1 220px;
+            max-width: 260px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            padding: 26px 16px;
+            background: rgba(0, 0, 0, 0.45);
+            color: #fff;
+            border: 3px solid var(--option-color);
+            border-radius: 16px;
+            box-shadow: 0 0 18px var(--option-glow);
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        .control-option:hover,
+        .control-option:focus-visible { transform: translateY(-4px); background: rgba(255, 255, 255, 0.08); outline: none; }
+        #playPhone { --option-color: #ffb703; --option-glow: rgba(255, 183, 3, 0.35); }
+        #playGamepad { --option-color: #ff4d6d; --option-glow: rgba(255, 77, 109, 0.4); }
+        .control-emoji { font-size: 48px; line-height: 1; }
+        .control-name { font-size: 1rem; color: var(--option-color); text-shadow: 0 0 10px var(--option-glow); }
+        .control-detail { font-size: 0.65rem; line-height: 1.7; color: #9fb3ff; }
+        .only-narrow { display: none; }
+        @media (max-width: 768px) {
+            .control-title { font-size: 1rem; }
+            .only-wide { display: none; }
+            .only-narrow { display: inline; }
+        }
+        .control-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+        .control-buttons .rules-close-btn { margin: 0; }
+        .pad-steps { color: #fff; text-align: left; max-width: 640px; margin: 0 auto 24px; padding-left: 1.8em; }
+        .pad-steps li { font-size: 0.7rem; line-height: 2; margin-bottom: 8px; }
+        .pad-steps strong { font-size: inherit; color: #ffd60a; }
+        .pad-status {
+            font-size: 0.8rem;
+            line-height: 1.7;
+            padding: 16px;
+            margin-bottom: 20px;
+            border: 3px dashed rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            color: #9fb3ff;
+        }
+        .pad-status.waiting { animation: subtitleFlicker 3s ease-in-out infinite; }
+        .pad-status.connected { border-style: solid; border-color: #00ff66; color: #00ff66; text-shadow: 0 0 10px #00ff66; }
+        .pad-status.problem { border-color: #ffb703; color: #ffb703; }
+        .pad-map { display: flex; flex-wrap: wrap; gap: 10px 22px; justify-content: center; margin-bottom: 24px; }
+        .pad-map span { font-size: 0.7rem; line-height: 1.6; color: #fff; }
+        .pad-map b { font-size: 0.7rem; color: #ff4d6d; margin-right: 8px; }
 
         /* AI Mode button: hidden by default, shown on logo click or Ctrl+Shift / Cmd+Shift */
         .ai-mode-shortcut {
@@ -1058,6 +1117,13 @@
             color: #fff;
             text-align: center;
         }
+        /* Single player with the phone as the controller: one phone, no lobby settings */
+        .tv-solo-note { display: none; color: #fff; font-size: 0.75rem; line-height: 2; }
+        .tv-lobby.solo-only .tv-solo-note { display: block; }
+        .tv-lobby.solo-only .tv-code,
+        .tv-lobby.solo-only .tv-count,
+        .tv-lobby.solo-only .tv-slots,
+        .tv-lobby.solo-only .tv-options { display: none; }
         .tv-actions { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
         .tv-actions .menu-button { min-width: 0; }
         .tv-start { animation: tvPop 0.45s cubic-bezier(.2, 1.6, .4, 1), roomCodeGlow 1.5s ease-in-out infinite alternate; }
@@ -1192,6 +1258,57 @@
             </div>
         </div>
 
+        <!-- Single player: how do you want to play? (hidden by default) -->
+        <div id="controlPicker" class="rules-overlay hidden">
+            <div class="rules-modal control-modal">
+                <h2 class="control-title">HOW DO YOU WANT TO PLAY?</h2>
+                <div class="control-options">
+                    <button id="playKeyboard" class="control-option" type="button">
+                        <span class="control-emoji">⌨️</span>
+                        <span class="control-name only-wide">KEYBOARD</span>
+                        <span class="control-name only-narrow">TOUCH</span>
+                        <span class="control-detail only-wide">Arrow keys or WASD</span>
+                        <span class="control-detail only-narrow">Buttons on this screen</span>
+                    </button>
+                    <button id="playPhone" class="control-option" type="button">
+                        <span class="control-emoji">📱</span>
+                        <span class="control-name">PHONE</span>
+                        <span class="control-detail">Scan a QR code and use your phone as the controller</span>
+                    </button>
+                    <button id="playGamepad" class="control-option" type="button">
+                        <span class="control-emoji">🎮</span>
+                        <span class="control-name">PRO CONTROLLER</span>
+                        <span class="control-detail">Nintendo Switch Pro Controller over Bluetooth</span>
+                    </button>
+                </div>
+                <button id="controlBack" class="rules-close-btn secondary" type="button">BACK</button>
+            </div>
+        </div>
+
+        <!-- Single player with a Pro Controller: pair it, press a button, start (hidden by default) -->
+        <div id="padConnect" class="rules-overlay hidden">
+            <div class="rules-modal control-modal">
+                <h2 class="control-title">🎮 PRO CONTROLLER</h2>
+                <ol class="pad-steps">
+                    <li>Open this computer's <strong>Bluetooth</strong> settings.</li>
+                    <li>Hold the small round <strong>sync button</strong> on top of the controller (next to the USB-C port) until the lights run back and forth.</li>
+                    <li>Choose <strong>Pro Controller</strong> in the Bluetooth list to connect it.</li>
+                    <li>Press any button on the controller.</li>
+                </ol>
+                <div class="pad-status waiting" id="padStatus">Waiting for a controller...</div>
+                <div class="pad-map">
+                    <span><b>✚ / STICK</b>MOVE + DROP</span>
+                    <span><b>A X</b>ROTATE ↻</span>
+                    <span><b>B Y</b>ROTATE ↺</span>
+                    <span><b>L R ZL ZR</b>HOLD</span>
+                </div>
+                <div class="control-buttons">
+                    <button id="padStart" class="rules-close-btn" type="button" data-pad-confirm disabled>▶ START</button>
+                    <button id="padBack" class="rules-close-btn secondary" type="button">BACK</button>
+                </div>
+            </div>
+        </div>
+
         <!-- TV Room lobby: phones scan the QR code to join (hidden by default) -->
         <div id="tvLobby" class="tv-lobby hidden">
             <div class="tv-lobby-panel">
@@ -1203,7 +1320,8 @@
                     <div class="tv-warning hidden" id="tvWarning"></div>
                 </div>
                 <div class="tv-side">
-                    <div class="tv-title">📺 TV ROOM</div>
+                    <div class="tv-title" id="tvTitle">📺 TV ROOM</div>
+                    <div class="tv-solo-note" id="tvSoloNote"></div>
                     <div class="tv-code" id="tvCode"></div>
                     <div class="tv-count" id="tvCount">0 / 8 PLAYERS</div>
                     <div class="tv-slots" id="tvSlots"></div>
@@ -1487,8 +1605,89 @@
             if (isGameVisible()) applyMobileGameZoom();
         });
 
-        // Single Player
-        document.getElementById('single').onclick = function() {
+        // Single Player: first choose how to play - keyboard, phone or Pro Controller
+        const controlPicker = document.getElementById('controlPicker');
+        const padConnect = document.getElementById('padConnect');
+        const controlOptions = [...controlPicker.querySelectorAll('.control-option')];
+
+        function showControlPicker() {
+            controlPicker.classList.remove('hidden');
+            setTimeout(() => controlOptions[0].focus(), 50);
+        }
+        function hideControlPicker() {
+            controlPicker.classList.add('hidden');
+        }
+
+        document.getElementById('single').onclick = showControlPicker;
+        document.getElementById('controlBack').onclick = hideControlPicker;
+        controlPicker.addEventListener('click', function(e) {
+            if (e.target === this) hideControlPicker();
+        });
+        // Arrow keys move between the three choices, Escape goes back
+        controlPicker.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') return hideControlPicker();
+            const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+            if (!step) return;
+            e.preventDefault();
+            const at = controlOptions.indexOf(document.activeElement);
+            controlOptions[(at + step + controlOptions.length) % controlOptions.length].focus();
+        });
+
+        document.getElementById('playKeyboard').onclick = () => startSinglePlayer('keyboard');
+
+        // Phone: a TV Room for one phone (scripts/tvHost.js) that starts as soon as the phone joins
+        document.getElementById('playPhone').onclick = () => {
+            hideControlPicker();
+            window.tvHost.startPhoneSolo();
+        };
+
+        // Pro Controller: wait for the controller to show up (scripts/gamepad.js), then START
+        let stopWatchingPad = null;
+        document.getElementById('playGamepad').onclick = () => {
+            hideControlPicker();
+            padConnect.classList.remove('hidden');
+            stopWatchingPad = window.padInput.onChange(showPadStatus);
+        };
+        function closePadConnect() {
+            padConnect.classList.add('hidden');
+            if (stopWatchingPad) stopWatchingPad();
+            stopWatchingPad = null;
+        }
+        function showPadStatus(gamepad) {
+            const status = document.getElementById('padStatus');
+            const start = document.getElementById('padStart');
+            start.disabled = !gamepad;
+            if (!navigator.getGamepads) {
+                status.className = 'pad-status problem';
+                status.textContent = "This browser can't read game controllers. Try Chrome, Edge or Safari.";
+            } else if (!gamepad) {
+                status.className = 'pad-status waiting';
+                status.textContent = 'Waiting for a controller... press any button on it.';
+            } else {
+                status.className = 'pad-status connected';
+                status.textContent = '✅ ' + window.padInput.nameOf(gamepad).toUpperCase() + ' CONNECTED! Press A or + to start.';
+                if (gamepad.mapping !== 'standard') {
+                    status.className = 'pad-status problem';
+                    status.textContent = '⚠️ ' + window.padInput.nameOf(gamepad) + " is connected, but this browser doesn't know its buttons. If they act strangely, try Chrome.";
+                }
+            }
+        }
+        document.getElementById('padStart').onclick = () => {
+            closePadConnect();
+            startSinglePlayer('gamepad');
+        };
+        document.getElementById('padBack').onclick = () => {
+            closePadConnect();
+            showControlPicker();
+        };
+        padConnect.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') document.getElementById('padBack').click();
+        });
+
+        function startSinglePlayer(control) {
+            hideControlPicker();
+            // The keyboard always works; the Pro Controller sends the same key presses
+            if (control === 'gamepad') window.padInput.start();
             document.body.classList.remove('ai-mode');
             window.gameInstanceOptions = {};
             socket.emit('single');
@@ -1519,9 +1718,9 @@
             
             // Show touch controls
             document.getElementById('touchControls').classList.remove('hidden');
-            
+
             applyMobileGameZoom();
-        };
+        }
 
         // AI Mode (play against server bot)
         document.getElementById('aiMode').onclick = function() {
@@ -1884,6 +2083,12 @@
             exitBtn.className = 'alert-button';
             exitBtn.textContent = 'EXIT';
             exitBtn.onclick = () => {
+                // Single player: reload to the menu, so the next game (any controller) starts fresh -
+                // a second game on the same page got a dead board
+                if (!roomCode) {
+                    location.href = location.pathname;
+                    return;
+                }
                 overlay.remove();
                 returnToHomepage();
             };
@@ -2044,5 +2249,7 @@
     </script>
     <!-- TV Room: the computer shows the boards, phones are the controllers -->
     <script type="module" src="./scripts/tvHost.js"></script>
+    <!-- Single player with a Nintendo Switch Pro Controller -->
+    <script type="module" src="./scripts/gamepad.js"></script>
 </body>
 </html>

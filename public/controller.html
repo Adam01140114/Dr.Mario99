@@ -401,6 +401,8 @@
         const params = new URLSearchParams(location.search);
         const code = (params.get('room') || '').toUpperCase();
         let player = Math.min(Math.max(parseInt(params.get('player'), 10) || 1, 1), MAX_PLAYERS);
+        // Single player on the computer with this phone as the controller: no name, no READY
+        const soloPhone = params.get('solo') === '1';
         let myName = '';
         let joined = false;
         let screen = 'join';
@@ -452,6 +454,17 @@
             socket.emit('tvJoin', { code, player, name: myName, clientId });
         }
 
+        if (soloPhone && code) {
+            try { myName = localStorage.getItem('tvName') || ''; } catch (e) {}
+            myName = myName || 'PLAYER 1';
+            $('waitName').textContent = 'PHONE CONTROLLER';
+            $('waitText').textContent = 'Connecting to the game...';
+            $('readyButton').classList.add('hidden');
+            $('padHint').textContent = 'WATCH THE SCREEN';
+            show('wait');
+            join();
+        }
+
         $('nameForm').addEventListener('submit', (e) => {
             e.preventDefault();
             const name = $('nameInput').value.trim().replace(/\s+/g, ' ');
@@ -476,7 +489,8 @@
             myName = data.name;
             setPlayer(data.player);
             $('joinButton').disabled = false;
-            $('waitName').textContent = data.name;
+            $('waitName').textContent = soloPhone ? 'PHONE CONTROLLER' : data.name;
+            if (soloPhone) $('waitText').textContent = 'Connected! The game is starting on the computer.';
             $('padName').textContent = data.name;
             $('topName').textContent = data.name;
             openDirect();
@@ -541,6 +555,7 @@
             if (navigator.vibrate) navigator.vibrate(20);
         });
         function showReady() {
+            if (soloPhone) return; // starts by itself
             const button = $('readyButton');
             button.classList.toggle('on', iAmReady);
             button.textContent = iAmReady ? 'READY ✔' : 'READY';
@@ -641,7 +656,7 @@
                 t.textContent = state.t;
                 $('padHint').appendChild(t);
             } else {
-                $('padHint').textContent = 'WATCH THE TV';
+                $('padHint').textContent = soloPhone ? 'WATCH THE SCREEN' : 'WATCH THE TV';
             }
             if (!showGame) return;
             $('gameTargetBox').classList.toggle('hidden', !state.t);

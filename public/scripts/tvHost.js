@@ -10,6 +10,8 @@
  *   their board leaves the screen; the rest spread out to fill it. Clearing all
  *   your viruses wins outright; otherwise the last player left wins.
  * - One player plays solo: like single player, a cleared board is the next level.
+ * - Single player's PHONE choice opens a room for one phone (startPhoneSolo):
+ *   no lobby settings, and the game starts as soon as the phone joins.
  * - "Show game on phone screen" sends each player a picture of their own board
  *   (Board.snapshot()); it is always on with five or more players.
  * - Presses and pictures go straight between phone and this page over their
@@ -45,6 +47,7 @@ const tv = window.tvHost = {
     started: false,
     finished: false,
     solo: false,
+    soloOnly: false,    // single player with the phone as the controller: one phone, starts when it joins
     showOnPhone: false,
     names: {},
     roster: [],         // players in this round
@@ -58,15 +61,20 @@ const tv = window.tvHost = {
     layout,
     sendAttack,
     playerFinished,
+    startPhoneSolo: () => startTvRoom(true),
 }
 
 /* ---------- Lobby ---------- */
 
-function startTvRoom() {
+function startTvRoom(soloOnly = false) {
+    tv.soloOnly = soloOnly
     document.body.classList.remove('ai-mode')
     hideRoomCode()
+    $('tvTitle').textContent = soloOnly ? '📱 PHONE CONTROLLER' : '📺 TV ROOM'
+    $('tvCancel').textContent = soloOnly ? 'BACK' : 'CANCEL'
+    $('tvLobby').classList.toggle('solo-only', soloOnly)
     $('tvLobby').classList.remove('hidden')
-    socket.emit('tvCreateRoom')
+    socket.emit('tvCreateRoom', { solo: soloOnly })
 }
 
 socket.on('tvRoomCreated', (data) => {
@@ -115,7 +123,7 @@ function renderLobby() {
     }
     // The next open slot: where the QR code sends the next phone
     let open = null
-    for (let n = 1; n <= MAX_PLAYERS && open === null; n++) {
+    for (let n = 1; n <= (tv.soloOnly ? 1 : MAX_PLAYERS) && open === null; n++) {
         const p = players.find(q => q.player === n)
         if (!present.has(n) || (p && !p.connected)) open = n
     }
@@ -131,10 +139,10 @@ function renderLobby() {
 
     const qrCard = $('tvQrCard')
     if (open !== null && tv.code) {
-        const url = `${tv.joinOrigin}/controller.html?room=${tv.code}&player=${open}`
+        const url = `${tv.joinOrigin}/controller.html?room=${tv.code}&player=${open}` + (tv.soloOnly ? '&solo=1' : '')
         qrCard.classList.remove('hidden')
         qrCard.className = qrCard.className.replace(/\btv-p\d\b/g, '').trim() + ' tv-p' + open
-        $('tvQrLabel').textContent = 'PLAYER ' + open + ': SCAN TO JOIN'
+        $('tvQrLabel').textContent = tv.soloOnly ? 'SCAN WITH YOUR PHONE' : 'PLAYER ' + open + ': SCAN TO JOIN'
         $('tvQrUrl').textContent = url
         if (tv.qrUrl !== url) {
             tv.qrUrl = url
@@ -159,6 +167,10 @@ function renderLobby() {
     $('tvShowOnPhoneLabel').classList.toggle('locked', forced)
     $('tvShowOnPhoneNote').textContent = forced ? `Always on with ${PHONE_SCREEN_ABOVE + 1} or more players` : ''
 
+    $('tvSoloNote').textContent = !tv.soloOnly ? ''
+        : connected.length ? '✅ ' + connected[0].name + "'s phone is connected. Starting..."
+        : "Point your phone's camera at the code. Your phone becomes the controller and the game starts as soon as it connects."
+
     const start = $('tvStart')
     start.classList.toggle('hidden', connected.length === 0)
     start.lastChild.textContent = connected.length === 1 ? 'START SOLO' : 'START GAME'
@@ -173,7 +185,7 @@ function startTvGame() {
     setTimeout(() => { button.disabled = false }, 2000)
 }
 
-$('tvRoom').onclick = startTvRoom
+$('tvRoom').onclick = () => startTvRoom()
 $('tvStart').onclick = startTvGame
 $('tvCancel').onclick = () => { location.href = location.pathname }
 $('tvShowOnPhone').addEventListener('change', (e) => {
@@ -624,7 +636,7 @@ socket.on('tvSignal', ({ player, description, candidate }) => {
 socket.on('connect', () => {
     if (tv.code && !tv.started) {
         tv.code = null
-        socket.emit('tvCreateRoom')
+        socket.emit('tvCreateRoom', { solo: tv.soloOnly })
     }
 })
 
