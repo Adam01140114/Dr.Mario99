@@ -534,12 +534,18 @@ io.on('connection', (socket) => {
  * more always show the game on their phones. Single player's PHONE choice opens
  * a room for one phone (`solo`) that starts as soon as the phone joins.
  *
+ * A player can play with a game controller on the TV computer instead of the
+ * phone: the phone says so (tvChooseInput), the TV tells everyone which
+ * controllers it has and whose they are (tvControllers), and a phone can take
+ * one from that list (tvPickController, passed on to the TV).
+ *
  * Socket rooms: the host is alone in `tvh:<code>`, the phones share `tvp:<code>`.
  */
 const tvRooms = {};
 const TV_MAX_PLAYERS = 8;
 const TV_PHONE_SCREEN_ABOVE = 4; // more players than this: the game always shows on the phones
 const TV_ACTIONS = ['left', 'right', 'rotateLeft', 'rotateRight', 'drop', 'hold'];
+const TV_INPUTS = ['phone', 'controller'];
 
 /** Addresses a phone on the same Wi-Fi can reach this computer at, best first */
 function lanOrigins(port) {
@@ -567,6 +573,8 @@ function tvPlayerList(room) {
         name: room.players[n].name,
         connected: room.players[n].connected,
         ready: room.ready.has(n),
+        input: room.players[n].input,
+        inputAt: room.players[n].inputAt,
     }));
 }
 
@@ -617,6 +625,7 @@ function registerTvRoomHandlers(socket) {
         tvRooms[code] = {
             hostId: socket.id, state: 'lobby', players: {}, ready: new Set(), solo: soloOnly, soloOnly,
             roster: [], winner: null, places: {}, rematch: new Set(), settings: { virusCount: 5, showOnPhone: false },
+            controllers: { list: [], bindings: {} },
         };
         socket.data.tvHostOf = code;
         socket.join(`tvh:${code}`);
@@ -655,7 +664,10 @@ function registerTvRoomHandlers(socket) {
             }
             if (room.state === 'lobby') room.ready.delete(slot);
         }
-        room.players[slot] = { name, clientId, socketId: socket.id, connected: true };
+        // Phone or controller: what this phone chose last time (it remembers), else what this slot had
+        const input = TV_INPUTS.includes(payload.input) ? payload.input : (previous && previous.input) || 'phone';
+        const inputAt = previous && previous.input === input ? previous.inputAt : Date.now();
+        room.players[slot] = { name, clientId, socketId: socket.id, connected: true, input, inputAt };
         socket.data.tvPlayer = { code, player: slot };
         socket.join(`tvp:${code}`);
         socket.emit('tvJoined', {
@@ -664,6 +676,8 @@ function registerTvRoomHandlers(socket) {
             showOnPhone: room.settings.showOnPhone,
             eliminated: room.places[slot] && room.state === 'playing' ? { place: room.places[slot], of: room.roster.length } : null,
             result: tvResultFor(room, slot),
+            input,
+            controllers: room.controllers,
         });
         tvSendLobby(code);
         // Single player with the phone as the controller: start as soon as the phone is in
@@ -682,6 +696,44 @@ function registerTvRoomHandlers(socket) {
         tvSendLobby(code);
         const allReady = inRoom.length > 0 && inRoom.every(n => room.ready.has(n));
         if (allReady && (inRoom.length >= 2 || room.solo)) io.to(room.hostId).emit('tvAutoStart', { code });
+    });
+
+    // Phone: play on this phone, or with a controller on the TV computer
+    socket.on('tvChooseInput', (payload = {}) => {
+        const { code, room, player } = tvPhoneRoom(socket);
+        const p = room && room.players[player];
+        if (!p || !TV_INPUTS.includes(payload.input) || p.input === payload.input) return;
+        p.input = payload.input;
+        p.inputAt = Date.now();
+        tvSendLobby(code);
+    });
+
+    // Phone: take this controller (from the list the TV sent); the TV decides
+    socket.on('tvPickController', (payload = {}) => {
+        const { code, room, player } = tvPhoneRoom(socket);
+        const p = room && room.players[player];
+        if (!p) return;
+        if (p.input !== 'controller') {
+            p.input = 'controller';
+            p.inputAt = Date.now();
+            tvSendLobby(code);
+        }
+        io.to(room.hostId).emit('tvPickController', { player, key: String(payload.key || '').slice(0, 32) });
+    });
+
+    // Host: the controllers on the TV computer and whose they are, for the phones
+    socket.on('tvControllers', (payload = {}) => {
+        const { code, room } = tvHostRoom(socket);
+        if (!room) return;
+        const list = (Array.isArray(payload.list) ? payload.list : []).slice(0, 16)
+            .map(c => ({ key: String(c.key || '').slice(0, 32), name: String(c.name || '').slice(0, 40) }));
+        const bindings = {};
+        for (const c of list) {
+            const n = parseInt(payload.bindings && payload.bindings[c.key], 10);
+            if (n >= 1 && n <= TV_MAX_PLAYERS) bindings[c.key] = n;
+        }
+        room.controllers = { list, bindings };
+        io.to(`tvp:${code}`).emit('tvControllers', room.controllers);
     });
 
     // Host: start with everyone who is in (one player = solo)

@@ -1081,6 +1081,14 @@
         }
         .tv-slot.joined.offline { opacity: 0.5; animation: none; }
         .tv-slot .tv-slot-ready { margin-left: auto; font-size: 0.8rem; flex: none; color: rgba(255, 255, 255, 0.4); }
+        /* Phone or controller, and which controller */
+        .tv-slot .tv-slot-input { flex: none; font-size: 0.6rem; color: #fff; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tv-slot .tv-slot-input.waiting { color: #ffd60a; animation: subtitleFlicker 1.5s ease-in-out infinite; }
+        .tv-slots.many .tv-slot .tv-slot-input { font-size: 0.5rem; }
+        .tv-pads { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+        .tv-pad-count { color: #9fb3ff; font-size: 0.6rem; line-height: 1.8; }
+        .tv-lobby.solo-only .tv-pads { display: none; }
+        .tv-name-tag .tv-pad-tag { font-size: 1.6rem; }
         .tv-slot.ready .tv-slot-ready { color: #00ff66; text-shadow: 0 0 10px #00ff66; }
         /* Player colours: same list in attackFx.js and controller.html */
         .tv-p1 { --tv-slot-color: #ff4d6d; --tv-slot-glow: rgba(255, 77, 109, 0.55); }
@@ -1293,7 +1301,7 @@
                     <li>Open this computer's <strong>Bluetooth</strong> settings.</li>
                     <li>Hold the small round <strong>sync button</strong> on top of the controller (next to the USB-C port) until the lights run back and forth.</li>
                     <li>Choose <strong>Pro Controller</strong> in the Bluetooth list to connect it.</li>
-                    <li>Press any button on the controller.</li>
+                    <li>Press any button on the controller (in Chrome, click <strong>CONNECT CONTROLLER</strong> and choose it).</li>
                 </ol>
                 <div class="pad-status waiting" id="padStatus">Waiting for a controller...</div>
                 <div class="pad-map">
@@ -1303,6 +1311,7 @@
                     <span><b>L R ZL ZR</b>HOLD</span>
                 </div>
                 <div class="control-buttons">
+                    <button id="padFind" class="rules-close-btn hidden" type="button">🔌 CONNECT CONTROLLER</button>
                     <button id="padStart" class="rules-close-btn" type="button" data-pad-confirm disabled>▶ START</button>
                     <button id="padBack" class="rules-close-btn secondary" type="button">BACK</button>
                 </div>
@@ -1325,6 +1334,10 @@
                     <div class="tv-code" id="tvCode"></div>
                     <div class="tv-count" id="tvCount">0 / 8 PLAYERS</div>
                     <div class="tv-slots" id="tvSlots"></div>
+                    <div class="tv-pads" id="tvPads">
+                        <span class="tv-pad-count" id="tvPadCount"></span>
+                        <button id="tvPadConnect" class="tv-copy-button hidden" type="button">🎮 CONNECT CONTROLLER</button>
+                    </div>
                     <label class="tv-options">VIRUSES <input type="number" id="tvVirusCount" min="1" max="30" value="5"></label>
                     <label class="tv-options tv-phone-option" id="tvShowOnPhoneLabel">
                         <input type="checkbox" id="tvShowOnPhone"> SHOW GAME ON PHONE SCREEN
@@ -1650,28 +1663,47 @@
         };
         function closePadConnect() {
             padConnect.classList.add('hidden');
+            clearTimeout(padHelpTimer);
             if (stopWatchingPad) stopWatchingPad();
             stopWatchingPad = null;
         }
+        let padHelpTimer = null;
+        const chromeOnMac = /Macintosh/.test(navigator.userAgent) && /Chrome\//.test(navigator.userAgent);
         function showPadStatus(gamepad) {
+            const pad = window.padInput;
             const status = document.getElementById('padStatus');
-            const start = document.getElementById('padStart');
-            start.disabled = !gamepad;
-            if (!navigator.getGamepads) {
-                status.className = 'pad-status problem';
-                status.textContent = "This browser can't read game controllers. Try Chrome, Edge or Safari.";
-            } else if (!gamepad) {
-                status.className = 'pad-status waiting';
-                status.textContent = 'Waiting for a controller... press any button on it.';
-            } else {
+            document.getElementById('padStart').disabled = !gamepad;
+            // CONNECT CONTROLLER: Chrome's device list (WebHID), for a controller the browser doesn't show by itself
+            document.getElementById('padFind').classList.toggle('hidden', !!gamepad || !pad.canConnectHid());
+            clearTimeout(padHelpTimer);
+            if (gamepad) {
                 status.className = 'pad-status connected';
-                status.textContent = '✅ ' + window.padInput.nameOf(gamepad).toUpperCase() + ' CONNECTED! Press A or + to start.';
+                status.textContent = '✅ ' + pad.nameOf(gamepad).toUpperCase() + ' CONNECTED! Press A or + to start.';
                 if (gamepad.mapping !== 'standard') {
                     status.className = 'pad-status problem';
-                    status.textContent = '⚠️ ' + window.padInput.nameOf(gamepad) + " is connected, but this browser doesn't know its buttons. If they act strangely, try Chrome.";
+                    status.textContent = '⚠️ ' + pad.nameOf(gamepad) + " is connected, but this browser doesn't know its buttons. If they act strangely, try Chrome.";
                 }
+            } else if (pad.hidError) {
+                status.className = 'pad-status problem';
+                status.textContent = "Couldn't open the controller (" + pad.hidError + '). Check it says Connected in Bluetooth settings, then click CONNECT CONTROLLER again.';
+            } else if (!navigator.getGamepads && !pad.canConnectHid()) {
+                status.className = 'pad-status problem';
+                status.textContent = "This browser can't read game controllers. Try Chrome, Edge or Safari.";
+            } else {
+                status.className = 'pad-status waiting';
+                // Chrome on a Mac never shows a Bluetooth Pro Controller by itself: go straight to its device list
+                status.textContent = chromeOnMac && pad.canConnectHid() ? 'Click CONNECT CONTROLLER and choose Pro Controller in the list.'
+                    : pad.canConnectHid() ? 'Waiting for a controller... press any button on it, or click CONNECT CONTROLLER.'
+                    : 'Waiting for a controller... press any button on it.';
+                padHelpTimer = setTimeout(() => {
+                    if (padConnect.classList.contains('hidden')) return;
+                    status.textContent = pad.canConnectHid()
+                        ? 'Still nothing? Check it says Connected in Bluetooth settings, then click CONNECT CONTROLLER and choose Pro Controller.'
+                        : 'Still nothing? Click this page, then press A. If it says Connected in Bluetooth but never shows up here, try Chrome or Safari.';
+                }, 8000);
             }
         }
+        document.getElementById('padFind').onclick = () => window.padInput.connectHid();
         document.getElementById('padStart').onclick = () => {
             closePadConnect();
             startSinglePlayer('gamepad');

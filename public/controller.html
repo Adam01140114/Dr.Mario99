@@ -300,6 +300,62 @@
         .rematch-button.asked { animation: pulse 0.8s ease-in-out infinite alternate; }
         .rematch-status { min-height: 1.8em; color: #ffd60a; }
 
+        /* Phone or controller (a game controller on the TV computer) */
+        #waitScreen { overflow-y: auto; justify-content: safe center; }
+        .input-choice { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 12px; }
+        .input-label { font-size: 10px; color: #9fb3ff; }
+        .input-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .input-option {
+            font-family: inherit;
+            font-size: 11px;
+            padding: 14px 6px;
+            border-radius: 12px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            background: rgba(0, 0, 0, 0.45);
+            color: #cfd8ff;
+        }
+        .input-option.on { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 16px var(--accent-soft); text-shadow: 0 0 8px var(--accent); }
+        .pad-picker { display: flex; flex-direction: column; gap: 10px; }
+        .pad-list { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 320px; }
+        .pad-item {
+            font-family: inherit;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            background: rgba(0, 0, 0, 0.45);
+            color: #fff;
+            font-size: 10px;
+            text-align: left;
+        }
+        .pad-item small { flex: none; font-size: 8px; color: #9fb3ff; }
+        .pad-item.mine { border-color: #00ff66; color: #00ff66; box-shadow: 0 0 12px rgba(0, 255, 102, 0.35); }
+        .pad-item.mine small { color: #00ff66; }
+        .pad-item:disabled { opacity: 0.45; }
+        .pad-hint { font-size: 10px; line-height: 1.8; color: #ffd60a; max-width: 320px; }
+        .pad-hint.ok { color: #00ff66; }
+        /* Playing with a controller: no buttons on the phone, just whose controller it is */
+        .pad-panel { display: none; }
+        #controllerScreen.use-pad .pad { display: none; }
+        #controllerScreen.use-pad .pad-panel {
+            flex: 0 0 60%;
+            width: 100%;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            padding: 0 16px max(16px, env(safe-area-inset-bottom));
+            overflow-y: auto;
+        }
+        #controllerScreen.show-game.use-pad .pad-panel { flex: 0 0 auto; max-height: 45%; justify-content: flex-start; }
+        .pad-panel-title { font-size: 16px; line-height: 1.5; color: var(--accent); text-shadow: 0 0 10px var(--accent); }
+        .switch-button { font-family: inherit; font-size: 10px; padding: 12px 16px; border-radius: 10px; border: 2px solid #9fb3ff; background: transparent; color: #9fb3ff; }
+
         /* Results */
         .result-title { font-size: 34px; line-height: 1.3; }
         .result-title.win { color: #00ff00; text-shadow: 0 0 20px #00ff00, 0 0 40px #00ff00; animation: pulse 1.2s ease-in-out infinite alternate; }
@@ -325,6 +381,17 @@
         <div class="badge" id="waitBadge">PLAYER ?</div>
         <h1 id="waitName"></h1>
         <p id="waitText">You're in! Press READY.<br>The game starts when everyone is ready.</p>
+        <div class="input-choice" id="inputChoice">
+            <div class="input-label">PLAY WITH</div>
+            <div class="input-buttons">
+                <button class="input-option" type="button" data-input="phone">📱 PHONE</button>
+                <button class="input-option" type="button" data-input="controller">🎮 CONTROLLER</button>
+            </div>
+            <div class="pad-picker hidden" id="padPicker">
+                <div class="pad-hint" data-pad-hint></div>
+                <div class="pad-list" data-pad-list></div>
+            </div>
+        </div>
         <button class="big-button ready-button" id="readyButton" type="button">READY</button>
         <button class="big-button solo-button hidden" id="soloButton" type="button">▶ PLAY SOLO</button>
         <p id="readyStatus" class="rematch-status"></p>
@@ -377,6 +444,12 @@
                 DROP
             </button>
         </div>
+        <div class="pad-panel" id="padPanel">
+            <div class="pad-panel-title" id="padPanelTitle"></div>
+            <div class="pad-hint" data-pad-hint></div>
+            <div class="pad-list" data-pad-list></div>
+            <button class="switch-button" id="usePhone" type="button">📱 USE MY PHONE INSTEAD</button>
+        </div>
     </section>
 
     <!-- Victory / game over / out -->
@@ -407,6 +480,10 @@
         let joined = false;
         let screen = 'join';
         let showGame = false;
+        // Play on this phone, or with a game controller on the TV computer (it remembers)
+        let inputMode = 'phone';
+        try { if (!soloPhone && localStorage.getItem('tvInput') === 'controller') inputMode = 'controller'; } catch (e) {}
+        let padState = { list: [], bindings: {} }; // the TV's controllers, and whose they are
         const $ = id => document.getElementById(id);
 
         // Identifies this phone so it gets its slot back after the screen locks
@@ -451,7 +528,7 @@
         const socket = io(location.origin, { reconnectionDelayMax: 2000 });
 
         function join() {
-            socket.emit('tvJoin', { code, player, name: myName, clientId });
+            socket.emit('tvJoin', { code, player, name: myName, clientId, input: inputMode });
         }
 
         if (soloPhone && code) {
@@ -493,6 +570,8 @@
             if (soloPhone) $('waitText').textContent = 'Connected! The game is starting on the computer.';
             $('padName').textContent = data.name;
             $('topName').textContent = data.name;
+            if (data.controllers) padState = data.controllers;
+            renderInput();
             openDirect();
             if (data.result) showResult(data.result);
             else if (data.eliminated) showOut(data.eliminated);
@@ -533,6 +612,7 @@
             lastGrid = null;
             applyState({ h: null, hu: false, t: null });
             clearBoard();
+            renderInput();
             show('controller');
         }
 
@@ -571,10 +651,76 @@
         }
         socket.on('tvLobby', ({ players }) => {
             lobbyPlayers = players;
+            renderInput();
             if (screen !== 'wait') return;
             const me = players.find(p => p.player === player);
             iAmReady = !!(me && me.ready);
             showReady();
+        });
+
+        /* ---------- Phone or controller ---------- */
+
+        // CONTROLLER: press A on a controller connected to the TV computer, or tap it in
+        // the list. The TV says which controllers it has and whose they are.
+        function chooseInput(mode) {
+            if (soloPhone || mode === inputMode) return;
+            inputMode = mode;
+            try { localStorage.setItem('tvInput', mode); } catch (e) {}
+            if (mode === 'controller') releaseAll();
+            socket.emit('tvChooseInput', { input: mode });
+            renderInput();
+            if (navigator.vibrate) navigator.vibrate(15);
+        }
+        for (const button of document.querySelectorAll('.input-option')) {
+            button.addEventListener('click', () => chooseInput(button.dataset.input));
+        }
+        $('usePhone').addEventListener('click', () => chooseInput('phone'));
+
+        let hadController = false;
+        function renderInput() {
+            const usePad = inputMode === 'controller';
+            for (const button of document.querySelectorAll('.input-option')) button.classList.toggle('on', button.dataset.input === inputMode);
+            $('inputChoice').classList.toggle('hidden', soloPhone);
+            $('padPicker').classList.toggle('hidden', !usePad);
+            $('controllerScreen').classList.toggle('use-pad', usePad);
+            const mine = padState.list.find(c => padState.bindings[c.key] === player);
+            if (mine && !hadController && navigator.vibrate) navigator.vibrate([40, 40, 40]);
+            hadController = !!mine;
+            const hint = mine ? '✅ ' + mine.name + ' is yours. Its lights show your player number.'
+                : padState.list.length ? 'Press A on your controller, or tap it below.'
+                : 'No controllers on the TV yet. Pair one with the TV computer over Bluetooth, then press A on it.';
+            for (const el of document.querySelectorAll('[data-pad-hint]')) {
+                el.textContent = hint;
+                el.classList.toggle('ok', !!mine);
+            }
+            $('padPanelTitle').textContent = mine ? '🎮 ' + mine.name.toUpperCase() : '🎮 PRESS A ON YOUR CONTROLLER';
+            for (const el of document.querySelectorAll('[data-pad-list]')) {
+                el.innerHTML = '';
+                for (const c of padState.list) {
+                    const owner = padState.bindings[c.key];
+                    const item = document.createElement('button');
+                    item.type = 'button';
+                    item.className = 'pad-item' + (owner === player ? ' mine' : '');
+                    item.disabled = !!owner && owner !== player;
+                    const name = document.createElement('span');
+                    name.textContent = c.name;
+                    const status = document.createElement('small');
+                    status.textContent = owner === player ? 'YOURS ✔' : owner ? nameOfPlayer(owner) : 'TAP TO USE';
+                    item.append(name, status);
+                    item.addEventListener('click', () => {
+                        if (owner !== player) socket.emit('tvPickController', { key: c.key });
+                    });
+                    el.appendChild(item);
+                }
+            }
+        }
+        function nameOfPlayer(n) {
+            const p = lobbyPlayers.find(q => q.player === n);
+            return p ? p.name : 'PLAYER ' + n;
+        }
+        socket.on('tvControllers', (state) => {
+            padState = state && Array.isArray(state.list) ? state : { list: [], bindings: {} };
+            renderInput();
         });
 
         /* ---------- Board from the TV ---------- */

@@ -305,6 +305,23 @@ side is the TV ROOM section of `server.js`.
   and board pictures go over their own Wi-Fi. The phone shows "⚡ DIRECT" and
   the TV a ⚡ by the name. If the channel can't open, everything goes through
   the server automatically
+- **Phone or controller**: on the waiting screen each phone picks PLAY WITH
+  📱 PHONE or 🎮 CONTROLLER (`tvChooseInput`; the phone remembers it). A
+  CONTROLLER player gets a game controller on the TV computer: pressing A on a
+  free one gives it to them (the player who has waited longest, if several
+  are waiting), or they tap it in the list on their phone
+  (`tvPickController`, which the TV decides). The TV tells the phones which
+  controllers it has and whose they are (`tvControllers`); a Pro Controller's
+  lamps light up with its player number (`padInput.showPlayer`). Everyone can
+  have their own controller. The TV lobby slot shows 📱 or 🎮 + the
+  controller's name ("PRESS A" while waiting), the board's name tag shows 🎮,
+  and the phone shows whose controller it is instead of the buttons (with
+  USE MY PHONE INSTEAD). The TV reads all controllers at once
+  (`padInput.watchAll`) and passes each one's presses to handleInput, like a
+  phone's. Switching back to the phone, or leaving, frees the controller; it
+  works mid-game too. In Chrome the lobby has CONNECT CONTROLLER (WebHID), as
+  in single player - once per Pro Controller. Not in single player's PHONE
+  room
 - **Copy link**: under the QR code, for a player who can't scan it
 - **Attack effect**: `scripts/attackFx.js` - "ATTACK!" and a shockwave on the
   attacker, a comet to the target (`attackSent(player, target)`,
@@ -316,9 +333,10 @@ side is the TV ROOM section of `server.js`.
   back when it reconnects. In the lobby a disconnected slot can be taken
 - **Server events**: tvCreateRoom, tvJoin, tvReady, tvStartGame, tvInput,
   tvState, tvEliminated, tvNextLevel, tvGameOver, tvFx, tvRestart, tvRematch,
-  tvSignal (in); tvRoomCreated, tvLobby (TV and phones), tvAutoStart,
-  tvJoined, tvJoinError, tvGameStarted, tvInput, tvState, tvEliminated,
-  tvLevelData, tvResult, tvFx, tvRematch, tvSignal, tvRoomClosed (out). QR
+  tvSignal, tvChooseInput, tvPickController, tvControllers (in);
+  tvRoomCreated, tvLobby (TV and phones), tvAutoStart, tvJoined, tvJoinError,
+  tvGameStarted, tvInput, tvState, tvEliminated, tvLevelData, tvResult, tvFx,
+  tvRematch, tvSignal, tvRoomClosed, tvPickController, tvControllers (out). QR
   images come from `GET /tv/qr.svg?text=`
 
 SINGLE PLAYER: KEYBOARD, PHONE OR PRO CONTROLLER
@@ -341,11 +359,26 @@ arrow keys move between the choices, Escape goes back):
   then A or + (or START) begins the regular single player game. Buttons become
   the same key presses as the keyboard (keydown when pressed, keyup when let
   go), so held buttons repeat like held keys and "press any key" screens work.
-  Standard layout, by position: D-pad / left stick move (down = drop), A and X
-  rotate right, B and Y rotate left, L R ZL ZR hold. While a message is up
+  By the letters on the buttons: D-pad / left stick move (down = drop), A and
+  X rotate right, B and Y rotate left, L R ZL ZR hold. Browsers number the
+  face buttons differently - Chrome (and the WebHID reader) by position, B at
+  the bottom = 0; Safari by letter, A = 0 (`faceButtons()`). Rotate and hold
+  happen once per press (a held key repeats every 166 ms in Board.js, which
+  made a slightly long press turn the pill back a split second later); moving
+  and dropping repeat while held. While a message is up
   (GAME OVER), A or + presses its button instead, after one second so mashing
   A doesn't hit EXIT. Polling runs on requestAnimationFrame, only while
   playing or while the connect screen is open
+- **Chrome on a Mac**: Chrome reads Nintendo controllers itself instead of
+  through macOS, and misses a Pro Controller paired over Bluetooth (Safari
+  sees it; tested on macOS 15.6 with a genuine controller, 057e:2009). So the
+  connect screen has CONNECT CONTROLLER (Chrome and Edge, WebHID): the player
+  picks the controller in Chrome's list, and gamepad.js opens it, asks for
+  full reports (subcommand 0x03 0x30), lights the player 1 lamp (0x30 0x01)
+  and reads report 0x30 (buttons + 12-bit sticks) into a stand-in standard
+  Gamepad. Chrome remembers the choice: after a reload or a reconnect the
+  controller is opened again by itself (`navigator.hid.getDevices()` and the
+  `connect` event)
 - **EXIT** after a single player game reloads to the menu: a second game on
   the same page used to get a dead board
 

@@ -12,6 +12,9 @@
  * - One player plays solo: like single player, a cleared board is the next level.
  * - Single player's PHONE choice opens a room for one phone (startPhoneSolo):
  *   no lobby settings, and the game starts as soon as the phone joins.
+ * - A player can choose CONTROLLER on their phone and play with a game
+ *   controller on this computer instead (scripts/gamepad.js): pressing A on a
+ *   free one, or tapping it in the list on the phone, makes it theirs.
  * - "Show game on phone screen" sends each player a picture of their own board
  *   (Board.snapshot()); it is always on with five or more players.
  * - Presses and pictures go straight between phone and this page over their
@@ -58,6 +61,9 @@ const tv = window.tvHost = {
     holds: {},          // player -> action -> repeat timer
     peers: {},          // player -> { pc, chain, channel }
     sent: {},           // player -> { key, at } last picture sent
+    bindings: new Map(),  // controller key -> player
+    controllerList: [], // [{ key, name }] controllers on this computer
+    watchingPads: false,
     layout,
     sendAttack,
     playerFinished,
@@ -89,12 +95,14 @@ socket.on('tvRoomCreated', (data) => {
     warning.textContent = isLocal && !lan ? 'This computer is not on a network, so phones cannot reach it. Connect it to Wi-Fi and open the TV Room again.' : ''
     warning.classList.toggle('hidden', !(isLocal && !lan))
     $('tvCode').textContent = 'ROOM ' + data.code
+    if (!tv.soloOnly) startControllers()
     renderLobby()
 })
 
 socket.on('tvLobby', (data) => {
     if (data.code !== tv.code) return
     tv.lobby = data.players
+    reconcileBindings()
     if (!tv.started) renderLobby()
 })
 
@@ -115,9 +123,14 @@ function renderLobby() {
         } else {
             slot.style.animation = 'none'
         }
-        slot.innerHTML = '<span class="tv-slot-num"></span><span class="tv-slot-name"></span><span class="tv-slot-ready"></span>'
+        slot.innerHTML = '<span class="tv-slot-num"></span><span class="tv-slot-name"></span><span class="tv-slot-input"></span><span class="tv-slot-ready"></span>'
         slot.querySelector('.tv-slot-num').textContent = 'P' + p.player
         slot.querySelector('.tv-slot-name').textContent = p.name + (p.connected ? '' : ' (away)')
+        // Playing on the phone, or with which controller
+        const pad = p.input === 'controller' && tv.controllerList.find(c => c.key === controllerOf(p.player))
+        const input = slot.querySelector('.tv-slot-input')
+        input.textContent = p.input !== 'controller' ? '📱' : pad ? '🎮 ' + pad.name.toUpperCase() : '🎮 PRESS A'
+        input.classList.toggle('waiting', p.input === 'controller' && !pad)
         slot.querySelector('.tv-slot-ready').textContent = p.ready ? '✔ READY' : 'NOT READY'
         slots.appendChild(slot)
     }
@@ -170,6 +183,8 @@ function renderLobby() {
     $('tvSoloNote').textContent = !tv.soloOnly ? ''
         : connected.length ? '✅ ' + connected[0].name + "'s phone is connected. Starting..."
         : "Point your phone's camera at the code. Your phone becomes the controller and the game starts as soon as it connects."
+
+    renderPads()
 
     const start = $('tvStart')
     start.classList.toggle('hidden', connected.length === 0)
@@ -279,6 +294,7 @@ async function buildGames() {
         tag.className = 'tv-name-tag tv-p' + n
         tag.innerHTML = `<span class="tv-slot-num">P${n}</span><span id="tvName${n}"></span>`
             + `<span class="tv-link hidden" id="tvLink${n}" title="Controller connected straight over the Wi-Fi">⚡</span>`
+            + `<span class="tv-pad-tag hidden" id="tvPadTag${n}" title="Playing with a controller">🎮</span>`
             + `<span class="tv-target" id="tvTarget${n}"></span>`
         tag.querySelector('#tvName' + n).textContent = tv.names[n]
         container.appendChild(tag)
@@ -287,6 +303,7 @@ async function buildGames() {
         tv.games[n] = game
         window.gameInstances[n] = game
         showTvLink(n, !!(tv.peers[n] && tv.peers[n].channel && tv.peers[n].channel.readyState === 'open'))
+        showPadTag(n)
     }
     window.currentGame = tv.games[tv.roster[0]]
 }
@@ -546,6 +563,119 @@ socket.on('tvRematch', ({ players }) => {
         if (chip) chip.classList.toggle('ready', players.includes(n))
     }
 })
+
+/* ---------- Game controllers on this computer (scripts/gamepad.js) ---------- */
+
+// A player can choose CONTROLLER on their phone instead of playing on it. Pressing A on
+// a free controller makes it theirs (the player who has waited longest gets it), or they
+// tap it in the list on their phone. A Pro Controller's lamps then show their player
+// number. Everyone can have their own; its presses go to handleInput like the phone's.
+
+function startControllers() {
+    const input = window.padInput
+    if (!input || tv.watchingPads) return
+    tv.watchingPads = true
+    input.onListChange((list) => {
+        tv.controllerList = list.map(c => ({ key: c.key, name: c.name }))
+        for (const key of [...tv.bindings.keys()]) if (!list.some(c => c.key === key)) unbind(key, false)
+        controllersChanged()
+    })
+    input.watchAll(onControllerInput)
+}
+
+function onControllerInput({ key, action, pressed, button }) {
+    const player = tv.bindings.get(key)
+    if (button === 'a') {
+        if (player) return pingPlayer(player)
+        const next = waitingForController()[0]
+        if (next) bind(key, next)
+        return
+    }
+    if (player) handleInput({ player, action, pressed })
+}
+
+/** Players who chose CONTROLLER and don't have one yet, longest-waiting first */
+function waitingForController() {
+    const taken = new Set(tv.bindings.values())
+    return tv.lobby.filter(p => p.connected && p.input === 'controller' && !taken.has(p.player))
+        .sort((a, b) => (a.inputAt || 0) - (b.inputAt || 0))
+        .map(p => p.player)
+}
+
+function controllerOf(player) {
+    for (const [key, p] of tv.bindings) if (p === player) return key
+    return null
+}
+
+function bind(key, player) {
+    for (const [k, p] of [...tv.bindings]) if (k === key || p === player) unbind(k, false)
+    tv.bindings.set(key, player)
+    window.padInput.showPlayer(key, player)
+    pingPlayer(player)
+    controllersChanged()
+}
+
+function unbind(key, announce = true) {
+    const player = tv.bindings.get(key)
+    if (!player) return
+    tv.bindings.delete(key)
+    handleInput({ player, action: 'all', pressed: false }) // let go of anything it was holding
+    if (announce) controllersChanged()
+}
+
+// A phone tapped a controller in its list: theirs, unless someone else has it
+socket.on('tvPickController', ({ player, key }) => {
+    const owner = tv.bindings.get(key)
+    if (!tv.controllerList.some(c => c.key === key) || (owner && owner !== player)) return sendControllers()
+    bind(key, player)
+})
+
+/** Someone switched back to their phone, or left the room: their controller is free again */
+function reconcileBindings() {
+    let changed = false
+    for (const [key, player] of [...tv.bindings]) {
+        const p = tv.lobby.find(q => q.player === player)
+        if (p && p.input === 'controller') continue
+        unbind(key, false)
+        changed = true
+    }
+    if (changed) controllersChanged()
+}
+
+function controllersChanged() {
+    sendControllers()
+    for (const n of tv.roster) showPadTag(n)
+    if (!tv.started) renderLobby()
+}
+
+/** The phones show the list, and which one is whose */
+function sendControllers() {
+    if (tv.code) socket.emit('tvControllers', { list: tv.controllerList, bindings: Object.fromEntries(tv.bindings) })
+}
+
+function showPadTag(n) {
+    const tag = $('tvPadTag' + n)
+    if (tag) tag.classList.toggle('hidden', !controllerOf(n))
+}
+
+/** A bound controller pressed A: point at its player on the TV */
+function pingPlayer(player) {
+    const el = tv.started ? document.querySelector('#game' + player + ' .tv-name-tag') : $('tvSlot' + player)
+    if (el && el.animate) el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }], { duration: 300 })
+}
+
+function renderPads() {
+    const input = window.padInput
+    const count = tv.controllerList.length
+    const canConnect = !!(input && input.canConnectHid())
+    $('tvPadConnect').classList.toggle('hidden', !canConnect)
+    $('tvPadCount').textContent = input && input.hidError ? "🎮 Couldn't open the controller (" + input.hidError + ')'
+        : count ? `🎮 ${count} CONTROLLER${count > 1 ? 'S' : ''} READY. Choose CONTROLLER on your phone, then press A on yours.`
+        : '🎮 Want to use a controller? Pair it with this computer over Bluetooth, then ' + (canConnect ? 'click CONNECT CONTROLLER.' : 'press A on it.')
+}
+
+// CONNECT CONTROLLER: Chrome's list of Pro Controllers (once per controller; Chrome remembers)
+$('tvPadConnect').onclick = () => window.padInput && window.padInput.connectHid().then(renderPads)
 
 /* ---------- Pictures of each board for the phones ---------- */
 
