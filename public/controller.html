@@ -528,7 +528,7 @@
         <p id="errorMessage"></p>
     </section>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="/socket.io/socket.io.min.js"></script>
     <script>
         const MAX_PLAYERS = 8;
         const params = new URLSearchParams(location.search);
@@ -595,7 +595,11 @@
             show('error');
         }
 
-        const socket = io(location.origin, { reconnectionDelayMax: 2000 });
+        // WebSocket straight away (no long-polling first); fall back to polling if a network blocks it
+        const socket = io(location.origin, { transports: ['websocket'], reconnectionDelayMax: 2000 });
+        socket.on('connect_error', () => {
+            if (socket.io.opts.transports[0] === 'websocket') socket.io.opts.transports = ['polling', 'websocket'];
+        });
 
         /* ---------- Game log ---------- */
 

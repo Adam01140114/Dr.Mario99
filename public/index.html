@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dr. Mario 99</title>
+    <script>
+        // On the live site, debug logging (there's a lot of it) costs time every frame: keep
+        // warnings and errors, drop the rest. ?debug in the address keeps everything.
+        if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !/[?&]debug\b/.test(location.search)) {
+            console.log = console.info = console.debug = function () {};
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="./styles/style.css">
     <link rel="modulepreload" href="./scripts/script.js">
     <link rel="modulepreload" href="./scripts/Game.js">
@@ -11,6 +20,12 @@
     <link rel="modulepreload" href="./scripts/Shape.js">
     <link rel="modulepreload" href="./scripts/components.js">
     <link rel="modulepreload" href="./scripts/spriteCache.js">
+    <link rel="modulepreload" href="./scripts/attackFx.js">
+    <link rel="modulepreload" href="./scripts/cpuPlayer.js">
+    <link rel="modulepreload" href="./scripts/gameLog.js">
+    <link rel="modulepreload" href="./scripts/tvHost.js">
+    <link rel="modulepreload" href="./scripts/gamepad.js">
+    <link rel="modulepreload" href="./scripts/partyClient.js">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
     <style>
         * {
@@ -1282,6 +1297,90 @@
         /* style.css sets 9px on every element, so each text element gets its own size */
         .tv-name-tag span { font-size: 2.2rem; }
         .tv-name-tag .tv-slot-num { font-size: 1.1rem; padding: 10px 12px; border: 3px solid currentColor; border-radius: 10px; }
+        /* ===== MULTIPLAYER / FREE PLAY (scripts/partyClient.js) ===== */
+        .mp-button { background: linear-gradient(45deg, #7b2ff7, #00c2ff); }
+        .mp-modal { max-width: 760px; }
+        .mp-label { display: flex; align-items: center; justify-content: center; gap: 14px; color: #fff; font-size: 1.28rem; margin-bottom: 22px; }
+        .mp-input {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 1.6rem;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 2px solid #00ffff;
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+            text-align: center;
+            width: 260px;
+            user-select: text;
+        }
+        .mp-input.mp-small { width: 90px; }
+        .mp-code { width: 150px; text-transform: uppercase; letter-spacing: 6px; }
+        .mp-join { --option-color: #ffb703; --option-glow: rgba(255, 183, 3, 0.35); }
+        .mp-join-row { display: flex; gap: 12px; justify-content: center; margin: -8px 0 20px; }
+        .mp-join-row .rules-close-btn { margin: 0; }
+        .mp-error { color: #ff4d6d; font-size: 1.12rem; line-height: 1.7; min-height: 1.2em; margin-bottom: 14px; }
+        .mp-hint { color: #9fb3ff; font-size: 1.04rem; line-height: 1.7; margin-top: 12px; }
+        .party-code { color: #ffd60a; letter-spacing: 6px; font-size: inherit; }
+        .party-invite { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 18px; }
+        .party-link { color: #9fb3ff; font-size: 0.96rem; word-break: break-all; }
+        .party-count { color: #9fb3ff; font-size: 1.12rem; margin-bottom: 12px; }
+        .party-players { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; text-align: left; }
+        .party-player {
+            display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px;
+            border: 2px solid var(--c); background: rgba(0, 0, 0, 0.4); color: var(--c);
+        }
+        .party-player.away { opacity: 0.5; }
+        .party-player .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--c); flex: none; }
+        .party-player .name { font-size: 1.44rem; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .party-player .tags { font-size: 1.1rem; color: #cfd8ff; white-space: nowrap; }
+        .party-kick { font-family: 'Press Start 2P', cursive; font-size: 1.12rem; width: 34px; height: 34px; border-radius: 8px; border: 2px solid #ff4d6d; background: transparent; color: #ff4d6d; cursor: pointer; flex: none; }
+        .party-host { margin-bottom: 14px; }
+        .party-waiting { margin-bottom: 18px; animation: subtitleFlicker 3s ease-in-out infinite; }
+        .free-search { display: flex; align-items: center; justify-content: center; gap: 14px; color: #fff; font-size: 1.36rem; line-height: 1.7; margin: 10px 0 28px; }
+        /* In a match: my board next to everyone else's (sized by party.layout()) */
+        body.party-mode { overflow: hidden; }
+        body.party-mode .logo-container,
+        body.party-mode .scanlines { display: none !important; }
+        .party-opponents { display: none; }
+        body.party-mode .party-opponents {
+            position: fixed;
+            z-index: 15;
+            display: flex;
+            flex-wrap: wrap;
+            align-content: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 12px;
+            overflow: auto;
+            background: rgba(5, 8, 25, 0.55);
+        }
+        .party-cpu-boards { position: fixed; left: -20000px; top: 0; pointer-events: none; }
+        .op-card { --c: #00ffff; position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .op-card .op-name { display: flex; align-items: center; gap: 6px; color: var(--c); font-size: 1.3rem; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .op-card .op-name span { font-size: inherit; }
+        .op-card .op-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+        .op-card canvas { display: block; background: #000; border: 2px solid var(--c); border-radius: 6px; image-rendering: pixelated; }
+        .op-card.target canvas { box-shadow: 0 0 0 3px #fff, 0 0 18px var(--c); }
+        .op-card .op-info { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 1.1rem; color: #9fb3ff; }
+        .op-card .op-info span { font-size: inherit; }
+        .op-card .op-target { color: #fff; }
+        .op-card.out canvas { filter: grayscale(1) brightness(0.5); }
+        .op-card .op-status { position: absolute; left: -6px; right: -6px; top: 42%; text-align: center; font-size: 1.5rem; padding: 6px 0; background: rgba(0, 0, 0, 0.8); color: #ff4d6d; }
+        .op-card.winner .op-status { color: #00ff66; }
+        .party-results .alert-modal { max-width: 560px; }
+        .party-standings { list-style: none; display: flex; flex-direction: column; gap: 8px; margin: 0 0 22px; font-size: 1.28rem; position: relative; z-index: 1; }
+        .party-standings li { font-size: inherit; }
+        .party-result-buttons { display: flex; flex-direction: column; align-items: center; gap: 12px; position: relative; z-index: 1; }
+        .party-result-buttons .alert-button { font-family: 'Press Start 2P', cursive; font-size: 1.28rem; min-width: 280px; }
+        .party-result-buttons .alert-button.secondary { background: transparent; color: #00ffff; }
+        .party-wait { font-size: 1.12rem !important; margin-bottom: 4px !important; }
+        .party-notice {
+            position: fixed; left: 50%; top: 18px; z-index: 3500; transform: translate(-50%, -10px); opacity: 0;
+            padding: 14px 20px; border-radius: 12px; border: 2px solid #ffd60a; background: rgba(5, 8, 25, 0.95);
+            color: #ffd60a; font-size: 1.2rem; line-height: 1.6; transition: opacity 0.25s, transform 0.25s; pointer-events: none;
+        }
+        .party-notice.show { opacity: 1; transform: translate(-50%, 0); }
+
         /* 🐞: mark a glitch in the game log, while a game is on */
         .bug-button {
             position: fixed;
@@ -1373,6 +1472,9 @@
             <button id="single" class="menu-button primary-button">
                 <span class="emoji">👤</span>SINGLE PLAYER
             </button>
+            <button id="multiplayer" class="menu-button primary-button mp-button">
+                <span class="emoji">👥</span>MULTIPLAYER
+            </button>
             <button id="tvRoom" class="menu-button primary-button tv-button">
                 <span class="emoji">📺</span>START TV ROOM
             </button>
@@ -1381,12 +1483,6 @@
             </button>
             
             <div class="room-section">
-                <button id="createRoom" class="menu-button secondary-button">
-                    <span class="emoji">🏠</span>CREATE ROOM
-                </button>
-                <button id="joinRoom" class="menu-button secondary-button">
-                    <span class="emoji">🚪</span>JOIN ROOM
-                </button><br>
                 <button id="rulesBtn" class="menu-button secondary-button">
                     <span class="emoji">📜</span>RULES
                 </button>
@@ -1402,7 +1498,7 @@
                 <h2 class="rules-title">How to Play</h2>
                 <ol class="rules-list">
                     <li><span class="rules-emoji">🎮</span> Press <strong>Free Play</strong> to be matched with a random player.</li>
-                    <li><span class="rules-emoji">🤝</span> Or create a room to battle your friends.</li>
+                    <li><span class="rules-emoji">🤝</span> Or press <strong>Multiplayer</strong> and make a room for up to 8 friends.</li>
                     <li><span class="rules-emoji">🦠</span> Every time your opponent kills a germ, it sends a germ your way!</li>
                     <li><span class="rules-emoji">🏆</span> The person who gets rid of all their germs first wins!</li>
                 </ol>
@@ -1461,6 +1557,67 @@
                 </div>
             </div>
         </div>
+
+        <!-- MULTIPLAYER: create a room or join one (scripts/partyClient.js) -->
+        <div id="mpMenu" class="rules-overlay hidden">
+            <div class="rules-modal control-modal mp-modal">
+                <h2 class="control-title">👥 MULTIPLAYER</h2>
+                <label class="mp-label">YOUR NAME <input id="mpName" class="mp-input" maxlength="16" placeholder="NAME" autocomplete="off"></label>
+                <div class="control-options">
+                    <button id="mpCreate" class="control-option" type="button">
+                        <span class="control-emoji">🏠</span><span class="control-name">CREATE ROOM</span>
+                        <span class="control-detail">You're the host: invite up to 7 friends, start when you're ready</span>
+                    </button>
+                    <button id="mpJoin" class="control-option mp-join" type="button">
+                        <span class="control-emoji">🚪</span><span class="control-name">JOIN ROOM</span>
+                        <span class="control-detail">Got a code from a friend? Join their room</span>
+                    </button>
+                </div>
+                <div class="mp-join-row hidden" id="mpJoinRow">
+                    <input id="mpCode" class="mp-input mp-code" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters">
+                    <button id="mpJoinGo" class="rules-close-btn" type="button">JOIN ▶</button>
+                </div>
+                <div class="mp-error" id="mpError"></div>
+                <button id="mpBack" class="rules-close-btn secondary" type="button">BACK</button>
+            </div>
+        </div>
+
+        <!-- A MULTIPLAYER room: the host starts the match -->
+        <div id="partyLobby" class="rules-overlay hidden">
+            <div class="rules-modal control-modal mp-modal">
+                <h2 class="control-title">👥 ROOM <span id="partyCode" class="party-code"></span></h2>
+                <div class="party-invite">
+                    <span id="partyLink" class="party-link"></span>
+                    <button id="partyCopy" class="tv-copy-button" type="button">📋 COPY INVITE LINK</button>
+                </div>
+                <div class="party-count" id="partyCount"></div>
+                <div class="party-players" id="partyPlayers"></div>
+                <div class="party-host" id="partyHostControls">
+                    <label class="mp-label">VIRUSES <input type="number" id="partyViruses" class="mp-input mp-small" min="1" max="30" value="5"></label>
+                    <div class="control-buttons">
+                        <button id="partyAddCpu" class="rules-close-btn secondary" type="button">🤖 ADD CPU</button>
+                        <button id="partyStart" class="rules-close-btn" type="button">▶ START MATCH</button>
+                    </div>
+                    <div class="mp-hint" id="partyStartHint"></div>
+                </div>
+                <div class="mp-hint party-waiting hidden" id="partyWaiting"></div>
+                <div class="mp-error" id="partyLobbyError"></div>
+                <button id="partyLeave" class="rules-close-btn secondary" type="button">LEAVE ROOM</button>
+            </div>
+        </div>
+
+        <!-- FREE PLAY: finding a match -->
+        <div id="freeSearch" class="rules-overlay hidden">
+            <div class="rules-modal control-modal mp-modal">
+                <h2 class="control-title">🎮 FREE PLAY</h2>
+                <div class="free-search"><div class="loading"></div><span id="freeSearchText">Looking for another player...</span></div>
+                <button id="freeCancel" class="rules-close-btn secondary" type="button">CANCEL</button>
+            </div>
+        </div>
+
+        <!-- In a MULTIPLAYER / FREE PLAY match: everyone else's board, and the CPUs this screen runs (hidden) -->
+        <div id="partyOpponents" class="party-opponents"></div>
+        <div id="partyCpuBoards" class="party-cpu-boards" aria-hidden="true"></div>
 
         <!-- TV Room lobby: phones scan the QR code to join (hidden by default) -->
         <div id="tvLobby" class="tv-lobby hidden">
@@ -1570,14 +1727,17 @@
     <!-- 🐞: something looked wrong - mark this moment in the game log (scripts/gameLog.js) -->
     <button id="bugButton" class="bug-button" type="button" title="Something glitched? Mark this moment in the game log">🐞</button>
 
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="/socket.io/socket.io.min.js"></script>
     <script type="module">
         import { preloadGameplaySprites } from './scripts/spriteCache.js';
         preloadGameplaySprites();
     </script>
     <script>
-        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-        const socket = io(window.location.origin);
+        // WebSocket straight away (no long-polling first); fall back to polling if a network blocks it
+        const socket = io(window.location.origin, { transports: ['websocket'], reconnectionDelayMax: 3000 });
+        socket.on('connect_error', () => {
+            if (socket.io.opts.transports[0] === 'websocket') socket.io.opts.transports = ['polling', 'websocket'];
+        });
 
         let player = 0; // Default player number
         let who = 0;
@@ -1665,6 +1825,11 @@
             // TV Room: every player's board, laid out by scripts/tvHost.js
             if (document.body.classList.contains('tv-mode')) {
                 if (window.tvHost && window.tvHost.layout) window.tvHost.layout();
+                return;
+            }
+            // Multiplayer / Free Play: my board next to the others' (scripts/partyClient.js)
+            if (document.body.classList.contains('party-mode')) {
+                if (window.party && window.party.layout) window.party.layout();
                 return;
             }
             const activeGame = getActiveGameContainer();
@@ -1918,15 +2083,11 @@
             socket.emit('startAIMode', { virusCount });
         };
 
-        // Free Play (Multiplayer Lobby)
-        document.getElementById('freePlay').onclick = function() {
-            document.body.classList.remove('ai-mode');
-            window.gameInstanceOptions = {};
-            socket.emit('joinLobby');
-            showRoomCode('🔍 Searching for opponents...');
-            this.innerHTML = '🔍 SEARCHING... <div class="loading"></div>';
-            this.disabled = true;
-        };
+        // Free Play: matched with another player, or a CPU after a few seconds (scripts/partyClient.js)
+        document.getElementById('freePlay').onclick = () => window.party && window.party.startFreePlay();
+
+        // Multiplayer: create a room or join one (scripts/partyClient.js)
+        document.getElementById('multiplayer').onclick = () => window.party && window.party.openMenu();
 
         socket.on('assignPlayerNumber', (playerNumber) => {
             player = playerNumber;
@@ -2015,35 +2176,6 @@
             applyMobileGameZoom();
         });
 
-        // Create Room
-        document.getElementById('createRoom').onclick = function() {
-            document.body.classList.remove('ai-mode');
-            window.gameInstanceOptions = {};
-            roomCode = generateRoomCode();
-
-            // Ask for virus amount/level with default autofilled (5)
-            const defaultVirusCount = 5;
-            let input = prompt('Set virus amount/level:', String(defaultVirusCount));
-            let virusCount = parseInt(input, 10);
-            if (isNaN(virusCount) || virusCount <= 0) {
-                virusCount = defaultVirusCount;
-            }
-
-            // Send room creation with settings to server
-            socket.emit('createRoom', { roomCode, virusCount });
-            who = 1;
-
-            // Copy to clipboard
-            navigator.clipboard.writeText(roomCode)
-                .then(() => {
-                    showRoomCode(`🏠 Room Created!\nCode: ${roomCode}`);
-                })
-                .catch(err => {
-                    console.error('Failed to copy room code to clipboard', err);
-                    showRoomCode(`🏠 Room Created!\nCode: ${roomCode}`);
-                });
-        };
-
         socket.on('roomJoined', (roomCode) => {
             hideRoomCode();
             document.getElementById('playbuttons').classList.add('hidden');
@@ -2116,21 +2248,6 @@
         socket.on('error', (message) => {
             showRoomCode(`❌ Error: ${message}`, true);
         });
-
-        // Join Room
-        document.getElementById('joinRoom').onclick = function() {
-            document.body.classList.remove('ai-mode');
-            window.gameInstanceOptions = {};
-            const inputCode = prompt('Enter the 4-letter room code:');
-            if (inputCode && inputCode.length === 4) {
-                roomCode = inputCode.toUpperCase();
-                socket.emit('joinRoom', roomCode);
-                who = 2;
-                showRoomCode(`🚪 Joining room: ${roomCode}...`);
-            } else if (inputCode) {
-                showRoomCode('❌ Invalid room code! Must be 4 letters.', true);
-            }
-        };
 
         // Replays: watch the last 100 games back (replays.html)
         document.getElementById('replaysBtn').onclick = () => { location.href = '/replays.html'; };
@@ -2455,5 +2572,7 @@
     <script type="module" src="./scripts/tvHost.js"></script>
     <!-- Single player with a Nintendo Switch Pro Controller -->
     <script type="module" src="./scripts/gamepad.js"></script>
+    <!-- Multiplayer rooms and Free Play: each player on their own screen -->
+    <script type="module" src="./scripts/partyClient.js"></script>
 </body>
 </html>

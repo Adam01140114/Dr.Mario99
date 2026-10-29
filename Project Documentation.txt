@@ -241,6 +241,41 @@ REAL-TIME COMMUNICATION
 'opponentWin'    // Opponent victory notification
 ```
 
+MULTIPLAYER ROOMS AND FREE PLAY (PARTIES)
+-----------------------------------------
+Up to 8 players, each on their own screen and running their own board, so
+nobody plays with lag (`public/scripts/partyClient.js`; server: PARTIES in
+`server.js`). The old two-player CREATE ROOM / JOIN ROOM is gone from the menu
+(its server code still serves AI MODE).
+
+- **MULTIPLAYER** (under SINGLE PLAYER): YOUR NAME (remembered), then CREATE
+  ROOM - you're the host - or JOIN ROOM with the 4-letter code. The room shows
+  the code and an invite link (`/?party=CODE` opens straight into joining).
+  The host sees ✕ by every player (partyKick, also mid-match: that player is
+  out), ADD CPU (its board runs on the host's screen), VIRUSES, and START
+  MATCH (2+ players). Everyone else sees "Waiting for HOST to start". If the
+  host leaves, the next player becomes host
+- **In a match**: my board on the left (or under the others on a phone), the
+  others' boards on the right, drawn from what their screens send
+  (partyBoard: the changed cells every 200 ms, a full picture every 2 s, and
+  viruses/score). "▸ YOUR TARGET" and "⚔ ATTACKING YOU" label the boards. A
+  clear of 4+ sends junk to my target, the next player still in round the
+  circle (partyAttack -> partyJunk to whoever runs that board). A full bottle
+  is out (partyOut); clearing your board wins (partyCleared); the last one
+  left wins (partyOver). Keyboard, the touch buttons and a controller all work
+- **Results**: standings; the host gets PLAY AGAIN and BACK TO THE ROOM,
+  everyone else waits for the host; LEAVE
+- **Dropping out**: a player who loses the connection mid-match has 8 s
+  (PARTY_GRACE_MS) to come back - their page rejoins by itself
+  (partyJoin with their clientId) - before they're out
+- **FREE PLAY**: players looking for a game are paired (freePlay). Anyone
+  still waiting after 6 s (FREE_WAIT_MS) plays a CPU with an ordinary name
+  (CPU_NAMES: Maya, Jordan, Ethan...), labelled like any player, so the game
+  never feels empty; its board runs on that player's screen. FIND ANOTHER
+  MATCH from the results looks again
+- **Game logs**: each screen logs its own boards (mode `party`), so a
+  multiplayer match has one log per player, replays included
+
 TV ROOM (PHONES AS CONTROLLERS)
 -------------------------------
 The computer (usually on a TV) shows every player's board; each player scans a
@@ -477,6 +512,47 @@ CLAUDE.md for how to read them (`node tools/gamelog.js`).
   two attacks before your next pill counted as one; junk stayed in mid-air
   when what it landed on was cleared; junk dropped into a full column landed
   on top of a virus (which vanished but still counted)
+
+RUNNING IT FOR REAL (PRODUCTION / RENDER)
+-----------------------------------------
+Measured on this Mac with 300 simulated players (50 rooms of 6, every board
+sending 5 updates a second, attacks every 3 s, plus their game logs): 7,400
+board updates delivered a second, delivered in 7 ms (99% within 16 ms), the
+server at about 13% of one core and 175 MB. What makes that possible:
+
+- **Network**: pages connect with WebSocket straight away (falling back to
+  long-polling if a network blocks it) and load Socket.IO from this server
+  (the same version as the server; it used to come from a CDN, version 4.0.0).
+  Socket messages aren't compressed one by one (perMessageDeflate off: they're
+  tiny), the largest accepted is 512 KB, and each socket has per-second limits
+  per message type (RATE_LIMITS) so one client can't flood the server
+- **Only to who needs it**: attacks in the old online rooms and AI mode used
+  to go to every connected player (io.emit); they now go to the room. Board
+  pictures in a party are diffs (a few cells), not whole boards
+- **Static files**: HTML, scripts and styles are brotli/gzip-compressed once
+  and kept in memory (the menu page: 108 KB -> 18 KB), with ETags (a return
+  visit is a 304) and checked on every visit so a deploy shows up at once;
+  images cache for a week. `/healthz` answers instantly (point Render's health
+  check at it)
+- **Quiet**: the server no longer prints the virus and pill lists on every
+  game (25 debug lines -> 1), and on the live site pages drop console.log
+  (warnings and errors stay; add ?debug to the address to see everything)
+- **Memory**: finished rooms, TV rooms and parties are forgotten along with
+  their game data (they used to stay in memory for as long as the server ran);
+  a destroyed board removes its key listeners (they used to pile up with every
+  level)
+- **Game logs on the live site**: written in the background (never blocking
+  the server), replay frames at 10 a second instead of 20, and the server's
+  own note of every socket message is off (LOG_VERBOSE=1 turns it on).
+  Render's disk is wiped on every deploy: set LOG_DIR to a persistent disk to
+  keep them. Reading them there needs LOG_KEY (e.g. /replays?key=... - the
+  list and logs check it; requests through Render's proxy are never "local")
+- **Settings** (environment): PORT (Render sets it), RENDER / NODE_ENV=
+  production (production mode), LOG_DIR, LOG_KEY, LOG_VERBOSE
+- **Size**: one server process handles hundreds of players. Render's free
+  instance has a tenth of a CPU and sleeps when idle - use at least a Starter
+  instance for real traffic. For thousands at once, run several instances with
+  the Socket.IO Redis adapter and sticky sessions
 
 KEEPING IT SMOOTH
 -----------------

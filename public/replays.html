@@ -138,6 +138,9 @@
     <script>
         'use strict';
         const $ = id => document.getElementById(id);
+        // On the live site the logs need the LOG_KEY: open /replays.html?key=... and it's passed along
+        const KEY = new URLSearchParams(location.search).get('key');
+        const withKey = url => KEY ? url + (url.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(KEY) : url;
         // Player colours (index.html .tv-p1 ...) and team colours (tvHost.js TEAMS)
         const PLAYER_COLORS = ['#ff4d6d', '#4dc3ff', '#ffd60a', '#00ff66', '#c77dff', '#ff9f1c', '#2ee6d6', '#ff70d9'];
         const TEAMS = [['RED', '#ff4d6d'], ['BLUE', '#4dc3ff'], ['GREEN', '#00ff66'], ['YELLOW', '#ffd60a'], ['PURPLE', '#c77dff'], ['ORANGE', '#ff9f1c'], ['TEAL', '#2ee6d6'], ['PINK', '#ff70d9']];
@@ -159,7 +162,7 @@
             stop();
             let games;
             try {
-                const res = await fetch('/logs/list.json');
+                const res = await fetch(withKey('/logs/list.json'));
                 if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
                 games = await res.json();
             } catch (e) {
@@ -241,7 +244,7 @@
             stop();
             let text;
             try {
-                const res = await fetch('/logs/' + encodeURIComponent(id));
+                const res = await fetch(withKey('/logs/' + encodeURIComponent(id)));
                 if (!res.ok) throw new Error(res.status === 404 ? 'That game is no longer kept (only the last 100 are)' : 'HTTP ' + res.status);
                 text = await res.text();
             } catch (e) {

@@ -13,7 +13,9 @@
  *   src   who saw it: 'server', 'tv' (the TV Room page), 'page' (single
  *         player, AI mode, online rooms), 'phone:P2' (that player's phone)
  *
- * Writes are batched (a flush every FLUSH_MS) so busy games don't slow the server.
+ * Writes are batched (a flush every FLUSH_MS) and done in the background (never
+ * blocking the server). LOG_DIR moves the logs, e.g. onto a persistent disk on a
+ * host whose own disk is wiped on every deploy.
  * A short summary of each game (players, length, result, errors, 🐞) is kept in
  * logs/index.json, for the list on replays.html.
  */
@@ -21,9 +23,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const DIR = path.join(__dirname, 'logs', 'games');
-const MARKERS = path.join(__dirname, 'logs', 'markers.jsonl'); // every 🐞, across games
-const INDEX = path.join(__dirname, 'logs', 'index.json');      // a summary of each game
+const ROOT = process.env.LOG_DIR ? path.resolve(process.env.LOG_DIR) : path.join(__dirname, 'logs');
+const DIR = path.join(ROOT, 'games');
+const MARKERS = path.join(ROOT, 'markers.jsonl'); // every 🐞, across games
+const INDEX = path.join(ROOT, 'index.json');      // a summary of each game
 const KEEP = 100;
 const MAX_BYTES = 25 * 1024 * 1024; // one game's file stops growing past this
 const FLUSH_MS = 250;
@@ -32,12 +35,15 @@ const ID = /^\d{8}-\d{6}-[a-z0-9-]{2,40}$/;
 const IDLE = new Set(['ping', 'page-hidden', 'page-shown', 'page-blur', 'page-focus', 'resize', 'socket-disconnected', 'socket-connected', 'server-in', 'server-out', 'room-closed', 'board-pictures-relayed']);
 
 const pending = new Map(); // id -> lines waiting to be written
+const writing = new Map(); // id -> the write in progress (each game's writes stay in order)
 const bytes = new Map();   // id -> size so far
 let flushTimer = null;
 let summaries = {};        // id -> summary (see summarize)
 let indexDirty = false;
 try { summaries = JSON.parse(fs.readFileSync(INDEX, 'utf8')); } catch (e) { /* no index yet */ }
 setInterval(saveIndex, 5000).unref();
+// Also every 30 s: when many games start at once, their files don't exist yet when start() prunes
+setInterval(prune, 30000).unref();
 
 const pad = n => String(n).padStart(2, '0');
 
@@ -91,13 +97,15 @@ function summarize(summary, e) {
     return summary;
 }
 
-function saveIndex() {
+function saveIndex(sync) {
     if (!indexDirty) return;
     indexDirty = false;
-    try {
-        fs.mkdirSync(path.dirname(INDEX), { recursive: true });
-        fs.writeFileSync(INDEX, JSON.stringify(summaries));
-    } catch (e) { /* written next time */ }
+    const text = JSON.stringify(summaries);
+    if (sync === true) {
+        try { fs.writeFileSync(INDEX, text); } catch (e) { /* stopping anyway */ }
+        return;
+    }
+    fs.promises.mkdir(path.dirname(INDEX), { recursive: true }).then(() => fs.promises.writeFile(INDEX, text)).catch(() => { indexDirty = true; });
 }
 
 /** Summary of a game written before this server started (read its file once) */
@@ -137,15 +145,21 @@ function queue(id, entry) {
     if (!flushTimer) flushTimer = setTimeout(flush, FLUSH_MS);
 }
 
-function flush() {
+/** Write what's waiting: in the background, or (sync, when the server is stopping) right now */
+function flush(sync) {
     flushTimer = null;
     for (const [id, lines] of pending) {
         if (!lines.length) continue;
-        try {
-            fs.appendFileSync(path.join(DIR, id + '.jsonl'), lines.join('\n') + '\n');
-        } catch (e) {
-            console.warn('[gameLogs] could not write', id, e.message);
+        const text = lines.join('\n') + '\n';
+        const file = path.join(DIR, id + '.jsonl');
+        if (sync === true) {
+            try { fs.appendFileSync(file, text); } catch (e) { /* stopping anyway */ }
+            continue;
         }
+        const previous = writing.get(id) || Promise.resolve();
+        const next = previous.then(() => fs.promises.appendFile(file, text)).catch((e) => console.warn('[gameLogs] could not write', id, e.message));
+        writing.set(id, next);
+        next.then(() => { if (writing.get(id) === next) writing.delete(id); });
     }
     pending.clear();
 }
@@ -157,6 +171,14 @@ function prune() {
         files = fs.readdirSync(DIR).filter(f => f.endsWith('.jsonl')).sort();
     } catch (e) {
         return;
+    }
+    // Summaries of games whose files are gone
+    const kept = new Set(files.map(f => f.replace(/\.jsonl$/, '')));
+    for (const id of Object.keys(summaries)) {
+        if (!kept.has(id) && !bytes.has(id)) {
+            delete summaries[id];
+            indexDirty = true;
+        }
     }
     for (const file of files.slice(0, Math.max(0, files.length - KEEP))) {
         try {
@@ -172,15 +194,14 @@ function prune() {
 /** A 🐞: someone flagged a glitch. Goes in the game's log and in the list of all markers */
 function mark(id, src, details = {}) {
     write(id, src, [{ type: 'marker', ...details }]);
-    try {
-        fs.mkdirSync(path.dirname(MARKERS), { recursive: true });
-        fs.appendFileSync(MARKERS, JSON.stringify({ t: Date.now(), id, src, ...details }) + '\n');
-    } catch (e) { /* the game's log still has it */ }
+    fs.promises.mkdir(path.dirname(MARKERS), { recursive: true })
+        .then(() => fs.promises.appendFile(MARKERS, JSON.stringify({ t: Date.now(), id, src, ...details }) + '\n'))
+        .catch(() => { /* the game's log still has it */ });
 }
 
 /** The games on disk, newest first, with their summaries (for replays.html) */
 function summariesList() {
-    flush();
+    flush(true);
     let files = [];
     try {
         files = fs.readdirSync(DIR).filter(f => f.endsWith('.jsonl')).sort().reverse();
@@ -198,7 +219,7 @@ function summariesList() {
 
 /** The games on disk, newest first: id, size, and the first line (what game it was) */
 function list() {
-    flush();
+    flush(true);
     let files = [];
     try {
         files = fs.readdirSync(DIR).filter(f => f.endsWith('.jsonl')).sort().reverse();
@@ -222,7 +243,7 @@ function list() {
 /** A game's whole log as text, or null */
 function read(id) {
     if (!ID.test(String(id))) return null;
-    flush();
+    flush(true);
     try {
         return fs.readFileSync(path.join(DIR, id + '.jsonl'), 'utf8');
     } catch (e) {
@@ -233,8 +254,9 @@ function read(id) {
 const isId = id => ID.test(String(id)) && bytes.has(id);
 
 process.on('exit', () => {
-    flush();
-    saveIndex();
+    flush(true);
+    saveIndex(true);
 });
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => process.exit(0)); // Render stops the server with SIGTERM
 
 module.exports = { start, write, mark, list, summariesList, read, flush, isId, DIR };

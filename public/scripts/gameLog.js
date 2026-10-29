@@ -38,7 +38,7 @@ import { Virus } from "./Shape.js"
 
 const FLUSH_MS = 500
 const SNAPSHOT_MS = 1000
-const FRAME_MS = 50
+let FRAME_MS = 50          // the server may ask for fewer frames (logConfig: 100 ms on the live site)
 const KEYFRAME_MS = 2000
 const PING_MS = 5000
 const HITCH_MS = 250
@@ -179,7 +179,18 @@ function hudOf(board) {
 }
 
 const frames = {} // player -> { grid, hud, keyAt, board }
-setInterval(() => {
+let frameTimer = setInterval(recordFrames, FRAME_MS)
+function watchConfig() {
+    if (typeof socket === 'undefined') return setTimeout(watchConfig, 200)
+    socket.on('logConfig', ({ frameMs }) => {
+        if (!(frameMs >= 20 && frameMs <= 1000) || frameMs === FRAME_MS) return
+        FRAME_MS = frameMs
+        clearInterval(frameTimer)
+        frameTimer = setInterval(recordFrames, FRAME_MS)
+    })
+}
+watchConfig()
+function recordFrames() {
     if (!log.active) return
     const now = Date.now()
     for (const [n, board] of activeBoards()) {
@@ -207,7 +218,7 @@ setInterval(() => {
         last.grid = grid
         last.hud = hud
     }
-}, FRAME_MS)
+}
 
 /* ---------- Moves and what they did (wrapping the game's own methods) ---------- */
 

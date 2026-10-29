@@ -28,17 +28,79 @@ const path = require('path');
 const cors = require('cors');
 const os = require('os');
 const QRCode = require('qrcode');
+const fs = require('fs');
+const zlib = require('zlib');
+const crypto = require('crypto');
 const gameLogs = require('./gameLogs');
+
+// Running on a hosting service (Render sets RENDER; NODE_ENV=production also counts)
+const PRODUCTION = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
 
 // Initialize Express server
 const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', 1); // behind Render's proxy: the real client address is in X-Forwarded-For
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: { origin: "*" },
+    // Game messages are tiny and frequent: compressing each one costs more CPU and delay than it saves
+    perMessageDeflate: false,
+    httpCompression: true,          // long-polling (the fallback) is compressed
+    maxHttpBufferSize: 512 * 1024,  // the largest message we accept (a batch of game log events)
+    pingInterval: 20000,
+    pingTimeout: 25000,
 });
 
-// Serve static files from public directory
-app.use(express.static(path.join(__dirname, 'public')));
+// For Render's health check (and uptime monitors): cheap, no static files involved
+app.get('/healthz', (req, res) => res.json({ ok: true, uptime: Math.round(process.uptime()), sockets: io.engine.clientsCount }));
+
+/**
+ * Static files, compressed once and cached. Text files (HTML, scripts, styles,
+ * SVG) are compressed with brotli and gzip the first time they're asked for and
+ * kept in memory until the file changes, and every response carries an ETag so a
+ * returning browser gets a tiny "not modified". Images are cached for a week;
+ * pages and scripts are checked each visit, so a new version shows up right away.
+ */
+const PUBLIC = path.join(__dirname, 'public');
+const TEXT_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.txt': 'text/plain; charset=utf-8', '.map': 'application/json' };
+const compressed = new Map(); // file -> { mtimeMs, etag, raw, br, gz }
+app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    let rel = decodeURIComponent(req.path);
+    if (rel.endsWith('/')) rel += 'index.html';
+    const type = TEXT_TYPES[path.extname(rel).toLowerCase()];
+    if (!type) return next();
+    const file = path.join(PUBLIC, rel);
+    if (!file.startsWith(PUBLIC + path.sep)) return next();
+    fs.stat(file, (err, stat) => {
+        if (err || !stat.isFile()) return next();
+        let entry = compressed.get(file);
+        if (!entry || entry.mtimeMs !== stat.mtimeMs) {
+            const raw = fs.readFileSync(file);
+            entry = {
+                mtimeMs: stat.mtimeMs,
+                etag: '"' + crypto.createHash('sha1').update(raw).digest('base64').slice(0, 20) + '"',
+                raw,
+                br: zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 9 } }),
+                gz: zlib.gzipSync(raw, { level: 9 }),
+            };
+            compressed.set(file, entry);
+        }
+        res.setHeader('Content-Type', type);
+        res.setHeader('Cache-Control', 'no-cache'); // always check, usually a 304
+        res.setHeader('ETag', entry.etag);
+        res.setHeader('Vary', 'Accept-Encoding');
+        if (req.headers['if-none-match'] === entry.etag) return res.status(304).end();
+        const accepts = String(req.headers['accept-encoding'] || '');
+        const body = /\bbr\b/.test(accepts) ? (res.setHeader('Content-Encoding', 'br'), entry.br)
+            : /\bgzip\b/.test(accepts) ? (res.setHeader('Content-Encoding', 'gzip'), entry.gz)
+            : entry.raw;
+        res.setHeader('Content-Length', body.length);
+        res.end(req.method === 'HEAD' ? undefined : body);
+    });
+});
+// Everything else (images, fonts): straight from disk, cached a week
+app.use(express.static(PUBLIC, { maxAge: '7d', etag: true }));
 
 // Game logs (gameLogs.js): the last 100 games, for tracking down glitches and watching
 // games back (replays.html). Only from this computer or a device on its own network - a
@@ -47,7 +109,7 @@ const isPrivateAddress = ip => /^(::1|127\.|::ffff:127\.|10\.|::ffff:10\.|192\.1
 const canReadLogs = req => (!req.headers['x-forwarded-for'] && isPrivateAddress(req.socket.remoteAddress))
     || (process.env.LOG_KEY && req.query.key === process.env.LOG_KEY);
 const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-app.get('/replays', (req, res) => res.redirect('/replays.html'));
+app.get('/replays', (req, res) => res.redirect('/replays.html' + (req.query.key ? '?key=' + encodeURIComponent(req.query.key) : '')));
 app.get('/logs/list.json', (req, res) => {
     if (!canReadLogs(req)) return res.status(404).json({ error: 'Game logs are only available on the computer running the game, or on its Wi-Fi' });
     res.json(gameLogs.summariesList());
@@ -118,13 +180,13 @@ function startAiMatch(roomCode, playerSocketId) {
 
         // Main attack cadence
         if (Math.random() < 0.8) {
-            io.emit('p1damage', { p1damage: 4, roomCode }); // 4 points => 1 damage virus
+            io.to(playerSocketId).emit('p1damage', { p1damage: 4, roomCode }); // 4 points => 1 damage virus
         }
 
         // Occasional extra combo pellet for stronger play feel
         if (Math.random() < 0.18) {
             setTimeout(() => {
-                io.emit('p1damage', { p1damage: 4, roomCode });
+                io.to(playerSocketId).emit('p1damage', { p1damage: 4, roomCode });
             }, 350);
         }
 
@@ -231,40 +293,25 @@ const roomVirusPositions = {};
  * @returns {Object} Game data with virus positions and pill colors
  */
 function generateNewGameData(roomCode, forceNew = false) {
-    console.log(`🔵 SERVER: generateNewGameData called for room ${roomCode}, forceNew: ${forceNew}`);
-    console.log(`🔵 SERVER: Current roomVirusPositions[${roomCode}]:`, roomVirusPositions[roomCode]);
-    console.log(`🔵 SERVER: Current roomPillColors[${roomCode}]:`, roomPillColors[roomCode] ? roomPillColors[roomCode].slice(0, 5) : 'undefined');
     
     // Determine desired virus count from room settings (default 5)
-    const room = activeRooms[roomCode] || tvRooms[roomCode];
+    const room = activeRooms[roomCode] || tvRooms[roomCode] || parties[roomCode];
     const virusCount = (room && room.settings && parseInt(room.settings.virusCount, 10)) || 5;
 
     // Generate fresh virus positions for each new game
     if (forceNew || !roomVirusPositions[roomCode]) {
         roomVirusPositions[roomCode] = generateVirusPositions(roomCode, Math.max(virusCount, 10));
-        console.log(`🔵 SERVER: Generated FRESH shared virus positions for room ${roomCode}:`, roomVirusPositions[roomCode].length, 'positions');
-        console.log(`🔵 SERVER: Fresh virus positions:`, roomVirusPositions[roomCode]);
     } else {
-        console.log(`🔵 SERVER: Using EXISTING shared virus positions for room ${roomCode}:`, roomVirusPositions[roomCode].length, 'positions');
-        console.log(`🔵 SERVER: Existing virus positions:`, roomVirusPositions[roomCode]);
     }
     
     // Generate fresh pill colors for each new game
     if (forceNew || !roomPillColors[roomCode]) {
         roomPillColors[roomCode] = generateRandomList(roomCode);
-        console.log(`🔵 SERVER: Generated FRESH shared pill colors for room ${roomCode}:`, roomPillColors[roomCode].length, 'colors');
-        console.log(`🔵 SERVER: First 20 colors for room ${roomCode}:`, roomPillColors[roomCode].slice(0, 20));
-        console.log(`🔵 SERVER: 🎨 NEW UNIQUE PILL COLORS for room ${roomCode}!`);
     } else {
-        console.log(`🔵 SERVER: Using EXISTING shared pill colors for room ${roomCode}:`, roomPillColors[roomCode].length, 'colors');
-        console.log(`🔵 SERVER: First 20 colors for room ${roomCode}:`, roomPillColors[roomCode].slice(0, 20));
-        console.log(`🔵 SERVER: 🔄 REUSING existing pill colors for room ${roomCode}`);
     }
     
     const randomList = roomPillColors[roomCode];
     const virusPositions = roomVirusPositions[roomCode];
-    console.log('🔵 SERVER: Final shared game data - virus positions:', virusPositions.length, 'shared pill colors:', randomList.length);
-    console.log('🔵 SERVER: Final virus positions being returned:', virusPositions);
     return { virusPositions, randomList, virusCount };
 }
 
@@ -277,9 +324,7 @@ function generateNewGameData(roomCode, forceNew = false) {
  * Broadcasts server logs to connected clients for debugging purposes.
  * This helps with multiplayer synchronization debugging.
  */
-function broadcastServerLog(type, message) {
-    io.emit('serverLog', { type, message, timestamp: new Date().toISOString() });
-}
+
 
 
 /**
@@ -289,9 +334,34 @@ function broadcastServerLog(type, message) {
  * Handles all client connections and multiplayer events.
  * Manages room creation, player matching, and game synchronization.
  */
+/**
+ * Per-socket limits on how many of each message a client may send per second.
+ * Normal play stays far below them (a TV with 8 phones sends about 160 board
+ * pictures a second); anything over is dropped, so one client can't flood the
+ * server and slow everyone else down.
+ */
+const RATE_LIMITS = { tvState: 400, tvInput: 60, partyBoard: 120, partyAttack: 30, log: 12, logPing: 2, default: 40 };
+function rateLimit(socket) {
+    let windowStart = Date.now();
+    let counts = {};
+    socket.use(([event], next) => {
+        const now = Date.now();
+        if (now - windowStart >= 1000) {
+            windowStart = now;
+            counts = {};
+        }
+        const limit = RATE_LIMITS[event] || RATE_LIMITS.default;
+        counts[event] = (counts[event] || 0) + 1;
+        if (counts[event] > limit) return; // dropped
+        next();
+    });
+}
+
 io.on('connection', (socket) => {
+    rateLimit(socket);
     registerGameLog(socket);
     registerTvRoomHandlers(socket);
+    registerPartyHandlers(socket);
     
     /**
      * ROOM MANAGEMENT SYSTEM
@@ -311,9 +381,6 @@ io.on('connection', (socket) => {
             
             // Generate unique virus data for this room immediately when created
             const gameData = generateNewGameData(roomCode, true);
-            console.log(`🔵 SERVER: Room ${roomCode} created with unique virus data:`, gameData.virusPositions);
-            console.log(`🔵 SERVER: Room ${roomCode} virus positions:`, gameData.virusPositions);
-            console.log(`🔵 SERVER: Room ${roomCode} created with unique pill colors (first 10):`, gameData.randomList.slice(0, 10));
         }
     });
 
@@ -324,19 +391,13 @@ io.on('connection', (socket) => {
             
             // Check if room is now full (2 players)
             if (activeRooms[roomCode].players.length === 2) {
-                console.log(`🔵 SERVER: Room ${roomCode} is now full with 2 players:`, activeRooms[roomCode].players);
                 
                 // Use existing game data that was created when the room was made
                 const gameData = generateNewGameData(roomCode, false); // false = use existing data
-                console.log(`🔵 SERVER: Using existing game data for room ${roomCode}:`, gameData);
-                console.log(`🔵 SERVER: Existing virus positions:`, gameData.virusPositions);
-                console.log(`🔵 SERVER: Existing pill colors (first 10):`, gameData.randomList.slice(0, 10));
                 
                 // Notify both players that the game is ready to start (includes virusCount)
                 io.to(roomCode).emit('gameReady', { roomCode, gameData });
-                console.log(`🔵 SERVER: Sent gameReady event to room ${roomCode} with existing gameData:`, gameData);
             } else {
-                console.log(`🔵 SERVER: Room ${roomCode} has ${activeRooms[roomCode].players.length} players, waiting for second player`);
                 // First player - just notify they joined
                 io.to(roomCode).emit('roomJoined', roomCode);
             }
@@ -439,12 +500,12 @@ io.on('connection', (socket) => {
 	 */
 	socket.on('updatePoints1', (data) => {
         // Player 2 is sending damage to Player 1
-        io.emit('p1damage', { p1damage: data.player1points, roomCode: data.roomCode });
+        if (data && activeRooms[data.roomCode]) io.to(data.roomCode).emit('p1damage', { p1damage: data.player1points, roomCode: data.roomCode });
     });
 
     socket.on('updatePoints2', (data) => {
         // Player 1 is sending damage to Player 2
-        io.emit('p2damage', { p2damage: data.player2points, roomCode: data.roomCode });
+        if (data && activeRooms[data.roomCode]) io.to(data.roomCode).emit('p2damage', { p2damage: data.player2points, roomCode: data.roomCode });
     });
 
     /**
@@ -536,12 +597,19 @@ io.on('connection', (socket) => {
             lobby.splice(lobbyIndex, 1);
         }
         for (let roomCode of Object.keys(aiMatches)) {
-            if (aiMatches[roomCode].playerSocketId === socket.id) {
-                stopAiMatch(roomCode);
+            if (aiMatches[roomCode].playerSocketId === socket.id) stopAiMatch(roomCode);
+        }
+        // Online rooms nobody is in any more: forget them and their game data
+        for (const roomCode of Object.keys(activeRooms)) {
+            const room = activeRooms[roomCode];
+            const people = room.players.filter(id => id !== 'AI_BOT' && id !== socket.id && io.sockets.sockets.has(id));
+            if (!people.length) {
                 delete activeRooms[roomCode];
+                delete nextRoundReady[roomCode];
+                delete roomVirusPositions[roomCode];
+                delete roomPillColors[roomCode];
             }
         }
-        // Handle room cleanup if needed
     });
 });
 
@@ -658,6 +726,8 @@ function closeTvRoom(code) {
     tvLog(tvRooms[code], 'room-closed', {});
     io.to(`tvp:${code}`).emit('tvRoomClosed', { code });
     delete tvRooms[code];
+    delete roomVirusPositions[code];
+    delete roomPillColors[code];
 }
 
 /** The host of this socket's room, and the room */
@@ -1049,8 +1119,12 @@ function startTvRound(code) {
 
 /* ---------- Game logs (gameLogs.js) ---------- */
 
-const LOG_QUIET_IN = new Set(['log', 'logOpen', 'logMark', 'logPing', 'tvState']); // logged their own way, or too often
-const LOG_QUIET_OUT = new Set(['tvState', 'serverLog']);
+const LOG_QUIET_IN = new Set(['log', 'logOpen', 'logMark', 'logPing', 'tvState', 'partyBoard']); // logged their own way, or too often
+// Every event each socket sends and gets goes in its game's log - locally. On a busy live server that's a lot
+// of extra work per message, so there it's off unless LOG_VERBOSE is set. Pages record replay frames this often:
+const LOG_SOCKET_EVENTS = !PRODUCTION || !!process.env.LOG_VERBOSE;
+const LOG_FRAME_MS = PRODUCTION ? 100 : 50;
+const LOG_QUIET_OUT = new Set(['tvState', 'serverLog', 'partyBoard']);
 const LOG_PAYLOAD = 600; // characters of an event's data kept in the log
 
 /** The server's own note in a TV room's log (kept for the first round while in the lobby) */
@@ -1098,6 +1172,7 @@ const brief = data => {
 
 function registerGameLog(socket) {
     socket.data.preLog = [];
+    socket.emit('logConfig', { frameMs: LOG_FRAME_MS });
     const ua = String(socket.handshake.headers['user-agent'] || '').slice(0, 200);
     writeLog(socket, [{ ct: Date.now(), type: 'socket-connected', socketId: socket.id, ua }]);
 
@@ -1143,11 +1218,11 @@ function registerGameLog(socket) {
     let states = 0;
     socket.onAny((event, data) => {
         if (event === 'tvState') states++;
-        if (LOG_QUIET_IN.has(event)) return;
+        if (!LOG_SOCKET_EVENTS || LOG_QUIET_IN.has(event)) return;
         writeLog(socket, [{ ct: Date.now(), type: 'server-in', event, data: brief(data) }]);
     });
     socket.onAnyOutgoing((event, data) => {
-        if (LOG_QUIET_OUT.has(event)) return;
+        if (!LOG_SOCKET_EVENTS || LOG_QUIET_OUT.has(event)) return;
         writeLog(socket, [{ ct: Date.now(), type: 'server-out', event, data: brief(data) }]);
     });
     const stateCount = setInterval(() => {
@@ -1176,6 +1251,385 @@ function tvResultFor(room, player) {
         roster: room.roster,
         rematch: [...room.rematch],
     };
+}
+
+/**
+ * PARTIES (MULTIPLAYER and FREE PLAY)
+ * ===================================
+ *
+ * Up to 8 players, each on their own screen and running their own board
+ * (scripts/partyClient.js), so nobody plays with lag. The server keeps the
+ * room: who's in, who's the host, who attacks whom, who's out, who won.
+ *
+ * - MULTIPLAYER: one player creates a room (partyCreate) and is the host;
+ *   others join with its 4-letter code or link (partyJoin). The host can add
+ *   CPUs (their boards run on the host's screen), remove anyone (partyKick),
+ *   set the viruses, and starts the match (partyStart) - and starts the next
+ *   one from the results. If the host leaves, the next player takes over.
+ * - FREE PLAY: players looking for a game are paired (freePlay). Anyone left
+ *   waiting FREE_WAIT_MS plays a CPU with an ordinary name instead, so it
+ *   never feels empty; its board runs on that player's screen.
+ * - In a match each board sends what changed on it (partyBoard: the changed
+ *   cells, a full picture every couple of seconds) and the server passes it
+ *   to the others for their opponent views. A clear of 4+ (partyAttack) sends
+ *   junk to the attacker's target, the next player still in round the
+ *   circle (partyJunk). A full bottle is out (partyOut); clearing your board
+ *   wins (partyCleared); the last one left wins (partyOver).
+ *
+ * Socket rooms: everyone in a party shares `party:<code>`.
+ */
+const parties = {};
+const PARTY_MAX = 8;
+const FREE_WAIT_MS = 6000;
+const PARTY_GRACE_MS = 8000; // a player who drops mid-match has this long to come back before they're out
+const freeQueue = []; // { socketId, name, timer }
+// Free Play CPUs get names like these, so the game feels full
+const CPU_NAMES = ['Maya', 'Jordan', 'Ethan', 'Sofia', 'Liam', 'Ava', 'Noah', 'Chloe', 'Lucas', 'Emma', 'Mateo', 'Zoe', 'Oliver', 'Mia',
+    'Leo', 'Aria', 'Caleb', 'Nora', 'Isaac', 'Ruby', 'Dylan', 'Hana', 'Marcus', 'Elena', 'Theo', 'Priya', 'Owen', 'Lila', 'Andre', 'Kai'];
+const partySlots = () => Array.from({ length: PARTY_MAX }, (_, i) => i + 1);
+const cleanName = (name, fallback) => String(name || '').trim().replace(/\s+/g, ' ').slice(0, 16) || fallback;
+
+function newCode() {
+    let code = generateRoomCode();
+    while (activeRooms[code] || tvRooms[code] || parties[code]) code = generateRoomCode();
+    return code;
+}
+
+function partyList(party) {
+    return partySlots().filter(n => party.players[n]).map(n => {
+        const p = party.players[n];
+        return { slot: n, name: p.name, connected: p.connected, cpu: p.cpu && !p.disguised, host: n === party.hostSlot };
+    });
+}
+
+function sendPartyLobby(party) {
+    io.to('party:' + party.code).emit('partyLobby', {
+        code: party.code, state: party.state, hostSlot: party.hostSlot, players: partyList(party),
+        settings: party.settings, freePlay: party.freePlay, max: PARTY_MAX,
+    });
+}
+
+/** The socket that runs this slot's board: the player's own, or (a CPU) the one hosting it */
+function partyOwner(party, slot) {
+    const p = party.players[slot];
+    if (!p) return null;
+    if (p.cpu) {
+        const host = party.players[p.hostedBy];
+        return host && host.connected ? host.socketId : null;
+    }
+    return p.connected ? p.socketId : null;
+}
+
+/** This socket's party, its own slot, and the slots whose boards it runs (itself + CPUs it hosts) */
+function partyOf(socket) {
+    const me = socket.data.party;
+    const party = me && parties[me.code];
+    if (!party || !party.players[me.slot] || party.players[me.slot].socketId !== socket.id) return {};
+    const owns = new Set([me.slot]);
+    for (const n of partySlots()) if (party.players[n] && party.players[n].cpu && party.players[n].hostedBy === me.slot) owns.add(n);
+    return { party, slot: me.slot, owns };
+}
+
+function addToParty(party, socket, name, clientId) {
+    const slot = partySlots().find(n => !party.players[n]);
+    if (!slot) return null;
+    party.players[slot] = { name, clientId, socketId: socket.id, connected: true };
+    socket.data.party = { code: party.code, slot };
+    socket.join('party:' + party.code);
+    return slot;
+}
+
+function addPartyCpu(party, hostSlot, disguised) {
+    const slot = partySlots().find(n => !party.players[n]);
+    if (!slot) return null;
+    const taken = new Set(partySlots().map(n => party.players[n] && party.players[n].name));
+    let name;
+    if (disguised) {
+        const names = CPU_NAMES.filter(n => !taken.has(n));
+        name = names[Math.floor(Math.random() * names.length)] || 'Sam';
+    } else {
+        let k = 1;
+        while (taken.has('CPU #' + k)) k++;
+        name = 'CPU #' + k;
+    }
+    party.players[slot] = { name, cpu: true, disguised: !!disguised, hostedBy: hostSlot, connected: true };
+    return slot;
+}
+
+function createParty(socket, name, clientId, options = {}) {
+    leaveParty(socket);
+    const code = newCode();
+    const party = parties[code] = {
+        code, hostSlot: 1, state: 'lobby', players: {}, freePlay: !!options.freePlay,
+        settings: { virusCount: Math.min(Math.max(parseInt(options.virusCount, 10) || 5, 1), 30) },
+        roster: [], alive: [], places: {}, targets: {}, round: 0,
+    };
+    const slot = addToParty(party, socket, name, clientId);
+    party.hostSlot = slot;
+    return party;
+}
+
+/** Each player still in attacks the next one still in, round the circle */
+function partyTargets(party) {
+    const alive = party.roster.filter(n => party.alive.includes(n));
+    party.targets = {};
+    if (alive.length >= 2) alive.forEach((n, i) => { party.targets[n] = alive[(i + 1) % alive.length]; });
+    return party.targets;
+}
+
+function startPartyMatch(party) {
+    const roster = partySlots().filter(n => party.players[n] && party.players[n].connected);
+    if (roster.length < 2) return false;
+    party.state = 'playing';
+    party.round++;
+    party.roster = roster;
+    party.alive = roster.slice();
+    party.places = {};
+    party.winner = null;
+    const gameData = generateNewGameData(party.code, true);
+    const names = Object.fromEntries(roster.map(n => [n, party.players[n].name]));
+    // CPUs: which player's screen runs each one, and which of them look like people
+    const cpus = {};
+    const disguised = [];
+    for (const n of roster) {
+        const p = party.players[n];
+        if (!p.cpu) continue;
+        cpus[n] = p.hostedBy;
+        if (p.disguised) disguised.push(n);
+    }
+    partyTargets(party);
+    for (const n of roster) {
+        const p = party.players[n];
+        if (p.cpu) continue;
+        // A CPU in disguise is only known as one to the screen that runs it
+        const mine = Object.fromEntries(Object.entries(cpus).filter(([cpu, host]) => +host === n || !party.players[cpu].disguised));
+        io.to(p.socketId).emit('partyStarted', {
+            code: party.code, round: party.round, slot: n, roster, names, cpus: mine, disguised: disguised.filter(c => cpus[c] === n),
+            targets: party.targets, gameData, freePlay: party.freePlay,
+        });
+    }
+    sendPartyLobby(party);
+    return true;
+}
+
+function partyEliminate(party, slot) {
+    if (party.state !== 'playing' || !party.alive.includes(slot)) return;
+    const place = party.alive.length;
+    party.places[slot] = place;
+    party.alive = party.alive.filter(n => n !== slot);
+    partyTargets(party);
+    io.to('party:' + party.code).emit('partyEliminated', { slot, place, targets: party.targets });
+    if (party.alive.length <= 1) endPartyMatch(party, party.alive[0] || null, 'last');
+}
+
+function endPartyMatch(party, winner, how) {
+    if (party.state !== 'playing') return;
+    party.state = 'over';
+    party.winner = winner;
+    if (winner) party.places[winner] = 1;
+    io.to('party:' + party.code).emit('partyOver', { winner, how, places: party.places, names: Object.fromEntries(party.roster.map(n => [n, party.players[n] ? party.players[n].name : '?'])) });
+    sendPartyLobby(party);
+}
+
+/** A player leaves (or is removed, or disconnects): out of the match, and the host passes on */
+function removeFromParty(party, slot, reason) {
+    const p = party.players[slot];
+    if (!p) return;
+    if (!p.cpu) {
+        const sock = io.sockets.sockets.get(p.socketId);
+        if (sock) {
+            sock.leave('party:' + party.code);
+            if (sock.data.party && sock.data.party.code === party.code) sock.data.party = null;
+            if (reason === 'kicked') sock.emit('partyKicked', { code: party.code });
+        }
+    }
+    delete party.players[slot];
+    if (party.state === 'playing') partyEliminate(party, slot);
+    // Their CPUs go with them
+    for (const n of partySlots()) {
+        const q = party.players[n];
+        if (q && q.cpu && q.hostedBy === slot) removeFromParty(party, n, 'host left');
+    }
+    const humans = partySlots().filter(n => party.players[n] && !party.players[n].cpu);
+    if (!humans.length) return closeParty(party);
+    if (party.hostSlot === slot) {
+        party.hostSlot = humans.find(n => party.players[n].connected) || humans[0];
+        // CPUs run on the host's screen: the new host takes them over at the next match
+        for (const n of partySlots()) if (party.players[n] && party.players[n].cpu) party.players[n].hostedBy = party.hostSlot;
+    }
+    sendPartyLobby(party);
+}
+
+function closeParty(party) {
+    delete parties[party.code];
+    delete roomVirusPositions[party.code];
+    delete roomPillColors[party.code];
+}
+
+function leaveParty(socket) {
+    const { party, slot } = partyOf(socket);
+    if (party) removeFromParty(party, slot, 'left');
+    socket.data.party = null;
+}
+
+function leaveFreeQueue(socket) {
+    const i = freeQueue.findIndex(q => q.socketId === socket.id);
+    if (i >= 0) {
+        clearTimeout(freeQueue[i].timer);
+        freeQueue.splice(i, 1);
+    }
+}
+
+function registerPartyHandlers(socket) {
+    // MULTIPLAYER: make a room; you're the host
+    socket.on('partyCreate', (payload = {}) => {
+        leaveFreeQueue(socket);
+        const party = createParty(socket, cleanName(payload.name, 'Player'), String(payload.clientId || '').slice(0, 64), { virusCount: payload.virusCount });
+        socket.emit('partyJoined', { code: party.code, slot: party.hostSlot });
+        sendPartyLobby(party);
+    });
+
+    // MULTIPLAYER: join a room by its code (or come back to it after losing the connection)
+    socket.on('partyJoin', (payload = {}) => {
+        leaveFreeQueue(socket);
+        const code = String(payload.code || '').toUpperCase().slice(0, 8);
+        const party = parties[code];
+        const clientId = String(payload.clientId || '').slice(0, 64);
+        if (!party) return socket.emit('partyError', { message: 'No room with the code ' + code + '. Check it and try again.' });
+        // Coming back: the same browser gets its old spot
+        const back = clientId && partySlots().find(n => party.players[n] && !party.players[n].cpu && party.players[n].clientId === clientId);
+        if (back) {
+            const p = party.players[back];
+            clearTimeout(p.dropTimer);
+            p.socketId = socket.id;
+            p.connected = true;
+            socket.data.party = { code, slot: back };
+            socket.join('party:' + code);
+            socket.emit('partyJoined', { code, slot: back, rejoined: true, state: party.state });
+            return sendPartyLobby(party);
+        }
+        if (party.state !== 'lobby') return socket.emit('partyError', { message: 'That match has already started. Ask the host to let you in next round.' });
+        if (party.freePlay) return socket.emit('partyError', { message: "That's a Free Play match. Create your own room instead." });
+        leaveParty(socket);
+        const slot = addToParty(party, socket, cleanName(payload.name, 'Player'), clientId);
+        if (!slot) return socket.emit('partyError', { message: `That room is full (${PARTY_MAX} players).` });
+        socket.emit('partyJoined', { code, slot });
+        sendPartyLobby(party);
+    });
+
+    socket.on('partyLeave', () => leaveParty(socket));
+
+    // Host only: remove a player or CPU
+    socket.on('partyKick', (payload = {}) => {
+        const { party, slot } = partyOf(socket);
+        const target = parseInt(payload.slot, 10);
+        if (!party || slot !== party.hostSlot || target === slot || !party.players[target]) return;
+        removeFromParty(party, target, 'kicked');
+    });
+
+    // Host only: add a CPU (its board runs on the host's screen), and the number of viruses
+    socket.on('partyAddCpu', () => {
+        const { party, slot } = partyOf(socket);
+        if (!party || slot !== party.hostSlot || party.state === 'playing') return;
+        if (addPartyCpu(party, slot, false)) sendPartyLobby(party);
+    });
+    socket.on('partySettings', (payload = {}) => {
+        const { party, slot } = partyOf(socket);
+        if (!party || slot !== party.hostSlot || party.state === 'playing') return;
+        party.settings.virusCount = Math.min(Math.max(parseInt(payload.virusCount, 10) || 5, 1), 30);
+        sendPartyLobby(party);
+    });
+
+    // Host only: start the match (and the next one, from the results)
+    socket.on('partyStart', () => {
+        const { party, slot } = partyOf(socket);
+        if (!party || slot !== party.hostSlot || party.state === 'playing') return;
+        if (!startPartyMatch(party)) socket.emit('partyError', { message: 'You need at least 2 players (add a CPU to play now).' });
+    });
+
+    // A board changed: pass it on for the others' opponent views
+    socket.on('partyBoard', (payload = {}) => {
+        const { party, owns } = partyOf(socket);
+        const n = parseInt(payload.slot, 10);
+        if (!party || party.state !== 'playing' || !owns.has(n)) return;
+        socket.to('party:' + party.code).emit('partyBoard', { slot: n, g: payload.g, d: payload.d, h: payload.h });
+    });
+
+    // A clear of 4+: junk for the attacker's target
+    socket.on('partyAttack', (payload = {}) => {
+        const { party, owns } = partyOf(socket);
+        const from = parseInt(payload.slot, 10);
+        if (!party || party.state !== 'playing' || !owns.has(from) || !party.alive.includes(from)) return;
+        const target = party.targets[from];
+        const owner = target && partyOwner(party, target);
+        if (!owner) return;
+        io.to(owner).emit('partyJunk', { slot: target, from, points: Math.min(parseInt(payload.points, 10) || 4, 40) });
+        io.to('party:' + party.code).emit('partyFx', { from, to: target });
+    });
+
+    // A full bottle: out. A clear board: wins
+    socket.on('partyOut', (payload = {}) => {
+        const { party, owns } = partyOf(socket);
+        const n = parseInt(payload.slot, 10);
+        if (party && owns.has(n)) partyEliminate(party, n);
+    });
+    socket.on('partyCleared', (payload = {}) => {
+        const { party, owns } = partyOf(socket);
+        const n = parseInt(payload.slot, 10);
+        if (party && owns.has(n) && party.alive.includes(n)) endPartyMatch(party, n, 'cleared');
+    });
+
+    // FREE PLAY: someone else looking for a game, or a CPU with an ordinary name after FREE_WAIT_MS
+    socket.on('freePlay', (payload = {}) => {
+        leaveFreeQueue(socket);
+        leaveParty(socket);
+        const name = cleanName(payload.name, 'Player');
+        const clientId = String(payload.clientId || '').slice(0, 64);
+        const other = freeQueue.find(q => q.socketId !== socket.id && io.sockets.sockets.get(q.socketId));
+        if (other) {
+            leaveFreeQueue(io.sockets.sockets.get(other.socketId));
+            const otherSocket = io.sockets.sockets.get(other.socketId);
+            const party = createParty(otherSocket, other.name, other.clientId, { freePlay: true });
+            const slot = addToParty(party, socket, name, clientId);
+            otherSocket.emit('partyJoined', { code: party.code, slot: party.hostSlot });
+            socket.emit('partyJoined', { code: party.code, slot });
+            sendPartyLobby(party);
+            setTimeout(() => { if (parties[party.code] && party.state === 'lobby') startPartyMatch(party); }, 1500);
+            return;
+        }
+        const entry = { socketId: socket.id, name, clientId, timer: null };
+        entry.timer = setTimeout(() => {
+            leaveFreeQueue(socket);
+            if (!socket.connected) return;
+            const party = createParty(socket, name, clientId, { freePlay: true });
+            addPartyCpu(party, party.hostSlot, true);
+            socket.emit('partyJoined', { code: party.code, slot: party.hostSlot });
+            sendPartyLobby(party);
+            setTimeout(() => { if (parties[party.code] && party.state === 'lobby') startPartyMatch(party); }, 1200);
+        }, FREE_WAIT_MS);
+        freeQueue.push(entry);
+        socket.emit('freePlaySearching', { waitMs: FREE_WAIT_MS });
+    });
+    socket.on('freePlayCancel', () => leaveFreeQueue(socket));
+
+    socket.on('disconnect', () => {
+        leaveFreeQueue(socket);
+        const { party, slot } = partyOf(socket);
+        if (!party) return;
+        const p = party.players[slot];
+        // In the lobby, gone is gone; in a match, they have PARTY_GRACE_MS to come back
+        // (partyJoin with their clientId) before they - and the CPUs they run - are out
+        if (party.state !== 'playing') return removeFromParty(party, slot, 'left');
+        p.connected = false;
+        sendPartyLobby(party);
+        p.dropTimer = setTimeout(() => {
+            if (p.connected || parties[party.code] !== party) return;
+            partyEliminate(party, slot);
+            for (const n of partySlots()) if (party.players[n] && party.players[n].cpu && party.players[n].hostedBy === slot) partyEliminate(party, n);
+            if (!partySlots().some(n => party.players[n] && !party.players[n].cpu && party.players[n].connected)) closeParty(party);
+            else sendPartyLobby(party);
+        }, PARTY_GRACE_MS);
+    });
 }
 
 function generateRoomCode() {

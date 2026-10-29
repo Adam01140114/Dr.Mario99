@@ -262,7 +262,7 @@ export class PlayingBoard extends Board {
 
 		// Add damage listener to PlayingBoard instance.
         // TV Room boards are attacked by the TV page itself (tvHost.sendAttack).
-        if (!this.isDamageListenerAdded && !this.game.isTVControlled) {
+        if (!this.isDamageListenerAdded && !this.game.isTVControlled && !this.game.party) {
             this.isDamageListenerAdded = true;
 
             /**
@@ -496,6 +496,10 @@ export class PlayingBoard extends Board {
 
         // A destroyed board stops listening for damage (otherwise every new round adds one more listener)
         if (this.damageHandler) socket.off(this.damageEvent, this.damageHandler)
+        // ...and for keys (otherwise every old board kept moving its last pill in the background)
+        if (this.keydownHandler) document.removeEventListener("keydown", this.keydownHandler)
+        if (this.keyupHandler) document.removeEventListener("keyup", this.keyupHandler)
+        for (const key of Object.keys(this.intervals || {})) clearInterval(this.intervals[key])
 
         this.topElement.remove()
         this.scoreElement.remove()
@@ -544,9 +548,9 @@ export class PlayingBoard extends Board {
     createKeyboardListeners() {
         // AI opponent preview board is autoplayed and should not react to user keyboard.
         // TV Room boards are driven by the players' phones (see tvInput in index.html).
-        if (this.game && (this.game.isAIOpponentView || this.game.isTVControlled)) return
+        if (this.game && (this.game.isAIOpponentView || this.game.isTVControlled || this.game.partyCpu)) return
         this.intervals = []
-        document.addEventListener("keydown", e => {
+        this.keydownHandler = e => {
             e.preventDefault()
            // if (this.blockInput)
                // return
@@ -559,11 +563,13 @@ export class PlayingBoard extends Board {
             this.intervals[e.key] = setInterval(() => {
                 this.movementFromKey(e.key)
             }, repeatDelay)
-        })
-        document.addEventListener("keyup", e => {
+        }
+        this.keyupHandler = e => {
             clearInterval(this.intervals[e.key])
             this.intervals[e.key] = null
-        })
+        }
+        document.addEventListener("keydown", this.keydownHandler)
+        document.addEventListener("keyup", this.keyupHandler)
     }
 
 	/**
@@ -1110,6 +1116,9 @@ class Field extends HTMLElement {
         if (this.board.game.isTVControlled) {
             // TV Room: the TV page sends it to this player's current target
             window.tvHost.sendAttack(this.board.playerNumber, this.board.localpoints);
+        } else if (this.board.game.party) {
+            // Multiplayer / Free Play: the server sends it to this player's target
+            window.party.attack(this.board.playerNumber, this.board.localpoints);
         } else if (!this.board.game.isAIOpponentView) {
             socket.emit(`updatePoints${this.board.playerNumber === 1 ? 2 : 1}`, { 
                 [`player${this.board.playerNumber === 1 ? 2 : 1}points`]: this.board.localpoints, 

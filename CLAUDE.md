@@ -2,6 +2,8 @@
 
 Vanilla JS game (`public/`) with a Node/Socket.IO server (`server.js`). Run it with `npm start` (port 6767). How every part works is in `Project Documentation.txt`; read the section for the area you touch.
 
+It runs live on Render (pushes to `main` deploy). Keep it fast for hundreds of players: send messages to rooms, never `io.emit` to everyone; keep per-frame messages small (diffs); no logging on hot paths; see "RUNNING IT FOR REAL" in the documentation.
+
 ## "Something glitched in a game - what happened?"
 
 Every game is logged in detail, so start with the logs, not with guesses:

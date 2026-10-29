@@ -41,6 +41,8 @@ export default class Game extends HTMLElement {
         this.playerNumber = playerNumber
         this.isAIOpponentView = !!options.isAIOpponentView
         this.isTVControlled = !!options.isTVControlled  // TV Room: a phone drives this board, the TV page decides the winner
+        this.party = !!options.party                    // Multiplayer / Free Play: the server decides who's out and who won (partyClient.js)
+        this.partyCpu = !!options.cpu                   // ...a CPU's board, run by this screen (no keyboard)
         this.hasLost = false  // true after endGame(); prevents showing victory if opponent loses after you
         console.log('Player Number:', this.playerNumber)
     }
@@ -66,7 +68,7 @@ export default class Game extends HTMLElement {
      * Handles opponent game events (victory/defeat) and validates room/player data
      */
     setupSocketListeners() {
-        if (this.isAIOpponentView || this.isTVControlled) return
+        if (this.isAIOpponentView || this.isTVControlled || this.party) return
         // Listen for opponent game over (opponent lost, you won)
         socket.on('opponentGameOver', (data) => {
             console.log(`Player ${this.playerNumber}: Received opponentGameOver event`);
@@ -139,7 +141,7 @@ export default class Game extends HTMLElement {
         this.append(this.board)
         
         // Check if we have shared game data from multiplayer room
-        if (typeof roomCode !== 'undefined' && roomCode && window.sharedGameData) {
+        if (this.party || (typeof roomCode !== 'undefined' && roomCode && window.sharedGameData)) {
             this.initializeWithSharedData();
         } else {
             // Single player or no shared data - request new game data
@@ -269,6 +271,7 @@ export default class Game extends HTMLElement {
             window.tvHost.playerFinished(this.playerNumber, true)
             return
         }
+        if (this.party) return window.party.finished(this.playerNumber, true)
         
         // Check if this is multiplayer mode
         if (typeof roomCode !== 'undefined' && roomCode) {
@@ -331,6 +334,10 @@ export default class Game extends HTMLElement {
             this.dancingViruses.setMode(DancingMode.LAUGHING)
             window.tvHost.playerFinished(this.playerNumber, false)
             return
+        }
+        if (this.party) {
+            this.dancingViruses.setMode(DancingMode.LAUGHING)
+            return window.party.finished(this.playerNumber, false)
         }
         
         // Stop all game activity before showing defeat
