@@ -539,6 +539,11 @@ io.on('connection', (socket) => {
  * controllers it has and whose they are (tvControllers), and a phone can take
  * one from that list (tvPickController, passed on to the TV).
  *
+ * Each phone chooses whether it shows its own board (tvShowGame); with more
+ * than TV_PHONE_SCREEN_ABOVE players it always does. The TV can add computer
+ * players (tvAddCpu / tvRemoveCpu): CPU #1, CPU #2... take a slot like a phone,
+ * are always ready and always want a rematch; the TV page plays their boards.
+ *
  * Socket rooms: the host is alone in `tvh:<code>`, the phones share `tvp:<code>`.
  */
 const tvRooms = {};
@@ -575,6 +580,8 @@ function tvPlayerList(room) {
         ready: room.ready.has(n),
         input: room.players[n].input,
         inputAt: room.players[n].inputAt,
+        showGame: !!room.players[n].showGame,
+        cpu: !!room.players[n].cpu,
     }));
 }
 
@@ -612,8 +619,11 @@ function tvPhoneRoom(socket) {
 
 function tvToPlayer(room, n, event, data) {
     const p = room.players[n];
-    if (p && p.connected) io.to(p.socketId).emit(event, data);
+    if (p && p.connected && p.socketId) io.to(p.socketId).emit(event, data); // CPUs have no phone
 }
+
+/** More players than this and the TV boards are small: every phone shows its own board */
+const tvBoardForced = room => room.roster.length > TV_PHONE_SCREEN_ABOVE;
 
 function registerTvRoomHandlers(socket) {
     // Host: open a new TV room ({ solo: true }: single player with one phone as the controller)
@@ -624,7 +634,7 @@ function registerTvRoomHandlers(socket) {
         const soloOnly = !!(payload && payload.solo);
         tvRooms[code] = {
             hostId: socket.id, state: 'lobby', players: {}, ready: new Set(), solo: soloOnly, soloOnly,
-            roster: [], winner: null, places: {}, rematch: new Set(), settings: { virusCount: 5, showOnPhone: false },
+            roster: [], winner: null, places: {}, rematch: new Set(), settings: { virusCount: 5 },
             controllers: { list: [], bindings: {} },
         };
         socket.data.tvHostOf = code;
@@ -667,13 +677,14 @@ function registerTvRoomHandlers(socket) {
         // Phone or controller: what this phone chose last time (it remembers), else what this slot had
         const input = TV_INPUTS.includes(payload.input) ? payload.input : (previous && previous.input) || 'phone';
         const inputAt = previous && previous.input === input ? previous.inputAt : Date.now();
-        room.players[slot] = { name, clientId, socketId: socket.id, connected: true, input, inputAt };
+        const showGame = payload.showGame !== undefined ? !!payload.showGame : !!(previous && previous.showGame);
+        room.players[slot] = { name, clientId, socketId: socket.id, connected: true, input, inputAt, showGame };
         socket.data.tvPlayer = { code, player: slot };
         socket.join(`tvp:${code}`);
         socket.emit('tvJoined', {
             code, player: slot, name, state: room.state,
             inGame: room.state !== 'lobby' && room.roster.includes(slot),
-            showOnPhone: room.settings.showOnPhone,
+            boardForced: room.state !== 'lobby' && tvBoardForced(room),
             eliminated: room.places[slot] && room.state === 'playing' ? { place: room.places[slot], of: room.roster.length } : null,
             result: tvResultFor(room, slot),
             input,
@@ -705,6 +716,40 @@ function registerTvRoomHandlers(socket) {
         if (!p || !TV_INPUTS.includes(payload.input) || p.input === payload.input) return;
         p.input = payload.input;
         p.inputAt = Date.now();
+        tvSendLobby(code);
+    });
+
+    // Phone: show my own board on this phone, or not
+    socket.on('tvShowGame', (payload = {}) => {
+        const { code, room, player } = tvPhoneRoom(socket);
+        const p = room && room.players[player];
+        if (!p || p.showGame === !!payload.on) return;
+        p.showGame = !!payload.on;
+        tvSendLobby(code);
+    });
+
+    // Host: add a computer player in the next empty slot (CPU #1, CPU #2...)
+    socket.on('tvAddCpu', () => {
+        const { code, room } = tvHostRoom(socket);
+        if (!room || room.state !== 'lobby' || room.soloOnly) return;
+        const slot = tvSlots().find(n => !room.players[n]);
+        if (!slot) return;
+        const taken = new Set(tvSlots().filter(n => room.players[n] && room.players[n].cpu).map(n => room.players[n].cpuNumber));
+        let number = 1;
+        while (taken.has(number)) number++;
+        room.players[slot] = { name: `CPU #${number}`, cpu: true, cpuNumber: number, clientId: null, socketId: null, connected: true, input: 'cpu', inputAt: 0 };
+        room.ready.add(slot); // a CPU is always ready
+        room.solo = false;
+        tvSendLobby(code);
+    });
+
+    // Host: take a computer player out again
+    socket.on('tvRemoveCpu', (payload = {}) => {
+        const { code, room } = tvHostRoom(socket);
+        const n = parseInt(payload.player, 10);
+        if (!room || room.state !== 'lobby' || !room.players[n] || !room.players[n].cpu) return;
+        delete room.players[n];
+        room.ready.delete(n);
         tvSendLobby(code);
     });
 
@@ -745,7 +790,6 @@ function registerTvRoomHandlers(socket) {
         for (const n of tvSlots()) if (room.players[n] && !roster.includes(n)) delete room.players[n];
         room.roster = roster;
         room.settings.virusCount = Math.min(Math.max(parseInt(payload.virusCount, 10) || 5, 1), 30);
-        room.settings.showOnPhoneChoice = !!payload.showOnPhone;
         startTvRound(code);
     });
 
@@ -792,8 +836,10 @@ function registerTvRoomHandlers(socket) {
             if (room.roster.includes(+n)) room.places[n] = parseInt(place, 10) || room.places[n];
         }
         room.soloStats = room.roster.length === 1 ? { level: parseInt(payload.level, 10) || 0, score: parseInt(payload.score, 10) || 0 } : null;
-        room.rematch = new Set();
+        // CPUs always want a rematch, so it's up to the people
+        room.rematch = new Set(room.roster.filter(n => room.players[n] && room.players[n].cpu));
         for (const n of room.roster) tvToPlayer(room, n, 'tvResult', tvResultFor(room, n));
+        if (room.rematch.size) io.to(room.hostId).emit('tvRematch', { players: [...room.rematch] });
     });
 
     // Host: an effect happened on a player's board; flash their phone
@@ -858,9 +904,9 @@ function startTvRound(code) {
     room.soloStats = null;
     room.rematch = new Set();
     room.ready = new Set();
-    room.settings.showOnPhone = !!room.settings.showOnPhoneChoice || roster.length > TV_PHONE_SCREEN_ABOVE;
     const gameData = generateNewGameData(code, true);
-    const round = { code, names: tvNames(room, roster), roster, showOnPhone: room.settings.showOnPhone };
+    const cpus = roster.filter(n => room.players[n].cpu);
+    const round = { code, names: tvNames(room, roster), roster, cpus, boardForced: tvBoardForced(room) };
     io.to(room.hostId).emit('tvGameStarted', { ...round, gameData });
     io.to(`tvp:${code}`).emit('tvGameStarted', round);
 }

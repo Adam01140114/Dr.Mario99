@@ -1088,7 +1088,23 @@
         .tv-pads { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
         .tv-pad-count { color: #9fb3ff; font-size: 0.6rem; line-height: 1.8; }
         .tv-lobby.solo-only .tv-pads { display: none; }
-        .tv-name-tag .tv-pad-tag { font-size: 1.6rem; }
+        .tv-name-tag .tv-pad-tag,
+        .tv-name-tag .tv-cpu-tag { font-size: 1.6rem; }
+        /* Computer players: added and taken out on the TV */
+        .tv-add-cpu { background: linear-gradient(45deg, #6c757d, #3a4a6b); }
+        .tv-slot .tv-slot-remove {
+            flex: none;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 0.7rem;
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            border: 2px solid currentColor;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+        }
+        .tv-slots.many .tv-slot .tv-slot-remove { width: 26px; height: 26px; font-size: 0.55rem; }
         .tv-slot.ready .tv-slot-ready { color: #00ff66; text-shadow: 0 0 10px #00ff66; }
         /* Player colours: same list in attackFx.js and controller.html */
         .tv-p1 { --tv-slot-color: #ff4d6d; --tv-slot-glow: rgba(255, 77, 109, 0.55); }
@@ -1105,10 +1121,6 @@
         .tv-slots.many .tv-slot { padding: 12px; gap: 10px; }
         .tv-slots.many .tv-slot .tv-slot-name { font-size: 0.75rem; }
         .tv-slots.many .tv-slot .tv-slot-ready { font-size: 0.55rem; }
-        .tv-phone-option { cursor: pointer; flex-wrap: wrap; line-height: 1.6; }
-        .tv-phone-option input { width: 26px; height: 26px; accent-color: #00ffff; }
-        .tv-phone-option.locked { opacity: 0.55; cursor: not-allowed; }
-        .tv-option-note { width: 100%; color: #ffb703; font-size: 0.65rem; }
         @keyframes tvPop {
             from { transform: scale(0.6); opacity: 0; }
             to { transform: scale(1); opacity: 1; }
@@ -1339,11 +1351,10 @@
                         <button id="tvPadConnect" class="tv-copy-button hidden" type="button">🎮 CONNECT CONTROLLER</button>
                     </div>
                     <label class="tv-options">VIRUSES <input type="number" id="tvVirusCount" min="1" max="30" value="5"></label>
-                    <label class="tv-options tv-phone-option" id="tvShowOnPhoneLabel">
-                        <input type="checkbox" id="tvShowOnPhone"> SHOW GAME ON PHONE SCREEN
-                        <span class="tv-option-note" id="tvShowOnPhoneNote"></span>
-                    </label>
                     <div class="tv-actions">
+                        <button id="tvAddCpu" class="menu-button secondary-button tv-add-cpu" type="button">
+                            <span class="emoji">🤖</span>ADD CPU PLAYER
+                        </button>
                         <button id="tvStart" class="menu-button primary-button tv-start hidden">
                             <span class="emoji">▶️</span>START GAME
                         </button>

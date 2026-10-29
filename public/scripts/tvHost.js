@@ -15,8 +15,11 @@
  * - A player can choose CONTROLLER on their phone and play with a game
  *   controller on this computer instead (scripts/gamepad.js): pressing A on a
  *   free one, or tapping it in the list on the phone, makes it theirs.
- * - "Show game on phone screen" sends each player a picture of their own board
- *   (Board.snapshot()); it is always on with five or more players.
+ * - A player can show their own board on their phone (a switch on the phone):
+ *   this page sends them a picture of it (Board.snapshot()). With five or more
+ *   players every phone shows it.
+ * - ADD CPU adds computer players (CPU #1, CPU #2...) that take a slot like a
+ *   phone; this page plays their boards (scripts/cpuPlayer.js).
  * - Presses and pictures go straight between phone and this page over their
  *   Wi-Fi (WebRTC) when possible, through the server otherwise.
  *
@@ -25,9 +28,9 @@
 
 "use strict"
 import { attackSent, attackReceived } from "./attackFx.js"
+import { startCpu } from "./cpuPlayer.js"
 
 const MAX_PLAYERS = 8
-const PHONE_SCREEN_ABOVE = 4   // more players than this: always show the game on the phones
 const TV_KEYS = { left: 'a', right: 'd', rotateLeft: 'w', rotateRight: 'Shift', drop: 's', hold: 'c' }
 const TV_REPEAT = { left: 166, right: 166, drop: 60 } // held-key repeat, as on the keyboard (Board.js)
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -46,12 +49,13 @@ const tv = window.tvHost = {
     lobby: [],          // players in the lobby, from the server
     qrUrl: null,
     seen: new Set(),    // "n:name" already shown, so only new names pop
-    showOnPhoneChoice: false,
     started: false,
     finished: false,
     solo: false,
     soloOnly: false,    // single player with the phone as the controller: one phone, starts when it joins
-    showOnPhone: false,
+    boardForced: false, // five or more players: every phone shows its own board
+    cpus: new Set(),    // players the computer plays
+    cpuStops: {},       // player -> stops that CPU
     names: {},
     roster: [],         // players in this round
     alive: [],          // players still in
@@ -129,8 +133,17 @@ function renderLobby() {
         // Playing on the phone, or with which controller
         const pad = p.input === 'controller' && tv.controllerList.find(c => c.key === controllerOf(p.player))
         const input = slot.querySelector('.tv-slot-input')
-        input.textContent = p.input !== 'controller' ? '📱' : pad ? '🎮 ' + pad.name.toUpperCase() : '🎮 PRESS A'
+        input.textContent = p.cpu ? '🤖 CPU' : p.input !== 'controller' ? '📱' : pad ? '🎮 ' + pad.name.toUpperCase() : '🎮 PRESS A'
         input.classList.toggle('waiting', p.input === 'controller' && !pad)
+        if (p.cpu) {
+            const remove = document.createElement('button')
+            remove.type = 'button'
+            remove.className = 'tv-slot-remove'
+            remove.title = 'Take ' + p.name + ' out'
+            remove.textContent = '✕'
+            remove.onclick = () => socket.emit('tvRemoveCpu', { player: p.player })
+            slot.appendChild(remove)
+        }
         slot.querySelector('.tv-slot-ready').textContent = p.ready ? '✔ READY' : 'NOT READY'
         slots.appendChild(slot)
     }
@@ -172,13 +185,8 @@ function renderLobby() {
         qrCard.classList.add('hidden')
     }
 
-    // Five or more players: the game always shows on the phones
-    const forced = connected.length > PHONE_SCREEN_ABOVE
-    const box = $('tvShowOnPhone')
-    box.disabled = forced
-    box.checked = forced || tv.showOnPhoneChoice
-    $('tvShowOnPhoneLabel').classList.toggle('locked', forced)
-    $('tvShowOnPhoneNote').textContent = forced ? `Always on with ${PHONE_SCREEN_ABOVE + 1} or more players` : ''
+    // ADD CPU: while there's an empty slot
+    $('tvAddCpu').classList.toggle('hidden', tv.soloOnly || players.length >= MAX_PLAYERS)
 
     $('tvSoloNote').textContent = !tv.soloOnly ? ''
         : connected.length ? '✅ ' + connected[0].name + "'s phone is connected. Starting..."
@@ -196,16 +204,14 @@ function startTvGame() {
     button.disabled = true
     let virusCount = parseInt($('tvVirusCount').value, 10)
     if (isNaN(virusCount) || virusCount <= 0) virusCount = 5
-    socket.emit('tvStartGame', { virusCount, showOnPhone: $('tvShowOnPhone').checked })
+    socket.emit('tvStartGame', { virusCount })
     setTimeout(() => { button.disabled = false }, 2000)
 }
 
 $('tvRoom').onclick = () => startTvRoom()
 $('tvStart').onclick = startTvGame
 $('tvCancel').onclick = () => { location.href = location.pathname }
-$('tvShowOnPhone').addEventListener('change', (e) => {
-    if (!e.target.disabled) tv.showOnPhoneChoice = e.target.checked
-})
+$('tvAddCpu').onclick = () => socket.emit('tvAddCpu')
 // Everyone pressed READY on their phone: start without anyone touching the computer
 socket.on('tvAutoStart', ({ code }) => {
     if (code === tv.code && !tv.started) startTvGame()
@@ -259,7 +265,8 @@ socket.on('tvGameStarted', async (data) => {
     tv.alive = data.roster.slice()
     tv.solo = tv.roster.length === 1
     tv.places = {}
-    tv.showOnPhone = !!data.showOnPhone
+    tv.boardForced = !!data.boardForced
+    tv.cpus = new Set(data.cpus || [])
     tv.sent = {}
     closeOverlay()
     if (first) {
@@ -295,6 +302,7 @@ async function buildGames() {
         tag.innerHTML = `<span class="tv-slot-num">P${n}</span><span id="tvName${n}"></span>`
             + `<span class="tv-link hidden" id="tvLink${n}" title="Controller connected straight over the Wi-Fi">⚡</span>`
             + `<span class="tv-pad-tag hidden" id="tvPadTag${n}" title="Playing with a controller">🎮</span>`
+            + (tv.cpus.has(n) ? '<span class="tv-cpu-tag" title="The computer plays this board">🤖</span>' : '')
             + `<span class="tv-target" id="tvTarget${n}"></span>`
         tag.querySelector('#tvName' + n).textContent = tv.names[n]
         container.appendChild(tag)
@@ -302,6 +310,7 @@ async function buildGames() {
         container.appendChild(game)
         tv.games[n] = game
         window.gameInstances[n] = game
+        if (tv.cpus.has(n)) tv.cpuStops[n] = startCpu(game, Math.random())
         showTvLink(n, !!(tv.peers[n] && tv.peers[n].channel && tv.peers[n].channel.readyState === 'open'))
         showPadTag(n)
     }
@@ -310,6 +319,8 @@ async function buildGames() {
 
 function removeGame(n) {
     releaseHolds(n)
+    if (tv.cpuStops[n]) tv.cpuStops[n]()
+    delete tv.cpuStops[n]
     const game = tv.games[n]
     if (game) game.teardown()
     delete tv.games[n]
@@ -695,10 +706,10 @@ setInterval(() => {
     const now = Date.now()
     for (const n of tv.roster) {
         const game = tv.games[n]
-        if (!game || !game.board || !tv.alive.includes(n)) continue
+        if (!game || !game.board || !tv.alive.includes(n) || tv.cpus.has(n)) continue
         const snap = game.board.snapshot()
-        // Without the phone screen, the phone still shows what's in HOLD
-        const state = tv.showOnPhone ? snap : { h: snap.h, hu: snap.hu }
+        // The whole board for a phone that shows it; otherwise it still shows what's in HOLD
+        const state = tv.boardForced || wantsBoard(n) ? snap : { h: snap.h, hu: snap.hu }
         state.t = tv.alive.length >= 2 && tv.targets[n] ? tv.names[tv.targets[n]] : null
         const key = JSON.stringify(state)
         const last = tv.sent[n]
@@ -707,6 +718,12 @@ setInterval(() => {
         sendToPhone(n, state)
     }
 }, STATE_MS)
+
+/** This player switched SHOW MY GAME on, on their phone */
+function wantsBoard(n) {
+    const p = tv.lobby.find(q => q.player === n)
+    return !!(p && p.showGame)
+}
 
 /* ---------- Direct links from the phones (WebRTC) ---------- */
 

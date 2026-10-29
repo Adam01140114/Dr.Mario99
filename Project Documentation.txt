@@ -261,13 +261,28 @@ side is the TV ROOM section of `server.js`.
   (`tvAutoStart`) and it starts - nobody touches the computer. Alone in the
   room, the phone also shows PLAY SOLO. The TV's Start Game button still works
   (START SOLO with one player)
-- **Show game on phone screen**: a checkbox over Start Game. On, the TV sends
-  each player a picture of their own board (`Board.snapshot()`: one character
-  per cell, next pill, held pill, score, viruses, level, target; the sprite
-  list is `SPRITE_CODES` in components.js and repeated in controller.html) and
-  the phone draws it on a canvas above the buttons. With 5+ players it is
-  always on and the box is locked. Pictures are sent only when they change, up
-  to 20 a second, over the direct link when there is one (else `tvState`)
+- **Show my game on this phone**: each player's own choice, on their phone -
+  SHOW MY GAME ON THIS PHONE on the waiting screen, and a BOARD switch at the
+  top of the controller to flip it mid-game (`tvShowGame`; the phone
+  remembers it). On, the TV sends that player a picture of their own board
+  (`Board.snapshot()`: one character per cell, next pill, held pill, score,
+  viruses, level, target; the sprite list is `SPRITE_CODES` in components.js
+  and repeated in controller.html) and the phone draws it on a canvas above
+  the buttons. With 5+ players (CPUs count: the TV boards get small) it is on
+  for everyone and the switches are locked (`boardForced`). Pictures are sent
+  only when they change, up to 20 a second, over the direct link when there
+  is one (else `tvState`)
+- **CPU players**: ADD CPU PLAYER on the TV lobby adds a computer player in the
+  next empty slot - CPU #1, CPU #2... (the lowest free number) - and ✕ on its
+  slot takes it out (`tvAddCpu` / `tvRemoveCpu`). A CPU is always ready (so one
+  phone + CPUs starts as soon as the phone presses READY; with only CPUs, START
+  GAME on the TV) and always wants a rematch. The TV page plays its board
+  (`scripts/cpuPlayer.js`): for each pill it scores every place it can land
+  (colours lined up, 4 in a row best, viruses in it better still; minus
+  burying another colour and stacking high) and walks the pill there a move
+  at a time through `movementFromKey`, at its own speed (140-230 ms a move)
+  and sometimes taking a worse place, so CPUs differ and can be beaten. They
+  attack and get junk like anyone. A 🤖 shows on their name tag
 - **Playing**: every board runs on the TV page (`isTVControlled` games, made by
   tvHost.js directly - not script.js). Phone buttons move that player's pill;
   held buttons repeat. Each player keeps their own place in the shared pill
@@ -333,7 +348,8 @@ side is the TV ROOM section of `server.js`.
   back when it reconnects. In the lobby a disconnected slot can be taken
 - **Server events**: tvCreateRoom, tvJoin, tvReady, tvStartGame, tvInput,
   tvState, tvEliminated, tvNextLevel, tvGameOver, tvFx, tvRestart, tvRematch,
-  tvSignal, tvChooseInput, tvPickController, tvControllers (in);
+  tvSignal, tvChooseInput, tvPickController, tvControllers, tvShowGame,
+  tvAddCpu, tvRemoveCpu (in);
   tvRoomCreated, tvLobby (TV and phones), tvAutoStart, tvJoined, tvJoinError,
   tvGameStarted, tvInput, tvState, tvEliminated, tvLevelData, tvResult, tvFx,
   tvRematch, tvSignal, tvRoomClosed, tvPickController, tvControllers (out). QR
