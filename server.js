@@ -28,6 +28,7 @@ const path = require('path');
 const cors = require('cors');
 const os = require('os');
 const QRCode = require('qrcode');
+const gameLogs = require('./gameLogs');
 
 // Initialize Express server
 const app = express();
@@ -38,6 +39,28 @@ const io = socketIo(server, {
 
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Game logs (gameLogs.js): the last 100 games, for tracking down glitches. Only from this
+// computer (or with ?key= matching the LOG_KEY environment variable on a hosted server).
+const canReadLogs = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+    || (process.env.LOG_KEY && req.query.key === process.env.LOG_KEY);
+const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+app.get('/logs', (req, res) => {
+    if (!canReadLogs(req)) return res.status(404).send('Not found');
+    const key = req.query.key ? '?key=' + encodeURIComponent(req.query.key) : '';
+    const rows = gameLogs.list().map(g => `<tr><td><a href="/logs/${g.id}${key}">${escapeHtml(g.id)}</a></td><td>${escapeHtml(g.mode)}</td>`
+        + `<td>${escapeHtml(g.startedAt && new Date(g.startedAt).toLocaleString())}</td>`
+        + `<td>${escapeHtml(g.players ? Object.values(g.players).join(', ') : '')}</td><td>${Math.ceil(g.size / 1024)} KB</td></tr>`).join('');
+    res.send(`<!doctype html><meta charset="utf-8"><title>Game logs</title><style>body{font:14px system-ui;margin:24px;background:#16213e;color:#eee}a{color:#4dc3ff}td,th{padding:6px 12px;text-align:left}tr:nth-child(even){background:#1f2b50}</style>`
+        + `<h1>Last ${gameLogs.list().length} games</h1><p>Each game's log is one JSON event per line. Tell Claude the id of the game that glitched.</p>`
+        + `<table><tr><th>Game</th><th>Mode</th><th>Started</th><th>Players</th><th>Size</th></tr>${rows}</table>`);
+});
+app.get('/logs/:id', (req, res) => {
+    if (!canReadLogs(req)) return res.status(404).send('Not found');
+    const text = gameLogs.read(req.params.id);
+    if (text == null) return res.status(404).send('No such game');
+    res.type('text/plain').send(text);
+});
 
 // TV Room shortcut: /tv opens the game and starts a TV Room right away
 app.get('/tv', (req, res) => res.redirect('/?tv=new'));
@@ -266,6 +289,7 @@ function broadcastServerLog(type, message) {
  * Manages room creation, player matching, and game synchronization.
  */
 io.on('connection', (socket) => {
+    registerGameLog(socket);
     registerTvRoomHandlers(socket);
     
     /**
@@ -596,12 +620,14 @@ function tvSendLobby(code) {
     const room = tvRooms[code];
     if (!room) return;
     const lobby = { code, state: room.state, players: tvPlayerList(room), max: TV_MAX_PLAYERS };
+    tvLog(room, 'lobby', { state: room.state, players: lobby.players });
     io.to(room.hostId).emit('tvLobby', lobby);
     io.to(`tvp:${code}`).emit('tvLobby', lobby);
 }
 
 function closeTvRoom(code) {
     if (!tvRooms[code]) return;
+    tvLog(tvRooms[code], 'room-closed', {});
     io.to(`tvp:${code}`).emit('tvRoomClosed', { code });
     delete tvRooms[code];
 }
@@ -637,7 +663,9 @@ function registerTvRoomHandlers(socket) {
             hostId: socket.id, state: 'lobby', players: {}, ready: new Set(), solo: soloOnly, soloOnly,
             roster: [], winner: null, places: {}, rematch: new Set(), settings: { virusCount: 5 },
             controllers: { list: [], bindings: {} },
+            logId: null, preLog: (socket.data.preLog || []).map(e => ({ ...e, src: 'tv' })), rounds: 0, // game log: one per round; lobby events wait for the first
         };
+        socket.data.preLog = [];
         socket.data.tvHostOf = code;
         socket.join(`tvh:${code}`);
         socket.emit('tvRoomCreated', { code, lanOrigins: lanOrigins(PORT), max: soloOnly ? 1 : TV_MAX_PLAYERS, solo: soloOnly });
@@ -681,6 +709,14 @@ function registerTvRoomHandlers(socket) {
         const showGame = payload.showGame !== undefined ? !!payload.showGame : !!(previous && previous.showGame);
         room.players[slot] = { name, clientId, socketId: socket.id, connected: true, input, inputAt, showGame };
         socket.data.tvPlayer = { code, player: slot };
+        // What this phone logged before it joined goes in the room's log too
+        if (socket.data.preLog && socket.data.preLog.length) {
+            const src = 'phone:P' + slot;
+            const before = socket.data.preLog.map(e => ({ ...e, src }));
+            if (room.logId) gameLogs.write(room.logId, src, before);
+            else room.preLog.push(...before);
+            socket.data.preLog = [];
+        }
         socket.join(`tvp:${code}`);
         socket.emit('tvJoined', {
             code, player: slot, name, state: room.state,
@@ -905,7 +941,10 @@ function tvReadyChanged(code) {
     tvSendLobby(code);
     const inRoom = tvConnected(room);
     const allReady = inRoom.length > 0 && inRoom.every(n => room.ready.has(n));
-    if (allReady && (inRoom.length >= 2 || room.solo)) io.to(room.hostId).emit('tvAutoStart', { code });
+    if (allReady && (inRoom.length >= 2 || room.solo)) {
+        tvLog(room, 'auto-start', { players: inRoom });
+        io.to(room.hostId).emit('tvAutoStart', { code });
+    }
 }
 
 /** Deal a new game to the room's players (first start, TV "Restart", or everyone asked for a rematch) */
@@ -923,9 +962,133 @@ function startTvRound(code) {
     room.ready = new Set();
     const gameData = generateNewGameData(code, true);
     const cpus = roster.filter(n => room.players[n].cpu);
-    const round = { code, names: tvNames(room, roster), roster, cpus, boardForced: tvBoardForced(room) };
+    // Each round gets its own game log; what happened in the lobby before goes at its top
+    room.rounds++;
+    room.logId = gameLogs.start(room.soloOnly ? 'phone' : 'tv', {
+        code, round: room.rounds, roster, names: tvNames(room, roster), cpus,
+        inputs: Object.fromEntries(roster.map(n => [n, room.players[n].input])),
+        showGame: Object.fromEntries(roster.map(n => [n, !!room.players[n].showGame])),
+        controllers: room.controllers, settings: room.settings, gameData,
+    });
+    if (room.preLog.length) gameLogs.write(room.logId, 'lobby', room.preLog);
+    room.preLog = [];
+    const round = { code, names: tvNames(room, roster), roster, cpus, boardForced: tvBoardForced(room), logId: room.logId };
     io.to(room.hostId).emit('tvGameStarted', { ...round, gameData });
     io.to(`tvp:${code}`).emit('tvGameStarted', round);
+}
+
+/* ---------- Game logs (gameLogs.js) ---------- */
+
+const LOG_QUIET_IN = new Set(['log', 'logOpen', 'logMark', 'logPing', 'tvState']); // logged their own way, or too often
+const LOG_QUIET_OUT = new Set(['tvState', 'serverLog']);
+const LOG_PAYLOAD = 600; // characters of an event's data kept in the log
+
+/** The server's own note in a TV room's log (kept for the first round while in the lobby) */
+function tvLog(room, type, details) {
+    if (!room) return;
+    const entry = { ct: Date.now(), src: 'server', type, ...details };
+    if (room.logId) return gameLogs.write(room.logId, 'server', [entry]);
+    room.preLog.push(entry);
+    if (room.preLog.length > 3000) room.preLog.shift();
+}
+
+/** Which game's log this socket's events belong in, and who it is */
+function logTarget(socket) {
+    const hosted = socket.data.tvHostOf && tvRooms[socket.data.tvHostOf];
+    if (hosted) return { room: hosted, src: 'tv' };
+    const me = socket.data.tvPlayer;
+    const room = me && tvRooms[me.code];
+    if (room) return { room, src: 'phone:P' + me.player };
+    return { id: socket.data.logId, src: 'page' };
+}
+
+function writeLog(socket, events) {
+    const { room, id, src } = logTarget(socket);
+    if (room) {
+        if (room.logId) return gameLogs.write(room.logId, src, events);
+        for (const e of events) room.preLog.push({ src, ...e });
+        if (room.preLog.length > 3000) room.preLog.splice(0, room.preLog.length - 3000);
+        return;
+    }
+    if (id) return gameLogs.write(id, src, events);
+    // No game yet: keep the last few, so an error just before a game starts is in its log
+    const before = socket.data.preLog || (socket.data.preLog = []);
+    for (const e of events) before.push({ src, ...e });
+    if (before.length > 300) before.splice(0, before.length - 300);
+}
+
+const brief = data => {
+    try {
+        const text = JSON.stringify(data);
+        return text && text.length > LOG_PAYLOAD ? text.slice(0, LOG_PAYLOAD) + '…' : text;
+    } catch (e) {
+        return String(data);
+    }
+};
+
+function registerGameLog(socket) {
+    socket.data.preLog = [];
+    const ua = String(socket.handshake.headers['user-agent'] || '').slice(0, 200);
+    writeLog(socket, [{ ct: Date.now(), type: 'socket-connected', socketId: socket.id, ua }]);
+
+    // A page starts a game (single player, AI mode, online room): it gets its own log
+    socket.on('logOpen', (meta = {}, ack) => {
+        const mode = String(meta.mode || 'game').replace(/[^a-z-]/gi, '').slice(0, 16) || 'game';
+        const code = meta.code ? String(meta.code).replace(/[^a-z0-9]/gi, '').slice(0, 8) : undefined;
+        const id = gameLogs.start(mode, { ...meta, mode, code, socketId: socket.id, ua });
+        if (socket.data.preLog.length) gameLogs.write(id, 'before', socket.data.preLog);
+        socket.data.preLog = [];
+        socket.data.logId = id;
+        if (typeof ack === 'function') ack(id);
+    });
+
+    // Events from the page or phone, sent in batches
+    socket.on('log', (events) => {
+        if (!Array.isArray(events)) return;
+        const kept = [];
+        for (const e of events.slice(0, 1000)) {
+            if (!e || typeof e !== 'object' || typeof e.type !== 'string') continue;
+            const text = brief(e);
+            kept.push(text && text.length < 20000 ? e : { ct: e.ct, type: e.type, note: 'too big to log' });
+        }
+        if (events.length > 1000) kept.push({ type: 'log-dropped', count: events.length - 1000 });
+        writeLog(socket, kept);
+    });
+
+    // 🐞: someone flagged a glitch. On a phone, the TV shows who
+    socket.on('logMark', (details = {}, ack) => {
+        const { room, id, src } = logTarget(socket);
+        const logId = room ? room.logId : id;
+        const note = { ct: Date.now(), note: String(details.note || '').slice(0, 300), boards: details.boards };
+        if (logId) gameLogs.mark(logId, src, note);
+        else writeLog(socket, [{ type: 'marker', ...note }]);
+        if (room && src.startsWith('phone')) io.to(room.hostId).emit('tvMarked', { player: socket.data.tvPlayer.player });
+        if (typeof ack === 'function') ack(logId || null);
+    });
+
+    // Round trip to the server, for spotting a slow connection
+    socket.on('logPing', (t, ack) => { if (typeof ack === 'function') ack(t); });
+
+    // Everything else this socket sends and gets, briefly
+    let states = 0;
+    socket.onAny((event, data) => {
+        if (event === 'tvState') states++;
+        if (LOG_QUIET_IN.has(event)) return;
+        writeLog(socket, [{ ct: Date.now(), type: 'server-in', event, data: brief(data) }]);
+    });
+    socket.onAnyOutgoing((event, data) => {
+        if (LOG_QUIET_OUT.has(event)) return;
+        writeLog(socket, [{ ct: Date.now(), type: 'server-out', event, data: brief(data) }]);
+    });
+    const stateCount = setInterval(() => {
+        if (!states) return;
+        writeLog(socket, [{ ct: Date.now(), type: 'board-pictures-relayed', count: states, perSeconds: 10 }]);
+        states = 0;
+    }, 10000);
+    socket.on('disconnect', (reason) => {
+        clearInterval(stateCount);
+        writeLog(socket, [{ ct: Date.now(), type: 'socket-disconnected', reason }]);
+    });
 }
 
 function tvResultFor(room, player) {

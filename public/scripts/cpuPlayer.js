@@ -20,6 +20,7 @@ import { Virus } from "./Shape.js"
 
 const SPAWN_Y = 15   // the row a new pill comes in on (rows count up from the bottom)
 const DANGER_Y = 11  // stacking this high gets close to the neck of the bottle
+const glog = (type, details) => window.gameLog && window.gameLog.event(type, details) // scripts/gameLog.js
 const TURNS = [Rotation.HORIZONTAL, Rotation.VERTICAL, Rotation.HORIZONTAL_REVERSED, Rotation.VERTICAL_REVERSED]
 
 /** Play this TV Room game until it leaves the page; returns a function that stops it */
@@ -38,8 +39,10 @@ export function startCpu(game, seed = Math.random()) {
             pill = current
             plan = choosePlace(board, current, sloppy)
             steps = 0
+            glog('cpu-plan', { p: game.playerNumber, colors: current.pieces.map(piece => piece.color), plan })
         }
         // No good place, or stuck turning against a wall: just drop it
+        if (plan && steps === 40) glog('cpu-gave-up', { p: game.playerNumber, plan, rot: current.rotation, x: current.centerField.x })
         if (!plan || ++steps > 40) return board.movementFromKey('s')
         if (current.rotation !== plan.rotation) {
             const clockwise = (plan.rotation - current.rotation + 4) % 4
@@ -96,7 +99,8 @@ function choosePlace(board, pill, sloppy) {
     }
     if (!options.length) return null
     options.sort((p, q) => q.score - p.score)
-    return Math.random() < sloppy ? options[Math.floor(Math.random() * Math.min(4, options.length))] : options[0]
+    const pick = Math.random() < sloppy ? Math.floor(Math.random() * Math.min(4, options.length)) : 0
+    return { ...options[pick], score: Math.round(options[pick].score), rank: pick + 1, of: options.length }
 }
 
 function scorePlace(grid, cells, isVirus, width, height) {

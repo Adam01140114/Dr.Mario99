@@ -295,13 +295,20 @@ side is the TV ROOM section of `server.js`.
   the server's p1damage/p2damage events
 - **Out**: a bottle that fills up is out (`tvEliminated`): the board greys,
   shows "OUT #place", then leaves the TV and the rest re-flow to fill the
-  screen (`tvHost.layout()` picks the rows and columns that make the boards
-  biggest). That phone shows YOU'RE OUT and its place. Targets are reassigned;
+  screen. That phone shows YOU'RE OUT and its place. Targets are reassigned;
   with two left they attack each other
+- **Layout**: `tvHost.layout()` tries every split into rows and picks the one
+  with the biggest boards - but a split with more rows wins when it's within
+  4% (`STACK_BIAS`), so three players are two on top and one below rather than
+  one long strip. Gaps and name tags are kept small (TAG_H, GAP, EDGE) so the
+  boards get the room. On a 16:9 TV in fullscreen, three boards stacked are
+  about 30% bigger than in a row; in a short, wide window the two are about
+  the same size
 - **Winning**: clearing all your viruses wins outright; otherwise the last one
   left wins (`tvHost.playerFinished`). The TV freezes the boards and shows the
-  winner; each phone gets `tvResult` (victory, or game over with the winner
-  and your place)
+  winner in a box you can drag aside (mouse or touch) to see the final boards
+  behind it (`makeDraggable`); each phone gets `tvResult` (victory, or game
+  over with the winner and your place)
 - **Solo**: like single player - a cleared board shows STAGE CLEAR and the next
   level starts by itself (`tvNextLevel` -> `tvLevelData`, score kept); a full
   bottle is game over with the level and score
@@ -403,6 +410,34 @@ arrow keys move between the choices, Escape goes back):
   `connect` event)
 - **EXIT** after a single player game reloads to the menu: a second game on
   the same page used to get a dead board
+
+GAME LOGS (TRACKING DOWN GLITCHES)
+----------------------------------
+Every game is written down in detail so a glitch can be traced afterwards - see
+CLAUDE.md for how to read them (`node tools/gamelog.js`).
+
+- **Where**: `logs/games/<id>.jsonl` (not in git), the last 100 games. One file
+  per single player game, AI or online game, and per TV Room round (lobby
+  events before the first round go at its top). Ids start with the date
+  (20261028-153012-tv-abcd-k3f) and show on the result screens ("Game log: …")
+- **Who writes**: the server (`gameLogs.js`: batched, 25 MB cap per game) from
+  three sources - the page (`public/scripts/gameLog.js`), each phone
+  (`controller.html`, `plog`), and the server itself (every event each socket
+  sends and gets, lobby changes, auto start, disconnects)
+- **What**: gameLog.js wraps the game's own methods, so every move and what it
+  did, each pill, clear, junk, hold, stage clear and top-out is written without
+  touching the game code; each board once a second while it changes; errors,
+  console warnings, slow frames (`hitch`), long tasks, socket drops, ping. The
+  TV adds inputs with where they came from (`via`) and why one was ignored,
+  attacks, eliminations, layout, controllers, CPU decisions. Phones add button
+  presses (direct or through the server), the direct link, sleeping
+- **🐞**: a button in the corner while a game is on (and on each phone's pad)
+  marks "something looked wrong here", with every board as it is right then.
+  Marks also go in `logs/markers.jsonl`; a phone's mark shows a banner on the TV
+- **Reading**: `/logs` and `/logs/<id>` on this computer (elsewhere only with
+  `?key=` matching the LOG_KEY environment variable), or the reader:
+  `node tools/gamelog.js summary latest`, `around latest marker`, `board latest
+  marker`
 
 KEEPING IT SMOOTH
 -----------------

@@ -1215,7 +1215,7 @@
             flex-wrap: wrap;
             justify-content: center;
             align-items: flex-start;
-            gap: 40px;
+            gap: 24px; /* GAP in tvHost.js */
             transform-origin: center center;
             transition: transform 0.5s ease;
         }
@@ -1242,8 +1242,8 @@
             align-items: center;
             justify-content: center;
             gap: 20px;
-            height: 56px;
-            margin-bottom: 14px;
+            height: 50px; /* + margin: TAG_H in tvHost.js */
+            margin-bottom: 6px;
             color: var(--tv-slot-color);
             text-shadow: 0 0 14px var(--tv-slot-glow);
             white-space: nowrap;
@@ -1251,7 +1251,52 @@
         /* style.css sets 9px on every element, so each text element gets its own size */
         .tv-name-tag span { font-size: 2.2rem; }
         .tv-name-tag .tv-slot-num { font-size: 1.1rem; padding: 10px 12px; border: 3px solid currentColor; border-radius: 10px; }
-        .tv-victory .alert-modal { max-width: 960px; padding: 50px 60px; border-width: 5px; }
+        /* 🐞: mark a glitch in the game log, while a game is on */
+        .bug-button {
+            position: fixed;
+            right: 14px;
+            bottom: 14px;
+            z-index: 3600;
+            display: none;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            background: rgba(0, 0, 0, 0.55);
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0.55;
+        }
+        .bug-button:hover { opacity: 1; }
+        body.in-game .bug-button,
+        body.tv-mode .bug-button { display: block; }
+        .bug-toast {
+            position: fixed;
+            right: 14px;
+            bottom: 72px;
+            z-index: 3600;
+            max-width: 440px;
+            padding: 14px 16px;
+            border-radius: 12px;
+            border: 2px solid #ffd60a;
+            background: rgba(5, 8, 25, 0.95);
+            color: #ffd60a;
+            font-size: 0.75rem;
+            line-height: 1.7;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity 0.25s, transform 0.25s;
+            pointer-events: none;
+        }
+        .bug-toast.show { opacity: 1; transform: none; }
+        .log-id { font-size: 0.6rem; line-height: 1.6; color: #9fb3ff; margin-top: 14px; position: relative; z-index: 1; word-break: break-all; }
+        .tv-victory .alert-modal { max-width: 960px; padding: 50px 60px; border-width: 5px; cursor: grab; touch-action: none; user-select: none; }
+        .tv-victory .alert-modal.dragging { cursor: grabbing; animation: none; }
+        /* The boards stay visible behind it: drag the box aside to look at them */
+        .tv-victory { background: rgba(0, 0, 0, 0.35); pointer-events: none; }
+        .tv-victory .alert-modal { pointer-events: auto; }
+        .tv-drag-handle { font-size: 0.8rem; color: #9fb3ff; opacity: 0.8; margin: -24px 0 18px; position: relative; z-index: 1; }
         .tv-victory .alert-title { font-size: 3.4rem; }
         .tv-victory .tv-winner-name { font-size: 3rem; color: #ffd60a; text-shadow: 0 0 20px #ffd60a; line-height: 1.4; }
         .tv-victory .tv-victory-reason { font-size: 1.2rem; }
@@ -1481,6 +1526,9 @@
         <br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
         <br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br><br>
     </div>
+
+    <!-- 🐞: something looked wrong - mark this moment in the game log (scripts/gameLog.js) -->
+    <button id="bugButton" class="bug-button" type="button" title="Something glitched? Mark this moment in the game log">🐞</button>
 
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <script type="module">
@@ -1782,6 +1830,7 @@
 
         function startSinglePlayer(control) {
             hideControlPicker();
+            if (window.gameLog) window.gameLog.begin('single', { control });
             // The keyboard always works; the Pro Controller sends the same key presses
             if (control === 'gamepad') window.padInput.start();
             document.body.classList.remove('ai-mode');
@@ -1845,6 +1894,7 @@
 
         socket.on('startFreePlay', (data) => {
             roomCode = data.roomCode;
+            if (window.gameLog) window.gameLog.begin('online', { code: data.roomCode, player: data.player });
             hideRoomCode();
             document.getElementById('playbuttons').classList.add('hidden');
             
@@ -1892,6 +1942,7 @@
 
         socket.on('startAIMode', (data) => {
             roomCode = data.roomCode;
+            if (window.gameLog) window.gameLog.begin('ai', { code: data.roomCode, gameData: data.gameData });
             who = 1;
             window.sharedGameData = data.gameData;
             document.body.classList.add('ai-mode');
@@ -1982,6 +2033,7 @@
             
             // Store the shared game data globally for the game to use
             window.sharedGameData = data.gameData;
+            if (window.gameLog) window.gameLog.begin('room', { code: roomCode, player: who, gameData: data.gameData });
             
             if (who == 2) {
                 if (!window.scriptLoaded) {
@@ -2195,10 +2247,18 @@
             }
             buttonsWrapper.appendChild(exitBtn);
 
+            // Which game's log this was, to tell Claude if something went wrong
+            const logIdElement = document.createElement('div');
+            logIdElement.className = 'log-id';
+            logIdElement.dataset.logId = '';
+            logIdElement.textContent = window.gameLog && window.gameLog.id ? 'Game log: ' + window.gameLog.id : '';
+            if (window.gameLog) window.gameLog.event('result-shown', { title, message, win: isWin });
+
             // Assemble modal
             modal.appendChild(titleElement);
             modal.appendChild(messageElement);
             modal.appendChild(buttonsWrapper);
+            modal.appendChild(logIdElement);
             overlay.appendChild(modal);
 
             // Add to page
@@ -2332,6 +2392,9 @@
             return keyMap[keyCode] || 0;
         }
 
+        // 🐞: mark this moment in the game log
+        document.getElementById('bugButton').onclick = () => window.gameLog && window.gameLog.mark();
+
         // Add click sounds to buttons
         document.addEventListener('DOMContentLoaded', function() {
             const buttons = document.querySelectorAll('.menu-button');
@@ -2343,6 +2406,8 @@
             setupTouchControls();
         });
     </script>
+    <!-- Game log: everything that happens in a game, for tracking down glitches -->
+    <script type="module" src="./scripts/gameLog.js"></script>
     <!-- TV Room: the computer shows the boards, phones are the controllers -->
     <script type="module" src="./scripts/tvHost.js"></script>
     <!-- Single player with a Nintendo Switch Pro Controller -->

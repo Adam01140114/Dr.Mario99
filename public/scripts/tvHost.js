@@ -37,12 +37,15 @@ const TV_REPEAT = { left: 166, right: 166, drop: 60 } // held-key repeat, as on 
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
 const BOARD_W = 960 + 14       // game-element plus its border
 const BOARD_H = 576 + 14
-const TAG_H = 70               // name tag over each board
-const GAP = 40
+const TAG_H = 56               // name tag over each board (index.html: 50px tall + 6px below)
+const GAP = 24                 // between boards (index.html: body.tv-mode .ai-boards-row gap)
+const EDGE = 16                // room left around the edge of the screen
+const STACK_BIAS = 0.04        // stack in more rows when that's at most this much smaller
 const STATE_MS = 50            // board pictures to phones, at most 20 a second
 const STATE_REFRESH_MS = 1500  // ...and resent now and then, for a phone that just came back
 
 const $ = id => document.getElementById(id)
+const glog = (type, details) => window.gameLog && window.gameLog.event(type, details) // scripts/gameLog.js
 
 const tv = window.tvHost = {
     code: null,
@@ -79,6 +82,7 @@ const tv = window.tvHost = {
 
 function startTvRoom(soloOnly = false) {
     tv.soloOnly = soloOnly
+    glog('tv-room-opening', { soloOnly })
     document.body.classList.remove('ai-mode')
     hideRoomCode()
     $('tvTitle').textContent = soloOnly ? '📱 PHONE CONTROLLER' : '📺 TV ROOM'
@@ -270,6 +274,8 @@ socket.on('tvGameStarted', async (data) => {
     tv.boardForced = !!data.boardForced
     tv.cpus = new Set(data.cpus || [])
     tv.sent = {}
+    if (window.gameLog) window.gameLog.setId(data.logId)
+    glog('round-start', { roster: tv.roster, names: tv.names, cpus: [...tv.cpus], boardForced: tv.boardForced, bindings: Object.fromEntries(tv.bindings), screen: { w: innerWidth, h: innerHeight } })
     closeOverlay()
     if (first) {
         roomCode = data.code
@@ -340,16 +346,25 @@ function layout() {
     const row = document.querySelector('.ai-boards-row')
     if (!row || !document.body.classList.contains('tv-mode')) return
     const count = Math.max(1, row.querySelectorAll(':scope > .game-container:not(.hidden):not(.leaving)').length)
-    let best = { scale: 0, width: BOARD_W }
+    // Every way to split them into rows; the biggest boards win. A layout with more rows
+    // (two on top, one below) wins when it's nearly as big: it fills the screen better
+    // than one long strip.
+    const layouts = []
     for (let cols = 1; cols <= count; cols++) {
         const rows = Math.ceil(count / cols)
         const width = cols * BOARD_W + (cols - 1) * GAP
         const height = rows * (BOARD_H + TAG_H) + (rows - 1) * GAP
-        const scale = Math.min((window.innerWidth - 32) / width, (window.innerHeight - 32) / height)
-        if (scale > best.scale) best = { scale, width }
+        layouts.push({ cols, width, scale: Math.min((window.innerWidth - EDGE) / width, (window.innerHeight - EDGE) / height) })
     }
+    const biggest = Math.max(...layouts.map(l => l.scale))
+    const best = layouts.filter(l => l.scale >= biggest * (1 - STACK_BIAS)).sort((a, b) => a.cols - b.cols)[0]
     row.style.width = best.width + 'px'
     row.style.transform = `translate(-50%, -50%) scale(${Math.min(1.6, best.scale)})`
+    const picked = `${count}:${best.cols}:${best.scale.toFixed(3)}`
+    if (tv.lastLayout !== picked) {
+        tv.lastLayout = picked
+        glog('layout', { boards: count, perRow: best.cols, scale: +best.scale.toFixed(3), screen: { w: innerWidth, h: innerHeight } })
+    }
 }
 window.addEventListener('resize', layout)
 
@@ -360,6 +375,7 @@ function assignTargets() {
     if (alive.length >= 2) {
         alive.forEach((n, i) => { tv.targets[n] = alive[(i + 1) % alive.length] })
     }
+    glog('targets', { targets: tv.targets })
     for (const n of tv.roster) {
         const tag = $('tvTarget' + n)
         // With two left it's obvious who you're attacking
@@ -372,8 +388,10 @@ function sendAttack(from, points) {
     if (!tv.started || tv.finished) return
     const target = tv.targets[from]
     const game = target && tv.alive.includes(target) && tv.games[target]
-    if (!game || !game.board) return
-    if (game.board.receiveDamage(points)) {
+    if (!game || !game.board) return glog('attack-lost', { from, target, points, why: 'no target in the game' })
+    const counted = game.board.receiveDamage(points)
+    glog('attack', { from, target, points, counted })
+    if (counted) {
         attackSent(from, target)
         attackReceived(target, from)
     }
@@ -381,14 +399,19 @@ function sendAttack(from, points) {
 
 // A phone button went down or up: move that player's pill, repeating while held.
 // Presses arrive over the direct Wi-Fi link when there is one, else through the server.
-socket.on('tvInput', handleInput)
-function handleInput({ player, action, pressed }) {
+socket.on('tvInput', (data) => handleInput(data, 'server'))
+function handleInput({ player, action, pressed }, via = '?') {
     const holds = tv.holds[player]
-    if (!holds) return
-    if (action === 'all') return releaseHolds(player)
-    if (!tv.started || tv.finished || !tv.alive.includes(player)) return
+    const ignored = why => glog('input-ignored', { p: player, action, pressed, via, why })
+    if (!holds) return ignored('no game for this player')
+    if (action === 'all') {
+        glog('input-release-all', { p: player, via })
+        return releaseHolds(player)
+    }
+    if (!tv.started || tv.finished || !tv.alive.includes(player)) return ignored(!tv.started ? 'not started' : tv.finished ? 'match over' : 'player is out')
     const key = TV_KEYS[action]
-    if (!key) return
+    if (!key) return ignored('unknown action')
+    glog('input', { p: player, action, pressed, via })
     if (!pressed) {
         clearInterval(holds[action])
         delete holds[action]
@@ -410,6 +433,7 @@ function releaseHolds(player) {
 
 /** Game.js: a board cleared its last virus (won) or filled up (lost) */
 function playerFinished(player, won) {
+    glog('player-finished', { p: player, won, alive: tv.alive.slice(), finished: tv.finished })
     if (!tv.started || tv.finished || !tv.alive.includes(player)) return
     if (tv.solo) return won ? soloLevelCleared(player) : soloGameOver(player)
     if (won) return endMatch(player, 'cleared')
@@ -420,6 +444,7 @@ function eliminate(player) {
     const place = tv.alive.length
     tv.places[player] = place
     tv.alive = tv.alive.filter(n => n !== player)
+    glog('eliminated', { p: player, place, alive: tv.alive.slice() })
     releaseHolds(player)
     const game = tv.games[player]
     if (game) game.freeze()
@@ -455,6 +480,7 @@ function endMatch(winner, how, lastOut) {
         if (tv.games[n]) tv.games[n].freeze()
     }
     tv.places[winner] = 1
+    glog('match-over', { winner, how, lastOut, places: tv.places })
     socket.emit('tvGameOver', { winner, places: tv.places })
     const name = tv.names[winner]
     const reason = how === 'cleared' ? name + ' cleared all the viruses first.'
@@ -496,6 +522,7 @@ function soloGameOver(player) {
     if (game) game.freeze()
     const level = game && game.board ? game.board.level : 0
     const score = game && game.board ? game.board.score : 0
+    glog('solo-game-over', { p: player, level, score })
     socket.emit('tvGameOver', { winner: null, places: { [player]: 1 }, level, score })
     showOverlay({
         title: '💀 GAME OVER',
@@ -519,6 +546,10 @@ function showOverlay({ title, win, name, reason }) {
     overlay.style.zIndex = '3000'
     const modal = document.createElement('div')
     modal.className = 'alert-modal'
+    const handle = document.createElement('div')
+    handle.className = 'tv-drag-handle'
+    handle.textContent = '✥ DRAG TO MOVE'
+    makeDraggable(modal)
 
     const titleEl = document.createElement('div')
     titleEl.className = 'alert-title ' + (win ? 'win' : 'lose')
@@ -564,11 +595,51 @@ function showOverlay({ title, win, name, reason }) {
     exit.onclick = () => { location.href = location.pathname }
     buttons.append(restart, exit)
 
-    modal.append(titleEl, nameEl, reasonEl, chips, hint, buttons)
+    const logId = document.createElement('div')
+    logId.className = 'log-id'
+    logId.dataset.logId = ''
+    logId.textContent = window.gameLog && window.gameLog.id ? 'Game log: ' + window.gameLog.id : ''
+    modal.append(handle, titleEl, nameEl, reasonEl, chips, hint, buttons, logId)
     overlay.appendChild(modal)
     document.body.appendChild(overlay)
     setTimeout(() => restart.focus(), 100)
 }
+
+/** Drag the result box out of the way (mouse or touch) to look at the boards behind it */
+function makeDraggable(box) {
+    let drag = null
+    box.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('button')) return
+        const rect = box.getBoundingClientRect()
+        const [dx, dy] = box._offset || [0, 0]
+        drag = { id: e.pointerId, x: e.clientX - dx, y: e.clientY - dy, base: { left: rect.left - dx, top: rect.top - dy, width: rect.width, height: rect.height } }
+        try { box.setPointerCapture(e.pointerId) } catch (err) { /* no live pointer to capture (some touch screens): the drag still works */ }
+        box.classList.add('dragging')
+        e.preventDefault()
+    })
+    box.addEventListener('pointermove', (e) => {
+        if (!drag || e.pointerId !== drag.id) return
+        // Keep a corner of it on the screen so it can always be dragged back
+        const { base } = drag
+        const dx = Math.min(Math.max(e.clientX - drag.x, 80 - base.left - base.width), window.innerWidth - 80 - base.left)
+        const dy = Math.min(Math.max(e.clientY - drag.y, 60 - base.top - base.height), window.innerHeight - 60 - base.top)
+        box._offset = [dx, dy]
+        box.style.transform = `translate(${dx}px, ${dy}px)`
+    })
+    const end = (e) => {
+        if (!drag || e.pointerId !== drag.id) return
+        drag = null
+        box.classList.remove('dragging')
+    }
+    box.addEventListener('pointerup', end)
+    box.addEventListener('pointercancel', end)
+}
+
+// 🐞 on a phone: show who flagged it
+socket.on('tvMarked', ({ player }) => {
+    glog('marker-from-phone', { p: player })
+    toast(player, `🐞 ${playerName(player)} FLAGGED A GLITCH`)
+})
 
 socket.on('tvRematch', ({ players }) => {
     for (const n of tv.roster) {
@@ -590,6 +661,7 @@ function startControllers() {
     tv.watchingPads = true
     input.onListChange((list) => {
         tv.controllerList = list.map(c => ({ key: c.key, name: c.name }))
+        glog('controllers', { list: tv.controllerList })
         for (const [key, player] of [...tv.bindings]) {
             if (list.some(c => c.key === key)) continue
             unbind(key, false)
@@ -614,7 +686,7 @@ function onControllerInput({ key, action, pressed, button }) {
         }
         return
     }
-    if (player) handleInput({ player, action, pressed })
+    if (player) handleInput({ player, action, pressed }, 'controller ' + key)
 }
 
 /** Players who chose CONTROLLER and don't have one yet, longest-waiting first */
@@ -633,6 +705,7 @@ function controllerOf(player) {
 function bind(key, player) {
     for (const [k, p] of [...tv.bindings]) if (k === key || p === player) unbind(k, false)
     tv.bindings.set(key, player)
+    glog('controller-paired', { key, name: padName(key), p: player })
     window.padInput.showPlayer(key, player)
     pingPlayer(player)
     controllersChanged()
@@ -642,7 +715,10 @@ function bind(key, player) {
 /** In the lobby, A on your own controller is the same as READY on your phone */
 function readyUp(player) {
     const p = tv.lobby.find(q => q.player === player)
-    if (!tv.started && p && !p.ready) socket.emit('tvReadyFor', { player })
+    if (!tv.started && p && !p.ready) {
+        glog('ready-by-controller', { p: player })
+        socket.emit('tvReadyFor', { player })
+    }
 }
 
 const padName = key => (tv.controllerList.find(c => c.key === key) || { name: 'Controller' }).name
@@ -674,7 +750,8 @@ function unbind(key, announce = true) {
     const player = tv.bindings.get(key)
     if (!player) return
     tv.bindings.delete(key)
-    handleInput({ player, action: 'all', pressed: false }) // let go of anything it was holding
+    glog('controller-unpaired', { key, p: player })
+    handleInput({ player, action: 'all', pressed: false }, 'controller unbound') // let go of anything it was holding
     if (announce) controllersChanged()
 }
 
@@ -798,20 +875,22 @@ socket.on('tvSignal', ({ player, description, candidate }) => {
         pc.ondatachannel = (e) => {
             const channel = peer.channel = e.channel
             channel.onopen = () => {
+                glog('direct-link', { p: player, open: true })
                 showTvLink(player, true)
                 delete tv.sent[player] // send the phone a full picture straight away
             }
             channel.onmessage = (m) => {
                 try {
                     const data = JSON.parse(m.data)
-                    handleInput({ player, action: String(data.action), pressed: !!data.pressed })
+                    handleInput({ player, action: String(data.action), pressed: !!data.pressed }, 'direct')
                 } catch (err) {}
             }
             channel.onclose = () => {
                 if (tv.peers[player] !== peer) return
                 peer.channel = null
                 showTvLink(player, false)
-                handleInput({ player, action: 'all', pressed: false }) // let go of anything held
+                glog('direct-link', { p: player, open: false })
+                handleInput({ player, action: 'all', pressed: false }, 'direct link closed') // let go of anything held
             }
         }
         peer.chain = pc.setRemoteDescription(description)

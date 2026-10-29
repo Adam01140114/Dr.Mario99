@@ -48,6 +48,7 @@
 
 "use strict"
 
+const glog = (type, details) => window.gameLog && window.gameLog.event(type, details) // scripts/gameLog.js
 const PAD_KEYS = { left: 'a', right: 'd', rotateLeft: 'w', rotateRight: 'Shift', drop: 's', hold: 'c' }
 const FACE_ACTIONS = { a: 'rotateRight', x: 'rotateRight', b: 'rotateLeft', y: 'rotateLeft' }
 const BUTTON_ACTIONS = {
@@ -232,6 +233,7 @@ function tick() {
     const list = controllers()
     const names = list.map(c => c.key + '=' + c.name).join('|')
     if (names !== lastNames) {
+        if (lastNames !== null || list.length) glog('controllers-seen', { list: list.map(c => ({ key: c.key, name: c.name, mapping: c.gamepad.mapping })) })
         lastNames = names
         for (const fn of pad.listListeners) fn(list)
     }
@@ -334,6 +336,7 @@ async function connectHid() {
         if (device) await useHidDevice(device)
     } catch (e) {
         pad.hidError = e.message || String(e)
+        glog('controller-hid-error', { message: pad.hidError })
     }
     notify()
 }
@@ -347,6 +350,7 @@ async function useHidDevice(device) {
     if (!device.opened) await device.open()
     if (hid.devices.has(device)) return
     hid.devices.set(device, { n: hid.next++, device, pad: null }) // the pad appears with its first report
+    glog('controller-hid-opened', { key: 'hid' + (hid.next - 1), name: device.productName })
     device.addEventListener('inputreport', readHidReport)
     // Full reports (buttons and sticks, 60 a second), then light the player 1 lamp
     await subcommand(device, 0x03, [0x30])
@@ -403,6 +407,7 @@ function readHidReport(e) {
 function dropHidDevice(device) {
     if (!hid.devices.has(device)) return
     device.removeEventListener('inputreport', readHidReport)
+    glog('controller-hid-closed', { key: 'hid' + hid.devices.get(device).n })
     hid.devices.delete(device)
     wake()
 }
