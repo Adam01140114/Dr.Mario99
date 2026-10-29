@@ -325,11 +325,17 @@ side is the TV ROOM section of `server.js`.
   CONTROLLER player gets a game controller on the TV computer: pressing A on a
   free one gives it to them (the player who has waited longest, if several
   are waiting), or they tap it in the list on their phone
-  (`tvPickController`, which the TV decides). The TV tells the phones which
-  controllers it has and whose they are (`tvControllers`); a Pro Controller's
-  lamps light up with its player number (`padInput.showPlayer`). Everyone can
-  have their own controller. The TV lobby slot shows 📱 or 🎮 + the
-  controller's name ("PRESS A" while waiting), the board's name tag shows 🎮,
+  (`tvPickController`, which the TV decides). In the lobby, pressing A on
+  your own controller - including the press that claims it - counts as READY
+  (`tvReadyFor`; the phone's READY button shows it and can still undo it).
+  The TV tells the phones which controllers it has and whose they are
+  (`tvControllers`); a Pro Controller's lamps light up with its player number
+  (`padInput.showPlayer`). Everyone can have their own controller. The TV
+  lobby slot shows 📱, or a solid badge in the player's colour with the
+  controller's name (a flashing dashed "PRESS A" while waiting); the board's
+  name tag carries the same badge; a banner across the top of the TV says
+  "🎮 PRO CONTROLLER 2 ▸ NAME" when one is paired and "NAME'S CONTROLLER
+  DISCONNECTED" when one goes,
   and the phone shows whose controller it is instead of the buttons (with
   USE MY PHONE INSTEAD). The TV reads all controllers at once
   (`padInput.watchAll`) and passes each one's presses to handleInput, like a
@@ -349,7 +355,7 @@ side is the TV ROOM section of `server.js`.
 - **Server events**: tvCreateRoom, tvJoin, tvReady, tvStartGame, tvInput,
   tvState, tvEliminated, tvNextLevel, tvGameOver, tvFx, tvRestart, tvRematch,
   tvSignal, tvChooseInput, tvPickController, tvControllers, tvShowGame,
-  tvAddCpu, tvRemoveCpu (in);
+  tvAddCpu, tvRemoveCpu, tvReadyFor (in);
   tvRoomCreated, tvLobby (TV and phones), tvAutoStart, tvJoined, tvJoinError,
   tvGameStarted, tvInput, tvState, tvEliminated, tvLevelData, tvResult, tvFx,
   tvRematch, tvSignal, tvRoomClosed, tvPickController, tvControllers (out). QR

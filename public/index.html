@@ -1083,13 +1083,66 @@
         .tv-slot .tv-slot-ready { margin-left: auto; font-size: 0.8rem; flex: none; color: rgba(255, 255, 255, 0.4); }
         /* Phone or controller, and which controller */
         .tv-slot .tv-slot-input { flex: none; font-size: 0.6rem; color: #fff; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .tv-slot .tv-slot-input.waiting { color: #ffd60a; animation: subtitleFlicker 1.5s ease-in-out infinite; }
+        .tv-slot .tv-slot-input.waiting {
+            font-size: 1rem;
+            padding: 8px 12px;
+            border: 2px dashed #ffd60a;
+            border-radius: 10px;
+            color: #ffd60a;
+            text-shadow: none;
+            animation: subtitleFlicker 1.5s ease-in-out infinite;
+        }
+        /* On a controller: a solid badge in the player's colour */
+        .tv-slot .tv-slot-input.pad {
+            font-size: 1.1rem;
+            padding: 10px 14px;
+            max-width: 55%;
+            border-radius: 10px;
+            background: var(--tv-slot-color);
+            color: #0b0f24;
+            text-shadow: none;
+            box-shadow: 0 0 16px var(--tv-slot-glow);
+        }
         .tv-slots.many .tv-slot .tv-slot-input { font-size: 0.5rem; }
+        .tv-slots.many .tv-slot .tv-slot-input.pad,
+        .tv-slots.many .tv-slot .tv-slot-input.waiting { font-size: 0.75rem; padding: 7px 9px; }
+        /* Banners across the top: a controller paired with a player, or lost */
+        .tv-toasts {
+            position: fixed;
+            top: 4vh;
+            left: 0;
+            right: 0;
+            z-index: 3500;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            pointer-events: none;
+        }
+        .tv-toast {
+            padding: 22px 34px;
+            border-radius: 18px;
+            border: 5px solid var(--tv-slot-color);
+            background: rgba(5, 8, 25, 0.94);
+            color: var(--tv-slot-color);
+            font-size: 2.6rem;
+            text-shadow: 0 0 14px var(--tv-slot-glow);
+            box-shadow: 0 0 40px var(--tv-slot-glow);
+            white-space: nowrap;
+        }
         .tv-pads { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
         .tv-pad-count { color: #9fb3ff; font-size: 0.6rem; line-height: 1.8; }
         .tv-lobby.solo-only .tv-pads { display: none; }
-        .tv-name-tag .tv-pad-tag,
         .tv-name-tag .tv-cpu-tag { font-size: 1.6rem; }
+        .tv-name-tag .tv-pad-tag {
+            font-size: 1.7rem;
+            padding: 12px 18px;
+            border-radius: 12px;
+            background: var(--tv-slot-color);
+            color: #0b0f24;
+            text-shadow: none;
+            box-shadow: 0 0 20px var(--tv-slot-glow);
+        }
         /* Computer players: added and taken out on the TV */
         .tv-add-cpu { background: linear-gradient(45deg, #6c757d, #3a4a6b); }
         .tv-slot .tv-slot-remove {

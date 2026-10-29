@@ -14,7 +14,8 @@
  *   no lobby settings, and the game starts as soon as the phone joins.
  * - A player can choose CONTROLLER on their phone and play with a game
  *   controller on this computer instead (scripts/gamepad.js): pressing A on a
- *   free one, or tapping it in the list on the phone, makes it theirs.
+ *   free one, or tapping it in the list on the phone, makes it theirs. In the
+ *   lobby, A on your own controller is the same as READY on the phone.
  * - A player can show their own board on their phone (a switch on the phone):
  *   this page sends them a picture of it (Board.snapshot()). With five or more
  *   players every phone shows it.
@@ -135,6 +136,7 @@ function renderLobby() {
         const input = slot.querySelector('.tv-slot-input')
         input.textContent = p.cpu ? '🤖 CPU' : p.input !== 'controller' ? '📱' : pad ? '🎮 ' + pad.name.toUpperCase() : '🎮 PRESS A'
         input.classList.toggle('waiting', p.input === 'controller' && !pad)
+        input.classList.toggle('pad', !!pad)
         if (p.cpu) {
             const remove = document.createElement('button')
             remove.type = 'button'
@@ -301,7 +303,7 @@ async function buildGames() {
         tag.className = 'tv-name-tag tv-p' + n
         tag.innerHTML = `<span class="tv-slot-num">P${n}</span><span id="tvName${n}"></span>`
             + `<span class="tv-link hidden" id="tvLink${n}" title="Controller connected straight over the Wi-Fi">⚡</span>`
-            + `<span class="tv-pad-tag hidden" id="tvPadTag${n}" title="Playing with a controller">🎮</span>`
+            + `<span class="tv-pad-tag hidden" id="tvPadTag${n}" title="Playing with a controller"></span>`
             + (tv.cpus.has(n) ? '<span class="tv-cpu-tag" title="The computer plays this board">🤖</span>' : '')
             + `<span class="tv-target" id="tvTarget${n}"></span>`
         tag.querySelector('#tvName' + n).textContent = tv.names[n]
@@ -588,7 +590,11 @@ function startControllers() {
     tv.watchingPads = true
     input.onListChange((list) => {
         tv.controllerList = list.map(c => ({ key: c.key, name: c.name }))
-        for (const key of [...tv.bindings.keys()]) if (!list.some(c => c.key === key)) unbind(key, false)
+        for (const [key, player] of [...tv.bindings]) {
+            if (list.some(c => c.key === key)) continue
+            unbind(key, false)
+            toast(player, `🎮 ${playerName(player)}'S CONTROLLER DISCONNECTED`)
+        }
         controllersChanged()
     })
     input.watchAll(onControllerInput)
@@ -597,9 +603,15 @@ function startControllers() {
 function onControllerInput({ key, action, pressed, button }) {
     const player = tv.bindings.get(key)
     if (button === 'a') {
-        if (player) return pingPlayer(player)
+        if (player) {
+            pingPlayer(player)
+            return readyUp(player)
+        }
         const next = waitingForController()[0]
-        if (next) bind(key, next)
+        if (next) {
+            bind(key, next)
+            readyUp(next)
+        }
         return
     }
     if (player) handleInput({ player, action, pressed })
@@ -624,6 +636,38 @@ function bind(key, player) {
     window.padInput.showPlayer(key, player)
     pingPlayer(player)
     controllersChanged()
+    toast(player, `🎮 ${padName(key).toUpperCase()} ▸ ${playerName(player)}`)
+}
+
+/** In the lobby, A on your own controller is the same as READY on your phone */
+function readyUp(player) {
+    const p = tv.lobby.find(q => q.player === player)
+    if (!tv.started && p && !p.ready) socket.emit('tvReadyFor', { player })
+}
+
+const padName = key => (tv.controllerList.find(c => c.key === key) || { name: 'Controller' }).name
+const playerName = n => (tv.lobby.find(p => p.player === n) || { name: tv.names[n] || 'P' + n }).name
+
+/** A big banner across the top of the TV for a moment, in the player's colour */
+function toast(player, text) {
+    let stack = $('tvToasts')
+    if (!stack) {
+        stack = document.createElement('div')
+        stack.id = 'tvToasts'
+        stack.className = 'tv-toasts'
+        document.body.appendChild(stack)
+    }
+    const el = document.createElement('div')
+    el.className = 'tv-toast tv-p' + player
+    el.textContent = text
+    stack.appendChild(el)
+    const anim = el.animate([
+        { opacity: 0, transform: 'scale(0.85)' },
+        { opacity: 1, transform: 'scale(1)', offset: 0.1 },
+        { opacity: 1, transform: 'scale(1)', offset: 0.85 },
+        { opacity: 0, transform: 'scale(1)' },
+    ], { duration: 2800, easing: 'ease-out' })
+    anim.onfinish = () => el.remove()
 }
 
 function unbind(key, announce = true) {
@@ -664,9 +708,13 @@ function sendControllers() {
     if (tv.code) socket.emit('tvControllers', { list: tv.controllerList, bindings: Object.fromEntries(tv.bindings) })
 }
 
+/** The board's name tag: which controller this player is on */
 function showPadTag(n) {
     const tag = $('tvPadTag' + n)
-    if (tag) tag.classList.toggle('hidden', !controllerOf(n))
+    if (!tag) return
+    const key = controllerOf(n)
+    tag.classList.toggle('hidden', !key)
+    tag.textContent = key ? '🎮 ' + padName(key).toUpperCase() : ''
 }
 
 /** A bound controller pressed A: point at its player on the TV */

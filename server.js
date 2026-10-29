@@ -537,7 +537,8 @@ io.on('connection', (socket) => {
  * A player can play with a game controller on the TV computer instead of the
  * phone: the phone says so (tvChooseInput), the TV tells everyone which
  * controllers it has and whose they are (tvControllers), and a phone can take
- * one from that list (tvPickController, passed on to the TV).
+ * one from that list (tvPickController, passed on to the TV). Pressing A on
+ * your controller in the lobby counts as READY (tvReadyFor, from the TV).
  *
  * Each phone chooses whether it shows its own board (tvShowGame); with more
  * than TV_PHONE_SCREEN_ABOVE players it always does. The TV can add computer
@@ -702,11 +703,17 @@ function registerTvRoomHandlers(socket) {
         if (!room || room.state !== 'lobby') return;
         if (payload.ready === false) room.ready.delete(player);
         else room.ready.add(player);
-        const inRoom = tvConnected(room);
-        if (payload.solo && inRoom.length === 1) room.solo = true;
-        tvSendLobby(code);
-        const allReady = inRoom.length > 0 && inRoom.every(n => room.ready.has(n));
-        if (allReady && (inRoom.length >= 2 || room.solo)) io.to(room.hostId).emit('tvAutoStart', { code });
+        if (payload.solo && tvConnected(room).length === 1) room.solo = true;
+        tvReadyChanged(code);
+    });
+
+    // Host: a player pressed A on their controller in the lobby - the same as READY on their phone
+    socket.on('tvReadyFor', (payload = {}) => {
+        const { code, room } = tvHostRoom(socket);
+        const n = parseInt(payload.player, 10);
+        if (!room || room.state !== 'lobby' || !room.players[n] || !room.players[n].connected || room.ready.has(n)) return;
+        room.ready.add(n);
+        tvReadyChanged(code);
     });
 
     // Phone: play on this phone, or with a controller on the TV computer
@@ -889,6 +896,16 @@ function registerTvRoomHandlers(socket) {
             tvSendLobby(code);
         }
     });
+}
+
+/** Someone got ready (or took it back): show it, and when everyone in is ready the TV starts by itself */
+function tvReadyChanged(code) {
+    const room = tvRooms[code];
+    if (!room) return;
+    tvSendLobby(code);
+    const inRoom = tvConnected(room);
+    const allReady = inRoom.length > 0 && inRoom.every(n => room.ready.has(n));
+    if (allReady && (inRoom.length >= 2 || room.solo)) io.to(room.hostId).emit('tvAutoStart', { code });
 }
 
 /** Deal a new game to the room's players (first start, TV "Restart", or everyone asked for a rematch) */
