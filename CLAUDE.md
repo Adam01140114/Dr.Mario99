@@ -18,7 +18,10 @@ node tools/gamelog.js summary latest            # players, timeline, every probl
 node tools/gamelog.js around latest marker 5    # everything 5 s either side of the 🐞
 node tools/gamelog.js board latest marker       # every board drawn as it was then
 node tools/gamelog.js grep latest input-ignored # events matching a type or text
+node tools/gamelog.js audit latest              # find glitches by itself (floating pieces, virus counts, stuck pills...)
 ```
+
+The user can watch any game back at `/replays` (replays.html), which plays the `keyframe` / `frame` events. To check the game itself after changing gameplay code, run a TV Room with 8 CPUs (ADD CPU PLAYER ×8, START GAME), let it finish, then `audit latest`.
 
 `<when>` can also be a time of day (`15:42:07`), `+93.5` (seconds into the game) or `error` / `error:2`.
 

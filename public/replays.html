@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dr. Mario 99 - Replays</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+    <style>
+        /*
+         * REPLAYS: the last 100 games (logs/games, see gameLogs.js), and each one played
+         * back from its log: every board rebuilt from the frames scripts/gameLog.js wrote
+         * (a full picture every 2 s, the cells that changed every 50 ms), with what
+         * happened alongside (attacks, clears, eliminations, 🐞, errors).
+         */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root { --bg: #16213e; --panel: rgba(0, 0, 0, 0.45); --line: rgba(255, 255, 255, 0.15); --text: #e8ecff; --dim: #9fb3ff; --cyan: #00ffff; --yellow: #ffd60a; --red: #ff4d6d; }
+        body { background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460) fixed; color: var(--text); font-family: 'Press Start 2P', monospace; min-height: 100vh; }
+        a { color: var(--cyan); }
+        button, select, input { font-family: inherit; }
+        .hidden { display: none !important; }
+        header { display: flex; align-items: center; gap: 16px; padding: 18px 20px; flex-wrap: wrap; }
+        header h1 { font-size: 18px; color: var(--cyan); text-shadow: 0 0 12px var(--cyan); }
+        header .sub { font-size: 9px; color: var(--dim); line-height: 1.7; }
+        .back { font-size: 10px; text-decoration: none; padding: 10px 12px; border: 2px solid var(--cyan); border-radius: 10px; }
+
+        /* The list of games */
+        #list { padding: 0 20px 40px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+        .game {
+            display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 14px; border: 2px solid var(--line);
+            background: var(--panel); color: var(--text); text-decoration: none; cursor: pointer; text-align: left;
+        }
+        .game:hover, .game:focus-visible { border-color: var(--cyan); outline: none; }
+        .game .top { display: flex; justify-content: space-between; gap: 10px; font-size: 10px; }
+        .game .mode { padding: 4px 8px; border-radius: 6px; background: var(--cyan); color: #0b0f24; font-size: 8px; }
+        .game .mode.single { background: #4dc3ff; } .game .mode.ai { background: #c77dff; } .game .mode.online, .game .mode.room { background: #00ff66; } .game .mode.phone { background: #ffb703; }
+        .game .players { font-size: 9px; line-height: 1.9; color: var(--dim); }
+        .game .players b { font-weight: normal; }
+        .game .facts { display: flex; gap: 10px; flex-wrap: wrap; font-size: 8px; color: var(--dim); }
+        .game .facts .bad { color: var(--red); } .game .facts .bug { color: var(--yellow); } .game .facts .win { color: #00ff66; }
+        .empty { padding: 40px 20px; font-size: 11px; line-height: 2; color: var(--dim); }
+
+        /* Watching a game */
+        #player { display: grid; grid-template-columns: 1fr 340px; gap: 16px; padding: 0 20px 20px; align-items: start; }
+        @media (max-width: 1000px) { #player { grid-template-columns: 1fr; } }
+        #stage { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; align-content: flex-start; min-height: 200px; }
+        .board { --c: #00ffff; display: flex; flex-direction: column; gap: 8px; align-items: center; position: relative; }
+        .board .tag { display: flex; gap: 8px; align-items: center; font-size: 10px; color: var(--c); text-shadow: 0 0 8px var(--c); max-width: 100%; }
+        .board .tag .num { border: 2px solid currentColor; border-radius: 6px; padding: 3px 5px; font-size: 8px; }
+        .board .tag .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .board .tag .team { font-size: 7px; padding: 3px 6px; border-radius: 6px; color: #0b0f24; text-shadow: none; }
+        .board .body { display: flex; gap: 10px; align-items: stretch; }
+        .board canvas { display: block; background: #000; border: 3px solid var(--c); border-radius: 8px; box-shadow: 0 0 16px color-mix(in srgb, var(--c) 40%, transparent); image-rendering: pixelated; }
+        .board .hud { display: flex; flex-direction: column; gap: 10px; font-size: 7px; color: var(--dim); min-width: 64px; }
+        .board .hud b { display: block; margin-top: 4px; font-weight: normal; font-size: 10px; color: var(--text); }
+        .board .hud .pill { display: flex; margin-top: 4px; min-height: 16px; }
+        .board .hud .pill img { width: 16px; height: 16px; image-rendering: pixelated; }
+        .board .status { position: absolute; left: 0; right: 0; top: 45%; text-align: center; font-size: 14px; padding: 10px 0; background: rgba(0, 0, 0, 0.75); pointer-events: none; }
+        .board .status.out { color: var(--red); } .board .status.win { color: #00ff66; } .board .status.clear { color: var(--yellow); }
+        .board.out canvas { filter: grayscale(1) brightness(0.55); }
+        .board .flash { position: absolute; inset: 24px 70px 0 0; pointer-events: none; border-radius: 8px; opacity: 0; }
+
+        aside { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 12px; }
+        .controls { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 14px; background: var(--panel); border: 2px solid var(--line); }
+        .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .controls button, .controls select {
+            font-size: 9px; padding: 9px 10px; border-radius: 8px; border: 2px solid var(--cyan); background: transparent; color: var(--cyan); cursor: pointer;
+        }
+        .controls button.play { font-size: 12px; min-width: 64px; background: var(--cyan); color: #0b0f24; }
+        .time { font-size: 10px; color: var(--text); margin-left: auto; }
+        .scrub { position: relative; height: 28px; }
+        .scrub input { width: 100%; position: absolute; inset: 6px 0 0; accent-color: var(--cyan); }
+        .scrub .tick { position: absolute; top: 0; width: 3px; height: 9px; border-radius: 2px; transform: translateX(-1px); cursor: pointer; }
+        .scrub .tick.marker { background: var(--yellow); height: 12px; } .scrub .tick.error { background: var(--red); } .scrub .tick.out { background: #8892b0; }
+        .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+        .filters button { font-size: 7px; padding: 6px 8px; border-color: var(--line); color: var(--dim); }
+        .filters button.on { border-color: var(--cyan); color: var(--cyan); }
+        #feed { list-style: none; max-height: 52vh; overflow-y: auto; padding: 8px; border-radius: 14px; background: var(--panel); border: 2px solid var(--line); }
+        #feed li { display: flex; gap: 8px; padding: 7px 6px; font-size: 8px; line-height: 1.6; border-radius: 6px; cursor: pointer; color: var(--dim); }
+        #feed li .at { flex: none; width: 52px; color: #6c7bb5; }
+        #feed li.past { color: var(--text); }
+        #feed li.now { background: rgba(0, 255, 255, 0.12); color: var(--cyan); }
+        #feed li.problem { color: var(--red); } #feed li.marker { color: var(--yellow); }
+        .about { font-size: 8px; line-height: 1.8; color: var(--dim); word-break: break-all; }
+        .loading { padding: 40px 20px; font-size: 11px; color: var(--dim); }
+    </style>
+</head>
+<body>
+    <header>
+        <a class="back" href="/" id="backLink">← GAME</a>
+        <div>
+            <h1 id="title">🎬 REPLAYS</h1>
+            <div class="sub" id="subtitle">The last 100 games. Open one to watch it back.</div>
+        </div>
+    </header>
+
+    <main id="listView">
+        <div id="list"></div>
+        <div class="empty hidden" id="listEmpty"></div>
+    </main>
+
+    <main id="playerView" class="hidden">
+        <div class="loading" id="loading">Loading the game...</div>
+        <div id="player" class="hidden">
+            <section id="stage"></section>
+            <aside>
+                <div class="controls">
+                    <div class="row">
+                        <button class="play" id="playButton" type="button" title="Space">▶</button>
+                        <button id="stepBack" type="button" title="← one step">◀▮</button>
+                        <button id="stepForward" type="button" title="→ one step">▮▶</button>
+                        <select id="speed" title="Speed">
+                            <option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option>
+                            <option value="2">2×</option><option value="4">4×</option><option value="8">8×</option>
+                        </select>
+                        <span class="time" id="time">0:00.0</span>
+                    </div>
+                    <div class="scrub" id="scrub"><input type="range" id="scrubber" min="0" max="1000" value="0" step="1"></div>
+                    <div class="row">
+                        <button id="prevMarker" type="button">◀ 🐞</button>
+                        <button id="nextMarker" type="button">🐞 ▶</button>
+                        <button id="nextProblem" type="button">NEXT PROBLEM ▶</button>
+                    </div>
+                    <div class="filters" id="filters">
+                        <button type="button" data-filter="key" class="on">KEY EVENTS</button>
+                        <button type="button" data-filter="attack">ATTACKS</button>
+                        <button type="button" data-filter="clear">CLEARS</button>
+                        <button type="button" data-filter="input">INPUTS</button>
+                        <button type="button" data-filter="problem">PROBLEMS</button>
+                        <button type="button" data-filter="all">ALL</button>
+                    </div>
+                </div>
+                <ul id="feed"></ul>
+                <div class="about" id="about"></div>
+            </aside>
+        </div>
+    </main>
+
+    <script>
+        'use strict';
+        const $ = id => document.getElementById(id);
+        // Player colours (index.html .tv-p1 ...) and team colours (tvHost.js TEAMS)
+        const PLAYER_COLORS = ['#ff4d6d', '#4dc3ff', '#ffd60a', '#00ff66', '#c77dff', '#ff9f1c', '#2ee6d6', '#ff70d9'];
+        const TEAMS = [['RED', '#ff4d6d'], ['BLUE', '#4dc3ff'], ['GREEN', '#00ff66'], ['YELLOW', '#ffd60a'], ['PURPLE', '#c77dff'], ['ORANGE', '#ff9f1c'], ['TEAL', '#2ee6d6'], ['PINK', '#ff70d9']];
+        // One character per cell: '.' empty, 'a' + index into this list (components.js SPRITE_CODES)
+        const SPRITES = [];
+        for (const color of ['bl', 'br', 'yl']) for (const kind of ['dot', 'covid', 'left', 'right', 'up', 'down', 'x', 'o']) SPRITES.push(color + '_' + kind);
+        const images = SPRITES.map(name => { const img = new Image(); img.src = '/img/' + name + '.png'; img.onload = () => draw(true); return img; });
+        const CELL = 24;
+
+        /* ---------- The list ---------- */
+
+        async function showList() {
+            $('playerView').classList.add('hidden');
+            $('listView').classList.remove('hidden');
+            $('backLink').href = '/';
+            $('backLink').textContent = '← GAME';
+            $('title').textContent = '🎬 REPLAYS';
+            $('subtitle').textContent = 'The last 100 games. Open one to watch it back.';
+            stop();
+            let games;
+            try {
+                const res = await fetch('/logs/list.json');
+                if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
+                games = await res.json();
+            } catch (e) {
+                $('list').innerHTML = '';
+                $('listEmpty').classList.remove('hidden');
+                $('listEmpty').textContent = "Couldn't load the games: " + e.message;
+                return;
+            }
+            $('listEmpty').classList.toggle('hidden', games.length > 0);
+            $('listEmpty').textContent = 'No games yet. Play one and it shows up here.';
+            const list = $('list');
+            list.innerHTML = '';
+            for (const g of games) {
+                const card = document.createElement('a');
+                card.className = 'game';
+                card.href = '#' + g.id;
+                const started = g.startedAt ? new Date(g.startedAt) : null;
+                const seconds = g.startedAt && g.endedAt ? Math.max(0, (Date.parse(g.endedAt) - Date.parse(g.startedAt)) / 1000) : 0;
+                const top = document.createElement('div');
+                top.className = 'top';
+                top.innerHTML = '<span class="when"></span><span class="mode"></span>';
+                top.querySelector('.when').textContent = started ? started.toLocaleDateString() + ' ' + started.toLocaleTimeString() : g.id;
+                top.querySelector('.mode').textContent = modeName(g.mode) + (g.code ? ' ' + String(g.code).toUpperCase() : '');
+                top.querySelector('.mode').classList.add(g.mode || '');
+                const players = document.createElement('div');
+                players.className = 'players';
+                const names = g.names || (g.mode === 'single' ? { 1: 'YOU (' + (g.control || 'keyboard').toUpperCase() + ')' } : null);
+                if (names) {
+                    for (const [n, name] of Object.entries(names)) {
+                        const b = document.createElement('b');
+                        b.style.color = PLAYER_COLORS[(n - 1) % 8];
+                        b.textContent = name;
+                        players.append(b, document.createTextNode('  '));
+                    }
+                } else {
+                    players.textContent = g.id;
+                }
+                const facts = document.createElement('div');
+                facts.className = 'facts';
+                const fact = (text, cls) => { const s = document.createElement('span'); s.textContent = text; if (cls) s.className = cls; facts.appendChild(s); };
+                fact(formatTime(seconds * 1000));
+                if (g.result) fact(resultText(g, names), 'win');
+                if (g.markers) fact('🐞 ' + g.markers, 'bug');
+                if (g.errors) fact('⚠ ' + g.errors + ' error' + (g.errors > 1 ? 's' : ''), 'bad');
+                fact(Math.ceil((g.size || 0) / 1024) + ' KB');
+                card.append(top, players, facts);
+                list.appendChild(card);
+            }
+        }
+
+        function modeName(mode) {
+            return ({ tv: 'TV ROOM', phone: 'PHONE SOLO', single: 'SINGLE', ai: 'AI MODE', online: 'ONLINE', room: 'ROOM' })[mode] || String(mode || 'GAME').toUpperCase();
+        }
+        function resultText(g, names) {
+            const r = g.result;
+            if (r.team != null && TEAMS[r.team]) return '🏆 TEAM ' + TEAMS[r.team][0];
+            if (r.winner && names && names[r.winner]) return '🏆 ' + names[r.winner];
+            if (r.title) return r.title;
+            if (r.level != null) return 'LEVEL ' + r.level + ' · ' + (r.score || 0);
+            return '';
+        }
+
+        /* ---------- Watching one ---------- */
+
+        let game = null;        // { head, events, t0, t1, boards: { p: { frames: [{ t, g, hud }] } }, names, ... }
+        let now = 0;            // ms from the start
+        let playing = false;
+        let lastTick = 0;
+        let filter = 'key';
+
+        async function showGame(id) {
+            $('listView').classList.add('hidden');
+            $('playerView').classList.remove('hidden');
+            $('player').classList.add('hidden');
+            $('loading').classList.remove('hidden');
+            $('loading').textContent = 'Loading the game...';
+            $('backLink').href = '#';
+            $('backLink').textContent = '← ALL GAMES';
+            stop();
+            let text;
+            try {
+                const res = await fetch('/logs/' + encodeURIComponent(id));
+                if (!res.ok) throw new Error(res.status === 404 ? 'That game is no longer kept (only the last 100 are)' : 'HTTP ' + res.status);
+                text = await res.text();
+            } catch (e) {
+                $('loading').textContent = "Couldn't load the game: " + e.message;
+                return;
+            }
+            game = build(text);
+            if (!Object.keys(game.boards).length) {
+                $('loading').textContent = 'This game has no board pictures to play back (it was logged before replays were added, or ended right away).';
+                return;
+            }
+            $('loading').classList.add('hidden');
+            $('player').classList.remove('hidden');
+            $('title').textContent = '🎬 ' + modeName(game.head.mode) + (game.head.code ? ' ' + String(game.head.code).toUpperCase() : '');
+            $('subtitle').textContent = (game.head.startedAt ? new Date(game.head.startedAt).toLocaleString() : '') + ' · ' + formatTime(game.length);
+            $('about').textContent = 'Game log: ' + game.head.id + ' · ' + game.events.length + ' events. Space plays and pauses; ← → step.';
+            makeBoards();
+            makeTicks();
+            makeFeed();
+            seek(game.firstFrame);
+            draw(true);
+        }
+
+        /** Turn the log into boards over time and a list of what happened */
+        function build(text) {
+            const events = [];
+            let head = {};
+            for (const line of text.split('\n')) {
+                if (!line) continue;
+                try {
+                    const e = JSON.parse(line);
+                    if (e.type === 'game') head = e;
+                    else events.push(e);
+                } catch (err) { /* a broken line */ }
+            }
+            for (const e of events) e.at = e.ct || e.t;
+            events.sort((a, b) => a.at - b.at);
+            const t0 = Date.parse(head.startedAt) || (events[0] && events[0].at) || 0;
+            const boards = {};
+            const hasFrames = events.some(e => e.type === 'keyframe');
+            for (const e of events) {
+                const p = e.p;
+                if (hasFrames ? e.type !== 'keyframe' && e.type !== 'frame' : e.type !== 'board') continue;
+                if (e.src && e.src !== 'tv' && e.src !== 'page') continue;
+                const board = boards[p] || (boards[p] = { frames: [], hud: {} });
+                const last = board.frames[board.frames.length - 1];
+                let grid = last ? last.g : null;
+                if (e.type === 'keyframe' || e.type === 'board') grid = e.g;
+                else if (e.d && grid) {
+                    const cells = grid.split('');
+                    for (const part of e.d.split(';')) {
+                        const [i, ch] = part.split(',');
+                        cells[+i] = ch;
+                    }
+                    grid = cells.join('');
+                }
+                if (!grid) continue;
+                if (e.hud) board.hud = { ...board.hud, ...e.hud };
+                if (e.type === 'board') board.hud = { s: e.s, v: e.v, l: e.l, n: e.n, h: e.h, hu: e.hu };
+                board.frames.push({ t: e.at - t0, g: grid, hud: board.hud });
+            }
+            // Who's who
+            const roundStart = events.find(e => e.type === 'round-start');
+            const names = head.names || (roundStart && roundStart.names) || {};
+            const cpus = new Set(head.cpus || (roundStart && roundStart.cpus) || []);
+            const teams = head.teams || (roundStart && roundStart.teams) || null;
+            for (const p of Object.keys(boards)) {
+                if (!names[p]) names[p] = head.mode === 'ai' ? (p === '1' ? 'YOU' : 'AI') : head.mode === 'single' ? 'YOU' : 'P' + p;
+            }
+            // What happened to each board, and when
+            const fates = [];
+            for (const e of events) {
+                const t = e.at - t0;
+                if (e.type === 'eliminated') fates.push({ t, p: e.p, kind: 'out', text: 'OUT #' + e.place });
+                if (e.type === 'match-over') {
+                    const winners = e.team != null && teams ? Object.keys(teams.of || {}).filter(p => teams.of[p] === e.team) : [e.winner];
+                    for (const p of winners) fates.push({ t, p: +p, kind: 'win', text: e.team != null ? 'TEAM ' + (TEAMS[e.team] || ['?'])[0] + ' WINS' : 'WINNER' });
+                }
+                if (e.type === 'topped-out' && (e.src === 'page')) fates.push({ t, p: e.p, kind: 'out', text: 'GAME OVER' });
+                if (e.type === 'solo-game-over') fates.push({ t, p: e.p, kind: 'out', text: 'GAME OVER' });
+                if (e.type === 'stage-clear') fates.push({ t, p: e.p, kind: 'clear', text: 'STAGE CLEAR', until: t + 2500 });
+            }
+            const firstFrame = Math.min(...Object.values(boards).map(b => b.frames[0] ? b.frames[0].t : Infinity));
+            // The game ends with its last frame or result, not with pings from a page left open afterwards
+            const lastFrame = Math.max(0, ...Object.values(boards).map(b => b.frames.length ? b.frames[b.frames.length - 1].t : 0));
+            const lastResult = Math.max(0, ...fates.map(f => f.t));
+            const lastAt = Math.max(lastFrame, lastResult) + 2000;
+            return { head, events, t0, boards, names, cpus, teams, fates, firstFrame: isFinite(firstFrame) ? firstFrame : 0, length: Math.max(lastAt, 1) };
+        }
+
+        function teamOf(p) {
+            const teams = game.teams;
+            return teams && teams.of && teams.of[p] != null ? teams.of[p] : null;
+        }
+
+        function makeBoards() {
+            const stage = $('stage');
+            stage.innerHTML = '';
+            const players = Object.keys(game.boards).map(Number).sort((a, b) => a - b);
+            for (const p of players) {
+                const el = document.createElement('div');
+                el.className = 'board';
+                el.id = 'board' + p;
+                el.style.setProperty('--c', PLAYER_COLORS[(p - 1) % 8]);
+                el.innerHTML = '<div class="tag"><span class="num"></span><span class="name"></span></div>'
+                    + '<div class="body"><canvas width="192" height="408"></canvas><div class="hud">'
+                    + '<div>SCORE<b data-s>0</b></div><div>VIRUS<b data-v>0</b></div><div>LEVEL<b data-l>00</b></div>'
+                    + '<div>NEXT<span class="pill" data-n></span></div><div>HOLD<span class="pill" data-h></span></div></div></div>'
+                    + '<div class="status hidden"></div><div class="flash"></div>';
+                el.querySelector('.num').textContent = 'P' + p;
+                el.querySelector('.name').textContent = (game.cpus.has(p) ? '🤖 ' : '') + game.names[p];
+                const team = teamOf(p);
+                if (team != null && TEAMS[team]) {
+                    const chip = document.createElement('span');
+                    chip.className = 'team';
+                    chip.style.background = TEAMS[team][1];
+                    chip.textContent = TEAMS[team][0];
+                    el.querySelector('.tag').appendChild(chip);
+                    el.style.setProperty('--c', TEAMS[team][1]);
+                }
+                stage.appendChild(el);
+                game.boards[p].el = el;
+                game.boards[p].ctx = el.querySelector('canvas').getContext('2d');
+            }
+            sizeBoards();
+        }
+
+        // Boards as big as the stage allows, in the number of columns that fits best
+        function sizeBoards() {
+            if (!game) return;
+            const count = Object.keys(game.boards).length;
+            const width = $('stage').clientWidth;
+            const height = Math.max(320, window.innerHeight - 140);
+            let best = 0;
+            for (let cols = 1; cols <= count; cols++) {
+                const rows = Math.ceil(count / cols);
+                const w = (width - (cols - 1) * 16) / cols - 80;           // room for the side panel
+                const h = (height - (rows - 1) * 16) / rows - 30;          // room for the name
+                best = Math.max(best, Math.min(w / 8, h / 17));
+            }
+            const cell = Math.max(8, Math.min(28, Math.floor(best)));
+            for (const board of Object.values(game.boards)) {
+                const canvas = board.el.querySelector('canvas');
+                canvas.style.width = cell * 8 + 'px';
+                canvas.style.height = cell * 17 + 'px';
+            }
+        }
+        window.addEventListener('resize', sizeBoards);
+
+        function frameAt(board, t) {
+            const frames = board.frames;
+            let lo = 0, hi = frames.length - 1, found = -1;
+            while (lo <= hi) {
+                const mid = (lo + hi) >> 1;
+                if (frames[mid].t <= t) { found = mid; lo = mid + 1; } else hi = mid - 1;
+            }
+            return found >= 0 ? frames[found] : null;
+        }
+
+        const drawn = {};
+        function draw(force) {
+            if (!game) return;
+            for (const [p, board] of Object.entries(game.boards)) {
+                const frame = frameAt(board, now);
+                const grid = frame ? frame.g : null;
+                if (force || drawn[p] !== grid) {
+                    drawn[p] = grid;
+                    const ctx = board.ctx;
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, 192, 408);
+                    if (grid) {
+                        for (let i = 0; i < grid.length; i++) {
+                            const code = grid.charCodeAt(i);
+                            if (code === 46) continue;
+                            const img = images[code - 97];
+                            if (img && img.complete && img.naturalWidth) ctx.drawImage(img, (i % 8) * CELL, Math.floor(i / 8) * CELL, CELL, CELL);
+                        }
+                    }
+                }
+                const hud = frame ? frame.hud : {};
+                const el = board.el;
+                el.querySelector('[data-s]').textContent = hud.s != null ? hud.s : 0;
+                el.querySelector('[data-v]').textContent = String(hud.v != null ? hud.v : 0).padStart(2, '0');
+                el.querySelector('[data-l]').textContent = String(hud.l != null ? hud.l : 0).padStart(2, '0');
+                setPill(el.querySelector('[data-n]'), hud.n);
+                setPill(el.querySelector('[data-h]'), hud.h);
+                // OUT / WINNER / STAGE CLEAR
+                const fate = game.fates.filter(f => String(f.p) === p && f.t <= now && (!f.until || now < f.until)).pop();
+                const status = el.querySelector('.status');
+                status.classList.toggle('hidden', !fate);
+                if (fate) {
+                    status.textContent = fate.text;
+                    status.className = 'status ' + fate.kind;
+                }
+                el.classList.toggle('out', !!fate && fate.kind === 'out');
+            }
+            $('time').textContent = formatTime(now) + ' / ' + formatTime(game.length);
+            $('scrubber').value = Math.round((now / game.length) * 1000);
+            updateFeed();
+        }
+
+        function setPill(el, colors) {
+            const key = JSON.stringify(colors || null);
+            if (el.dataset.key === key) return;
+            el.dataset.key = key;
+            el.innerHTML = '';
+            if (!colors) return;
+            for (const [color, side] of [[colors[0], 'left'], [colors[1], 'right']]) {
+                const img = document.createElement('img');
+                img.src = '/img/' + color + '_' + side + '.png';
+                el.appendChild(img);
+            }
+        }
+
+        /* ---------- What happened ---------- */
+
+        const PROBLEM_TYPES = new Set(['error', 'console-error', 'console-warn', 'socket-disconnected', 'input-ignored', 'cpu-gave-up', 'attack-lost', 'log-full', 'direct-link-failed', 'phone-hidden', 'controller-hid-error']);
+        function describe(e) {
+            const n = p => game.names[p] || 'P' + p;
+            switch (e.type) {
+                case 'round-start': return 'Round starts: ' + Object.values(e.names || {}).join(', ');
+                case 'attack': return n(e.from) + ' ▸ ' + n(e.target) + (e.counted ? ': junk incoming' : ' (not counted)');
+                case 'attack-lost': return n(e.from) + "'s attack went nowhere: " + e.why;
+                case 'clear': {
+                    const viruses = (e.cells || []).filter(c => c[3] === 'virus').length;
+                    return n(e.p) + ' cleared ' + (e.cells || []).length + (viruses ? ' (' + viruses + ' virus' + (viruses > 1 ? 'es' : '') + ')' : '');
+                }
+                case 'junk-drop': return 'Junk drops on ' + n(e.p) + ' (column ' + e.x + ')';
+                case 'eliminated': return n(e.p) + ' is OUT (#' + e.place + ')';
+                case 'match-over': return '🏆 ' + (e.team != null && TEAMS[e.team] ? 'TEAM ' + TEAMS[e.team][0] : n(e.winner)) + ' wins (' + (e.how || '') + ')';
+                case 'solo-game-over': return 'Game over at level ' + e.level + ' with ' + e.score;
+                case 'topped-out': return n(e.p) + ' topped out';
+                case 'stage-clear': return n(e.p) + ' cleared the stage (level ' + e.level + ')';
+                case 'marker': return '🐞 Marked by ' + (e.src || '?') + (e.note ? ': ' + e.note : '');
+                case 'error': case 'console-error': return '⚠ ' + (e.message || e.text || 'error');
+                case 'console-warn': return 'Warning: ' + (e.text || '');
+                case 'input': return n(e.p) + ' ' + e.action + (e.pressed ? ' ▼' : ' ▲') + ' (' + e.via + ')';
+                case 'input-ignored': return n(e.p) + ' ' + e.action + ' ignored: ' + e.why;
+                case 'button': return (e.src || '') + ' pressed ' + e.action + (e.pressed ? ' ▼' : ' ▲') + ' (' + e.via + ')';
+                case 'hold': return n(e.p) + (e.ok ? ' held a pill' : " couldn't hold");
+                case 'controller-paired': return '🎮 ' + e.name + ' ▸ ' + n(e.p);
+                case 'controller-unpaired': return '🎮 ' + n(e.p) + "'s controller let go";
+                case 'socket-disconnected': return (e.src || '') + ' lost the connection (' + e.reason + ')';
+                case 'phone-hidden': return (e.src || '') + ' phone went to sleep';
+                case 'hitch': return 'The screen froze for ' + e.ms + ' ms';
+                case 'cpu-gave-up': return n(e.p) + ' (CPU) gave up on its plan';
+                case 'direct-link': return (e.src === 'tv' ? n(e.p) : e.src) + (e.open ? ' linked directly' : ' lost its direct link');
+                case 'layout': return 'TV layout: ' + e.boards + ' boards, ' + e.perRow + ' per row';
+                default: return e.type;
+            }
+        }
+
+        function category(e) {
+            if (e.type === 'marker') return 'marker';
+            if (PROBLEM_TYPES.has(e.type) || (e.type === 'hitch' && e.ms >= 400)) return 'problem';
+            if (e.type === 'attack' || e.type === 'junk-drop' || e.type === 'attack-lost') return 'attack';
+            if (e.type === 'clear') return 'clear';
+            if (e.type === 'input' || e.type === 'button' || e.type === 'hold') return 'input';
+            if (['round-start', 'eliminated', 'match-over', 'solo-game-over', 'topped-out', 'stage-clear', 'controller-paired', 'controller-unpaired', 'direct-link', 'layout'].includes(e.type)) return 'key';
+            return null;
+        }
+
+        function makeFeed() {
+            game.feed = game.events.map(e => ({ e, t: e.at - game.t0, cat: category(e) })).filter(x => x.cat);
+            renderFeed();
+        }
+
+        function renderFeed() {
+            const feed = $('feed');
+            feed.innerHTML = '';
+            const shown = game.feed.filter(x => filter === 'all' || x.cat === filter || (filter === 'key' && (x.cat === 'marker' || x.cat === 'problem')));
+            for (const x of shown) {
+                const li = document.createElement('li');
+                if (x.cat === 'problem') li.classList.add('problem');
+                if (x.cat === 'marker') li.classList.add('marker');
+                li.innerHTML = '<span class="at"></span><span class="what"></span>';
+                li.querySelector('.at').textContent = formatTime(x.t);
+                li.querySelector('.what').textContent = describe(x.e);
+                li.onclick = () => { seek(x.t - 1500); draw(true); };
+                x.li = li;
+                feed.appendChild(li);
+            }
+            game.shown = shown;
+            game.lastNow = -1;
+            updateFeed();
+        }
+
+        function updateFeed() {
+            if (!game.shown || game.lastNow === now) return;
+            game.lastNow = now;
+            let current = null;
+            for (const x of game.shown) {
+                const past = x.t <= now;
+                x.li.classList.toggle('past', past);
+                x.li.classList.remove('now');
+                if (past) current = x;
+            }
+            if (current) {
+                current.li.classList.add('now');
+                const feed = $('feed');
+                const top = current.li.offsetTop - feed.offsetTop;
+                if (top < feed.scrollTop || top > feed.scrollTop + feed.clientHeight - 40) feed.scrollTop = top - feed.clientHeight / 2;
+            }
+        }
+
+        function makeTicks() {
+            const scrub = $('scrub');
+            for (const old of scrub.querySelectorAll('.tick')) old.remove();
+            for (const e of game.events) {
+                const kind = e.type === 'marker' ? 'marker' : (e.type === 'error' || e.type === 'console-error') ? 'error' : e.type === 'eliminated' ? 'out' : null;
+                if (!kind) continue;
+                const t = e.at - game.t0;
+                const tick = document.createElement('span');
+                tick.className = 'tick ' + kind;
+                tick.style.left = (t / game.length * 100) + '%';
+                tick.title = describe(e);
+                tick.onclick = () => { seek(t - 1500); draw(true); };
+                scrub.appendChild(tick);
+            }
+        }
+
+        /* ---------- Playing ---------- */
+
+        function seek(t) {
+            now = Math.max(0, Math.min(game.length, t));
+        }
+        function play() {
+            if (now >= game.length) seek(game.firstFrame);
+            playing = true;
+            lastTick = performance.now();
+            $('playButton').textContent = '❚❚';
+            requestAnimationFrame(tick);
+        }
+        function stop() {
+            playing = false;
+            $('playButton').textContent = '▶';
+        }
+        function tick(at) {
+            if (!playing) return;
+            now += (at - lastTick) * parseFloat($('speed').value);
+            lastTick = at;
+            if (now >= game.length) {
+                now = game.length;
+                stop();
+            }
+            draw(false);
+            if (playing) requestAnimationFrame(tick);
+        }
+        // One step: to the next (or previous) moment any board changed
+        function step(direction) {
+            stop();
+            let best = direction > 0 ? Infinity : -Infinity;
+            for (const board of Object.values(game.boards)) {
+                for (const f of board.frames) {
+                    if (direction > 0 && f.t > now + 0.5 && f.t < best) { best = f.t; break; }
+                    if (direction < 0 && f.t < now - 0.5 && f.t > best) best = f.t;
+                }
+            }
+            if (isFinite(best)) seek(best);
+            draw(false);
+        }
+        function jumpTo(types, direction) {
+            const times = game.events.filter(e => types.includes(e.type) || (types.includes('problem') && category(e) === 'problem')).map(e => e.at - game.t0);
+            const anchor = now + 1500; // jumps land 1.5 s before the event, so that's the one we're on
+            const target = direction > 0 ? times.find(t => t > anchor + 50) : [...times].reverse().find(t => t < anchor - 50);
+            if (target != null) {
+                stop();
+                seek(target - 1500);
+                draw(true);
+            }
+        }
+
+        $('playButton').onclick = () => (playing ? stop() : play());
+        $('stepBack').onclick = () => step(-1);
+        $('stepForward').onclick = () => step(1);
+        $('scrubber').addEventListener('input', (e) => { seek(e.target.value / 1000 * game.length); draw(false); });
+        $('prevMarker').onclick = () => jumpTo(['marker'], -1);
+        $('nextMarker').onclick = () => jumpTo(['marker'], 1);
+        $('nextProblem').onclick = () => jumpTo(['problem', 'marker'], 1);
+        for (const button of document.querySelectorAll('#filters button')) {
+            button.onclick = () => {
+                filter = button.dataset.filter;
+                for (const b of document.querySelectorAll('#filters button')) b.classList.toggle('on', b === button);
+                renderFeed();
+            };
+        }
+        document.addEventListener('keydown', (e) => {
+            if (!game || $('playerView').classList.contains('hidden') || e.target.tagName === 'SELECT') return;
+            if (e.key === ' ') { e.preventDefault(); playing ? stop() : play(); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+        });
+
+        function formatTime(ms) {
+            const s = Math.max(0, ms) / 1000;
+            return Math.floor(s / 60) + ':' + (s % 60).toFixed(1).padStart(4, '0');
+        }
+
+        function route() {
+            const id = decodeURIComponent(location.hash.slice(1));
+            if (id) showGame(id); else showList();
+        }
+        window.addEventListener('hashchange', route);
+        route();
+    </script>
+</body>
+</html>

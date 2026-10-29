@@ -12,6 +12,9 @@
  *   node tools/gamelog.js board <game> <when> [P]   the boards as they were then
  *   node tools/gamelog.js grep <game> <pattern>     events whose type or text matches
  *   node tools/gamelog.js markers [count]           the latest 🐞 marks, across games
+ *   node tools/gamelog.js audit <game>              look for glitches: floating pieces, wrong virus
+ *                                                   counts, stuck or teleporting pills, junk that never
+ *                                                   dropped, errors...
  *
  * <game>  a log id (or the start of one), 'latest', or 'marked' (the latest game with a 🐞)
  * <when>  a time of day (15:42:07), 'marker' / 'marker:2' (that game's 1st / 2nd 🐞),
@@ -27,7 +30,7 @@ const DIR = path.join(ROOT, 'games');
 const MARKERS = path.join(ROOT, 'markers.jsonl');
 
 // Everyday events, left out of the summary timeline (counted instead)
-const ROUTINE = new Set(['move', 'move-ignored', 'board', 'key-down', 'key-up', 'input', 'button', 'ping', 'pill', 'landed', 'server-in', 'server-out',
+const ROUTINE = new Set(['keyframe', 'frame', 'move', 'move-ignored', 'board', 'key-down', 'key-up', 'input', 'button', 'ping', 'pill', 'landed', 'server-in', 'server-out',
     'cpu-plan', 'clear', 'junk-drop', 'hold', 'board-pictures-relayed', 'lobby', 'viruses', 'board-created', 'frozen', 'screen', 'got-tvFx', 'targets', 'page-blur', 'page-focus']);
 const PROBLEMS = new Set(['error', 'console-error', 'console-warn', 'hitch', 'long-task', 'socket-disconnected', 'socket-error', 'socket-reconnecting', 'input-ignored',
     'cpu-gave-up', 'log-full', 'log-dropped', 'direct-link-failed', 'attack-lost', 'marker', 'controller-hid-error', 'phone-hidden', 'page-hidden', 'got-tvJoinError']);
@@ -228,6 +231,168 @@ function markers(count = 10) {
     if (!all.length) console.log('No 🐞 markers yet.');
 }
 
+/* ---------- Audit: look for glitches ---------- */
+
+// A board picture as cells: cells[x][y] = { color, kind } or null (y counts up from the bottom)
+function cellsOf(grid) {
+    const cells = Array.from({ length: 8 }, () => Array(17).fill(null));
+    for (let i = 0; i < grid.length; i++) {
+        const ch = grid[i];
+        if (ch === '.') continue;
+        const n = ch.charCodeAt(0) - 97;
+        cells[i % 8][16 - Math.floor(i / 8)] = { color: COLORS[Math.floor(n / 8)], kind: KINDS[n % 8] };
+    }
+    return cells;
+}
+
+/** Pieces with nothing under them although nothing is falling (the moving pill left out) */
+function floatingPieces(state) {
+    const cells = cellsOf(state.g);
+    const pill = new Set(((state.pill && !state.pill.placed && state.pill.cells) || []).filter(Boolean).map(([x, y]) => x + ',' + y));
+    const filled = (x, y) => y < 0 || (cells[x][y] && !pill.has(x + ',' + y));
+    const out = [];
+    for (let x = 0; x < 8; x++) {
+        for (let y = 1; y < 17; y++) {
+            const c = cells[x][y];
+            if (!c || pill.has(x + ',' + y) || c.kind === 'x' || c.kind === 'o') continue;
+            // Viruses don't fall - but one high up with nothing under it is junk left in mid-air
+            if (c.kind === 'covid' && y < 8) continue;
+            if (filled(x, y - 1)) continue;
+            // Half of a pill: it holds if its other half is held up
+            if (c.kind === 'left' && x < 7 && cells[x + 1][y] && cells[x + 1][y].kind === 'right' && filled(x + 1, y - 1)) continue;
+            if (c.kind === 'right' && x > 0 && cells[x - 1][y] && cells[x - 1][y].kind === 'left' && filled(x - 1, y - 1)) continue;
+            if (c.kind === 'up' && cells[x][y - 1] && cells[x][y - 1].kind === 'down') continue; // its bottom half is right below
+            out.push([x, y, c.color, c.kind]);
+        }
+    }
+    return out;
+}
+
+function audit(which) {
+    const id = resolveGame(which);
+    const game = load(id);
+    const { events, start } = game;
+    const names = game.head.names || {};
+    const who = p => `P${p}${names[p] ? ' ' + names[p] : ''}`;
+    const findings = [];
+    const find = (at, p, kind, text) => findings.push({ at, p, kind, text });
+
+    const finished = {}; // player -> when they were out or the match ended
+    let matchOver = Infinity;
+    for (const e of events) {
+        if (e.type === 'eliminated') finished[e.p] = e.at;
+        if (e.type === 'match-over' || e.type === 'solo-game-over') matchOver = Math.min(matchOver, e.at);
+        if (e.type === 'topped-out' && e.src === 'page') finished[e.p] = e.at;
+    }
+    const playing = (p, at) => at < matchOver && !(finished[p] <= at);
+    const logEnd = events.length ? events[events.length - 1].at : start;
+
+    // Board pictures (one a second, with the board's inner state)
+    const byPlayer = {};
+    for (const e of events) if (e.type === 'board' && e.g) (byPlayer[e.p] = byPlayer[e.p] || []).push(e);
+    for (const [p, states] of Object.entries(byPlayer)) {
+        let floatRun = 0, countRun = 0, stuckRun = 0;
+        const seenFloating = new Set(); // report each stuck piece once
+        for (let i = 0; i < states.length; i++) {
+            const s = states[i];
+            if (!playing(p, s.at)) continue;
+            const settled = !s.falling && s.junk === '0000' && !s.blocked && !s.waitSpawn;
+            // 1. Floating pieces, two pictures in a row while nothing was falling
+            const floating = settled ? floatingPieces(s) : [];
+            floatRun = floating.length ? floatRun + 1 : 0;
+            const fresh = floating.filter(f => !seenFloating.has(f.join()));
+            if (floatRun >= 2 && fresh.length) {
+                for (const f of fresh) seenFloating.add(f.join());
+                find(s.at, p, 'floating', `${fresh.length} piece(s) hanging in the air with nothing falling: ${JSON.stringify(fresh)}`);
+            }
+            // 2. The virus counter disagrees with the viruses on the board
+            const shown = (s.g.match(/[bjr]/g) || []).length; // 'covid' sprites: index 1, 9, 17 -> b, j, r
+            countRun = shown !== s.v ? countRun + 1 : 0;
+            if (countRun === 3) find(s.at, p, 'virus-count', `the counter says ${s.v} viruses, the board shows ${shown}`);
+            // 3. A pill that doesn't move down for 3 seconds
+            const prev = states[i - 1];
+            const same = prev && s.pill && prev.pill && !s.pill.placed && JSON.stringify(s.pill.cells) === JSON.stringify(prev.pill.cells);
+            stuckRun = same && !s.blocked ? stuckRun + 1 : 0;
+            if (stuckRun === 3) find(s.at, p, 'stuck-pill', `the pill hasn't moved for 3 s: ${JSON.stringify(s.pill.cells)}`);
+        }
+    }
+
+    // 4. Moves that jump more than one cell
+    for (const e of events) {
+        if (e.type !== 'move' || !e.from || !e.to || e.landed) continue;
+        const from = e.from.filter(Boolean), to = e.to.filter(Boolean);
+        if (from.length !== to.length) continue;
+        const far = to.some(([x, y], i) => Math.abs(x - from[i][0]) + Math.abs(y - from[i][1]) > 2);
+        if (far && e.key !== 'c' && e.key !== 'C') find(e.at, e.p, 'teleport', `key ${e.key} moved the pill from ${JSON.stringify(from)} to ${JSON.stringify(to)}`);
+    }
+
+    // 4b. Pills where they can't be: a new pill away from the spawn spot, or a pill on a virus
+    const grids = {}; // player -> latest board grid from the replay frames
+    for (const e of events) {
+        if (e.type === 'keyframe') grids[e.p] = e.g;
+        else if (e.type === 'frame' && e.d && grids[e.p]) {
+            const g = grids[e.p].split('');
+            for (const part of e.d.split(';')) { const [i, ch] = part.split(','); g[+i] = ch; }
+            grids[e.p] = g.join('');
+        } else if (e.type === 'pill' && e.pill && e.pill.cells) {
+            const cells = e.pill.cells.filter(Boolean).map(([x, y]) => x + ',' + y).sort().join(' ');
+            if (cells !== '3,15 4,15') find(e.at, e.p, 'spawn', `the new pill came in at ${cells} instead of 3,15 4,15`);
+        } else if ((e.type === 'move' && e.to) || (e.type === 'landed' && e.cells)) {
+            const grid = grids[e.p];
+            if (!grid) continue;
+            for (const cell of (e.to || e.cells).filter(Boolean)) {
+                const [x, y] = cell;
+                const ch = grid[(16 - y) * 8 + x];
+                if (ch && 'bjr'.includes(ch)) find(e.at, e.p, 'overlap', `the pill ${e.type === 'move' ? 'moved' : 'landed'} onto a virus at ${x},${y}`);
+            }
+        }
+    }
+
+    // 5. Junk that was counted but never dropped; 6. long waits for the next pill
+    const pending = {};
+    const lastPill = {};
+    for (const e of events) {
+        if (e.type === 'junk-incoming' && e.counted) (pending[e.p] = pending[e.p] || []).push(e.at);
+        if (e.type === 'junk-drop' && pending[e.p] && pending[e.p].length) pending[e.p].shift();
+        if (e.type === 'pill') {
+            if (lastPill[e.p] && playing(e.p, e.at) && e.at - lastPill[e.p] > 12000) find(e.at, e.p, 'slow-pill', `${((e.at - lastPill[e.p]) / 1000).toFixed(1)} s since the last pill`);
+            lastPill[e.p] = e.at;
+        }
+    }
+    for (const [p, list] of Object.entries(pending)) {
+        // Only once the log goes on 20 s past it (the game may still be running)
+        for (const at of list) if (at + 20000 < logEnd && playing(p, at + 20000)) find(at, p, 'junk-lost', 'junk was counted but never dropped');
+    }
+
+    // 7. The result: a "cleared" win should have no viruses left
+    for (const e of events) {
+        if (e.type === 'match-over' && e.how === 'cleared') {
+            // The board saved at the moment of the win (stage-clear), not a picture from up to a second before
+            const won = events.find(x => x.type === 'stage-clear' && x.p === e.winner && Math.abs(x.at - e.at) < 1000 && x.board);
+            const shown = won ? (won.board.g.match(/[bjr]/g) || []).length : null;
+            if (shown) find(e.at, e.winner, 'result', `won by clearing, but its board still shows ${shown} virus(es)`);
+            if (won && won.board.v !== 0) find(e.at, e.winner, 'virus-count', `won by clearing, but its virus counter says ${won.board.v}`);
+        }
+    }
+
+    // 8. Errors, warnings, freezes, CPUs that gave up
+    for (const e of events) {
+        if (e.type === 'error' || e.type === 'console-error') find(e.at, e.p, 'error', e.message || e.text);
+        if (e.type === 'console-warn') find(e.at, e.p, 'warning', e.text);
+        if (e.type === 'hitch' && e.ms >= 400) find(e.at, null, 'freeze', `the page froze for ${e.ms} ms`);
+        if (e.type === 'cpu-gave-up') find(e.at, e.p, 'cpu', `the CPU gave up on its plan ${JSON.stringify(e.plan)} (pill at rot ${e.rot}, x ${e.x})`);
+        if (e.type === 'input-ignored' && e.why !== 'match over' && e.why !== 'player is out') find(e.at, e.p, 'input', `${e.action} ignored: ${e.why}`);
+    }
+
+    findings.sort((a, b) => a.at - b.at);
+    console.log(`AUDIT ${id}: ${findings.length} finding(s)`);
+    const kinds = {};
+    for (const f of findings) kinds[f.kind] = (kinds[f.kind] || 0) + 1;
+    if (findings.length) console.log('  ' + Object.entries(kinds).map(([k, n]) => `${k}: ${n}`).join(', '));
+    for (const f of findings) console.log(`  ${clock(f.at)} ${since(f.at, start).padStart(8)}  ${f.kind.padEnd(11)} ${f.p != null ? who(f.p).padEnd(12) : ''.padEnd(12)} ${f.text}`);
+    if (findings.length) console.log(`\nLook closer: node tools/gamelog.js around ${id} <time> 3   ·   board ${id} <time> P<n>`);
+}
+
 const [command, a, b, c] = process.argv.slice(2);
 switch (command) {
     case 'list': list(parseInt(a, 10) || 20); break;
@@ -236,6 +401,7 @@ switch (command) {
     case 'board': board(a, b, c); break;
     case 'grep': grep(a, b); break;
     case 'markers': markers(parseInt(a, 10) || 10); break;
+    case 'audit': audit(a); break;
     default:
         console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(2, 20).join('\n').replace(/^ \* ?/gm, ''));
 }

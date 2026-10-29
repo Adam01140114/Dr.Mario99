@@ -388,6 +388,26 @@
         .controller-top .bug-switch { font-family: inherit; font-size: 14px; padding: 2px 6px; border-radius: 8px; border: 2px solid #8892b0; background: transparent; line-height: 1.4; }
         .controller-top .bug-switch.marked { border-color: #ffd60a; background: rgba(255, 214, 10, 0.25); }
 
+        /* Teams match: pick a team before READY */
+        .team-choice { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 10px; }
+        .team-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .team-button {
+            font-family: inherit;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 12px 6px;
+            border-radius: 12px;
+            border: 3px solid var(--team);
+            background: rgba(0, 0, 0, 0.45);
+            color: var(--team);
+            font-size: 11px;
+        }
+        .team-button small { font-size: 7px; line-height: 1.5; color: #cfd8ff; opacity: 0.8; }
+        .team-button.mine { background: var(--team); color: #0b0f24; box-shadow: 0 0 18px var(--team); }
+        .team-button.mine small { color: #0b0f24; }
+        .controller-info .big-name .team-label { font-size: 11px; padding: 6px 10px; border-radius: 8px; color: #0b0f24; text-shadow: none; }
+
         /* Results */
         .result-title { font-size: 34px; line-height: 1.3; }
         .result-title.win { color: #00ff00; text-shadow: 0 0 20px #00ff00, 0 0 40px #00ff00; animation: pulse 1.2s ease-in-out infinite alternate; }
@@ -413,6 +433,10 @@
         <div class="badge" id="waitBadge">PLAYER ?</div>
         <h1 id="waitName"></h1>
         <p id="waitText">You're in! Press READY.<br>The game starts when everyone is ready.</p>
+        <div class="team-choice hidden" id="teamChoice">
+            <div class="input-label">PICK YOUR TEAM</div>
+            <div class="team-buttons" id="teamButtons"></div>
+        </div>
         <div class="input-choice" id="inputChoice">
             <div class="input-label">PLAY WITH</div>
             <div class="input-buttons">
@@ -441,7 +465,7 @@
                 <button class="bug-switch" type="button" id="bugButton" title="Something glitched? Mark this moment in the game log">🐞</button>
                 <span class="link" id="linkBadge" title="How your buttons reach the TV">☁ SERVER</span>
             </div>
-            <div class="big-name"><span id="padName"></span><small id="padHint">WATCH THE TV</small></div>
+            <div class="big-name"><span id="padName"></span><small id="padHint">WATCH THE TV</small><small class="team-label hidden" id="padTeam"></small></div>
         </div>
         <div class="phone-game" id="phoneGame">
             <div class="side left">
@@ -522,6 +546,9 @@
         let padState = { list: [], bindings: {} }; // the TV's controllers, and whose they are
         // Show my own board on this phone (it remembers); always on with more than BOARD_FORCED_ABOVE players
         const BOARD_FORCED_ABOVE = 4;
+        // Teams match: names and colours (same list in scripts/tvHost.js)
+        const TEAMS = [['RED', '#ff4d6d'], ['BLUE', '#4dc3ff'], ['GREEN', '#00ff66'], ['YELLOW', '#ffd60a'], ['PURPLE', '#c77dff'], ['ORANGE', '#ff9f1c'], ['TEAL', '#2ee6d6'], ['PINK', '#ff70d9']];
+        let lobbyTeams = 0; // how many teams in the lobby (0 = everyone for themselves)
         let wantsBoard = false;
         try { wantsBoard = localStorage.getItem('tvShowGame') === '1'; } catch (e) {}
         let boardForced = false;
@@ -676,8 +703,44 @@
         socket.on('tvGameStarted', (data) => {
             releaseAll();
             $('resultNext').classList.add('hidden');
+            showMyTeam(data.teams && data.teams.of ? data.teams.of[player] : null);
             startController(data.boardForced);
         });
+
+        /* ---------- Teams match ---------- */
+
+        function myLobbyTeam() {
+            const me = lobbyPlayers.find(p => p.player === player);
+            return me && me.team != null ? me.team : null;
+        }
+        function renderTeams() {
+            $('teamChoice').classList.toggle('hidden', !lobbyTeams || soloPhone);
+            const buttons = $('teamButtons');
+            buttons.innerHTML = '';
+            const mine = myLobbyTeam();
+            for (let t = 0; t < lobbyTeams; t++) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'team-button' + (mine === t ? ' mine' : '');
+                button.style.setProperty('--team', TEAMS[t][1]);
+                const members = lobbyPlayers.filter(p => p.team === t).map(p => p.name);
+                button.innerHTML = '<span></span><small></small>';
+                button.querySelector('span').textContent = (mine === t ? '✔ ' : '') + TEAMS[t][0];
+                button.querySelector('small').textContent = members.length ? members.join(', ') : 'nobody yet';
+                button.addEventListener('click', () => {
+                    socket.emit('tvPickTeam', { team: t });
+                    if (navigator.vibrate) navigator.vibrate(15);
+                });
+                buttons.appendChild(button);
+            }
+        }
+        function showMyTeam(team) {
+            const label = $('padTeam');
+            label.classList.toggle('hidden', team == null || !TEAMS[team]);
+            if (team == null || !TEAMS[team]) return;
+            label.textContent = 'TEAM ' + TEAMS[team][0];
+            label.style.background = TEAMS[team][1];
+        }
 
         function startController(forced) {
             boardForced = !!forced;
@@ -748,18 +811,24 @@
             const button = $('readyButton');
             button.classList.toggle('on', iAmReady);
             button.textContent = iAmReady ? 'READY ✔' : 'READY';
+            // Teams match: pick a team before you can be ready
+            const needTeam = lobbyTeams > 0 && myLobbyTeam() == null && !iAmReady;
+            button.disabled = needTeam;
             const others = lobbyPlayers.filter(p => p.player !== player);
             $('soloButton').classList.toggle('hidden', others.length > 0);
             const status = $('readyStatus');
             const waitingOn = others.filter(p => p.connected && !p.ready);
             if (!others.length) status.textContent = 'Waiting for others to join...';
+            else if (needTeam) status.textContent = 'Pick a team, then press READY.';
             else if (!waitingOn.length) status.textContent = iAmReady ? 'Starting!'
                 : others.length === 1 ? others[0].name + ' is ready!' : 'Everyone else is ready!';
             else if (waitingOn.length === 1) status.textContent = 'Waiting for ' + waitingOn[0].name + ' to press READY...';
             else status.textContent = 'Waiting for ' + waitingOn.length + ' players to press READY...';
         }
-        socket.on('tvLobby', ({ players }) => {
+        socket.on('tvLobby', ({ players, teams }) => {
             lobbyPlayers = players;
+            lobbyTeams = teams || 0;
+            renderTeams();
             renderInput();
             // Waiting to start: with this many players every phone will show its board
             if (screen === 'wait') {
@@ -999,6 +1068,13 @@
                 title.textContent = 'GAME OVER';
                 title.className = 'result-title lose';
                 $('resultMessage').textContent = 'You reached level ' + String(result.solo.level).padStart(2, '0') + ' with ' + result.solo.score + ' points.';
+            } else if (result.team != null && TEAMS[result.team]) {
+                // Teams match
+                const teamName = 'TEAM ' + TEAMS[result.team][0];
+                $('resultEmoji').textContent = result.won ? '🏆' : '💀';
+                title.textContent = result.won ? 'VICTORY!' : 'GAME OVER';
+                title.className = 'result-title ' + (result.won ? 'win' : 'lose');
+                $('resultMessage').textContent = result.won ? teamName + ' wins! Nice work, ' + myName + '!' : teamName + ' won this one.';
             } else if (result.won) {
                 $('resultEmoji').textContent = '🏆';
                 title.textContent = 'VICTORY!';

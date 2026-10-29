@@ -32,6 +32,8 @@ import { Color, Direction, Rotation, DELAY, spriteCodeOf } from "./components.js
 import { getSpriteUrl, preloadGameplaySprites } from "./spriteCache.js"
 import { attackSent, attackReceived } from "./attackFx.js"
 
+const MAX_JUNK = 4 // attacks waiting to drop on a board (one comes with each new pill)
+
 // Global game state variables
 var pillnum = 1;        // Current pill number
 var second = 0;         // Timer for game events
@@ -292,7 +294,9 @@ export class PlayingBoard extends Board {
     receiveDamage(points) {
         const calculatedDamage = Math.floor((points || 0) / 4)
         if (calculatedDamage <= 0) return false
-        this.realdamage = Math.min(calculatedDamage, 1)
+        // One junk per attack; two attacks before your next pill used to count as one.
+        // Each new pill brings in one (ThrowingBoard frame 0), up to MAX_JUNK waiting.
+        this.realdamage = Math.min((this.damageProcessed ? 0 : this.realdamage) + 1, MAX_JUNK)
         this.damageProcessed = false
         return true
     }
@@ -705,7 +709,13 @@ export class PlayingBoard extends Board {
 
         // Available colors for virus spawning
         let colors = ['yl', 'bl', 'br'];
-        let availableX = [1, 2, 3, 4, 5, 6, 7];
+        // A column with room at the top: dropping onto a full column put the junk on top of
+        // what was already there (a virus vanished but still counted)
+        let availableX = [0, 1, 2, 3, 4, 5, 6, 7].filter(x => !this.fields[x][15].isTaken() && !this.fields[x][15].locked && this.fields[x][15].color === Color.NONE);
+        if (!availableX.length) {
+            this.hurting1 = 0;
+            return; // the bottle is full to the brim: no room for junk
+        }
 
         /**
          * Helper function to get random X position
@@ -756,6 +766,13 @@ export class PlayingBoard extends Board {
 
 }
 
+    /** Junk from an attack, landed: a virus, but one that falls if what it sits on is cleared */
+    junkVirus(x, y, color) {
+        const virus = new Virus(this, x, y, color)
+        virus.junk = true
+        return virus
+    }
+
     hasActiveDamageDrop() {
         return this.hurting1 === 1 || this.hurting2 === 1 || this.hurting3 === 1 || this.hurting4 === 1
     }
@@ -783,11 +800,11 @@ export class PlayingBoard extends Board {
 			if(this.undery == -1){
 				this.hurting1 = 0;
 			this.spawn = this.spawn - 1;
-			this.virusList.push(new Virus(this, this.randx, this.randy, this.randcolor))
+			this.virusList.push(this.junkVirus(this.randx, this.randy, this.randcolor))
 			this.virusCount = this.virusCount + 1;
 
 			} else if((this.fields[this.randx][(this.undery)].color) != Color.NONE) {
-			this.virusList.push(new Virus(this, this.randx, this.randy, this.randcolor))
+			this.virusList.push(this.junkVirus(this.randx, this.randy, this.randcolor))
 				this.hurting1 = 0;
 			this.spawn = this.spawn - 1;
 			this.virusCount = this.virusCount + 1;
@@ -806,10 +823,10 @@ export class PlayingBoard extends Board {
 			if(this.undery2 == -1){
 				this.hurting2 = 0;
 			this.spawn = this.spawn - 1;
-			this.virusList.push(new Virus(this, this.randx2, this.randy2, this.randcolor2))
+			this.virusList.push(this.junkVirus(this.randx2, this.randy2, this.randcolor2))
 
 			} else if((this.fields[this.randx2][(this.undery2)].color) != Color.NONE) {
-			this.virusList.push(new Virus(this, this.randx2, this.randy2, this.randcolor2))
+			this.virusList.push(this.junkVirus(this.randx2, this.randy2, this.randcolor2))
 				this.hurting2 = 0;
 			this.spawn = this.spawn - 1;
 			}
@@ -826,12 +843,12 @@ export class PlayingBoard extends Board {
 
     if(this.undery3 == -1){
         this.hurting3 = 0;
-		spawn = spawn - 1;
-        this.virusList.push(new Virus(this, this.randx3, this.randy3, this.randcolor3));
+		this.spawn = this.spawn - 1;
+        this.virusList.push(this.junkVirus(this.randx3, this.randy3, this.randcolor3));
     } else if((this.fields[this.randx3][(this.undery3)].color) != Color.NONE) {
-        this.virusList.push(new Virus(this, this.randx3, this.randy3, this.randcolor3));
+        this.virusList.push(this.junkVirus(this.randx3, this.randy3, this.randcolor3));
         this.hurting3 = 0;
-		spawn = spawn - 1;
+		this.spawn = this.spawn - 1;
     }
 }
 
@@ -845,12 +862,12 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
 
     if(this.undery4 == -1){
         this.hurting4 = 0;
-		spawn = spawn - 1;
-        this.virusList.push(new Virus(this, this.randx4, this.randy4, this.randcolor4));
+		this.spawn = this.spawn - 1;
+        this.virusList.push(this.junkVirus(this.randx4, this.randy4, this.randcolor4));
     } else if((this.fields[this.randx4][(this.undery4)].color) != Color.NONE) {
-        this.virusList.push(new Virus(this, this.randx4, this.randy4, this.randcolor4));
+        this.virusList.push(this.junkVirus(this.randx4, this.randy4, this.randcolor4));
         this.hurting4 = 0;
-		spawn = spawn - 1;
+		this.spawn = this.spawn - 1;
     }
 }
 
@@ -958,6 +975,7 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
             for (let field of fieldsToClear)
                 field.clearAnimated()
         }
+        return fieldsToClear.length > 0
     }
 
     useGravitation() {
@@ -982,13 +1000,26 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
                         for (let piece of shape.pieces) {
                             piece.field.locked = true;
                         }
+                    } else if (shape instanceof Virus && shape.junk) {
+                        // Junk from an attack falls when what it landed on is cleared
+                        // (it used to stay in mid-air, stacking up into floating towers)
+                        const piece = field.shapePiece;
+                        if (y > 0 && piece.canMoveTo(x, y - 1)) {
+                            field.locked = false;
+                            piece.move(Direction.DOWN);
+                            piece.field.locked = true;
+                            shape.centerField = piece.field;
+                            moved = true;
+                        }
                     }
                 }
             }
         }
 
         if (!moved) {
-            this.clearIfNeeded();
+            // A chain: what this clear leaves hanging has to fall too, so keep going.
+            // (Stopping here left pieces floating in mid-air until the next pill landed.)
+            if (this.clearIfNeeded()) return;
             clearInterval(this.gravitationInterval);
             this.gravitationInterval = null;
             for (let line of this.fields)
@@ -1092,8 +1123,11 @@ class Field extends HTMLElement {
         this.board.localpoints = 0;
     }
 
+    // The pop shows for a moment, then the cell goes blank - unless a piece has
+    // fallen into it meanwhile (gravity starts right away): blanking it then made
+    // that piece invisible but still solid, and pills landed on "nothing"
     setTimeout(() => {
-        this.setColor(Color.NONE);
+        if (!this.shapePiece) this.setColor(Color.NONE);
     }, DELAY.oxDisappear);
 
 }
@@ -1284,11 +1318,11 @@ class ThrowingBoard extends Board {
 
 					// Process damage if available and not already processed
 					if(this.playingBoard.realdamage > 0 && !this.playingBoard.damageProcessed){
-						// Only send one virus regardless of damage amount
-						this.playingBoard.hurt(this.playingBoard.realdamage);
+						// One junk with each pill; the rest come with the next pills
+						this.playingBoard.hurt(1);
 						this.spawn = this.spawn + 1;
-						this.playingBoard.damageProcessed = true; // Mark damage as processed
-						this.playingBoard.realdamage = 0
+						this.playingBoard.realdamage -= 1
+						this.playingBoard.damageProcessed = this.playingBoard.realdamage <= 0
 					} else if (this.playingBoard.realdamage > 0 && this.playingBoard.damageProcessed) {
 					} else {
 					}
@@ -1455,6 +1489,10 @@ class ThrowingBoard extends Board {
     nextFrame() {
 
         if (this.currentFrame >= this.frames.length - 1) {
+            // Junk from an attack falls all the way first (fast: a row each throw frame),
+            // then the pill comes in. With both moving at once, the pill could pass
+            // through falling junk, or the junk land on the pill and stay in mid-air.
+            if (this.playingBoard.hasActiveDamageDrop()) return this.playingBoard.nextFrame()
             this.game.board.movePillFromThrowingBoard()
             //this.game.board.blockInput = false
             return

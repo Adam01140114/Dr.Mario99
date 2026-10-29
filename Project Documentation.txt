@@ -293,6 +293,24 @@ side is the TV ROOM section of `server.js`.
   are in). A clear of 4+ calls `tvHost.sendAttack`, which gives the target junk
   on the TV page itself (`PlayingBoard.receiveDamage`) - TV boards do not use
   the server's p1damage/p2damage events
+- **How junk works** (all modes): each attack is one junk, up to MAX_JUNK (4)
+  waiting; each new pill brings one in (ThrowingBoard frame 0). It drops into
+  a column with room at the top and falls all the way - fast - before the
+  pill comes into play. It lands as a virus that counts towards clearing the
+  board, but unlike the board's own viruses it falls again if what it sits on
+  is cleared (`junkVirus`, `useGravitation`)
+- **Teams match**: FREE FOR ALL / 👥 TEAMS on the TV lobby, with 2-8 teams
+  named by colour - RED, BLUE, GREEN, YELLOW, PURPLE, ORANGE, TEAL, PINK
+  (`TEAMS`, the same list in tvHost.js, controller.html and replays.html).
+  Phones pick a team on the waiting screen (PICK YOUR TEAM) and can't press
+  READY until they have; CPUs go on the smallest team and the TV can click a
+  CPU's team chip to move it; anyone still without a team at the start joins
+  the smallest (`tvBalanceTeams`). With fewer than two teams in the game it's
+  everyone for themselves. Players attack the next player round the circle on
+  another team; a team is out when all its players are; the last team
+  standing, or the first to clear a board, wins (`tvGameOver` team, `tvResult`
+  team / myTeam). Boards get a frame and name-tag chip in their team colour.
+  Events: tvSetTeams, tvPickTeam, tvSetCpuTeam
 - **Out**: a bottle that fills up is out (`tvEliminated`): the board greys,
   shows "OUT #place", then leaves the TV and the rest re-flow to fill the
   screen. That phone shows YOU'RE OUT and its place. Targets are reassigned;
@@ -434,10 +452,31 @@ CLAUDE.md for how to read them (`node tools/gamelog.js`).
 - **🐞**: a button in the corner while a game is on (and on each phone's pad)
   marks "something looked wrong here", with every board as it is right then.
   Marks also go in `logs/markers.jsonl`; a phone's mark shows a banner on the TV
-- **Reading**: `/logs` and `/logs/<id>` on this computer (elsewhere only with
-  `?key=` matching the LOG_KEY environment variable), or the reader:
-  `node tools/gamelog.js summary latest`, `around latest marker`, `board latest
-  marker`
+- **Replays**: `replays.html` (🎬 REPLAYS on the menu, or /replays) lists the
+  last 100 games (`/logs/list.json`, summaries kept in logs/index.json) and
+  plays any of them back: every board rebuilt from the frames gameLog.js
+  writes (a full picture every 2 s, the changed cells every 50 ms, score /
+  viruses / next / hold), with play, pause, ¼×-8× speed, a scrub bar marked
+  with 🐞 / errors / eliminations, step by step (← →), and a feed of what
+  happened (attacks, clears, inputs, problems) - click one to jump there
+- **Reading**: `/logs` and `/logs/<id>` from this computer or its Wi-Fi (a
+  request through a proxy - a hosted server - only with `?key=` matching the
+  LOG_KEY environment variable), or the reader: `node tools/gamelog.js summary
+  latest`, `around latest marker`, `board latest marker`, and `audit latest`,
+  which looks for glitches by itself: pieces hanging in mid-air with nothing
+  falling (junk viruses too), a virus counter that disagrees with the board, a
+  pill stuck or teleporting or coming in away from the spawn spot or onto a
+  virus, junk that never dropped, slow pills, a "cleared" win with viruses
+  left, errors and freezes
+- **Found this way** (8-CPU games, audited, fixed): the server dealt the same
+  virus cell twice and never used column 7 (its random numbers broke past
+  2^53 - now `seededRandom`, mulberry32); a cleared cell's pop timer blanked a
+  piece that had just fallen into it (an invisible block pills landed on);
+  junk fell while the next pill was already in play (junk froze in mid-air on
+  top of the pill); gravity stopped after a chain clear (pieces left floating);
+  two attacks before your next pill counted as one; junk stayed in mid-air
+  when what it landed on was cleared; junk dropped into a full column landed
+  on top of a virus (which vanished but still counted)
 
 KEEPING IT SMOOTH
 -----------------

@@ -40,11 +40,18 @@ const io = socketIo(server, {
 // Serve static files from public directory
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Game logs (gameLogs.js): the last 100 games, for tracking down glitches. Only from this
-// computer (or with ?key= matching the LOG_KEY environment variable on a hosted server).
-const canReadLogs = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+// Game logs (gameLogs.js): the last 100 games, for tracking down glitches and watching
+// games back (replays.html). Only from this computer or a device on its own network - a
+// request through a proxy (a hosted server) needs ?key= matching the LOG_KEY environment variable.
+const isPrivateAddress = ip => /^(::1|127\.|::ffff:127\.|10\.|::ffff:10\.|192\.168\.|::ffff:192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::ffff:172\.(1[6-9]|2\d|3[01])\.|f[cd][0-9a-f]{2}:|fe80:)/i.test(ip || '');
+const canReadLogs = req => (!req.headers['x-forwarded-for'] && isPrivateAddress(req.socket.remoteAddress))
     || (process.env.LOG_KEY && req.query.key === process.env.LOG_KEY);
 const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+app.get('/replays', (req, res) => res.redirect('/replays.html'));
+app.get('/logs/list.json', (req, res) => {
+    if (!canReadLogs(req)) return res.status(404).json({ error: 'Game logs are only available on the computer running the game, or on its Wi-Fi' });
+    res.json(gameLogs.summariesList());
+});
 app.get('/logs', (req, res) => {
     if (!canReadLogs(req)) return res.status(404).send('Not found');
     const key = req.query.key ? '?key=' + encodeURIComponent(req.query.key) : '';
@@ -150,68 +157,62 @@ function startAiMatch(roomCode, playerSocketId) {
  * @param {string} roomCode - The room code to use as seed
  * @returns {Array} Array of {x, y} position objects
  */
-function generateVirusPositions(roomCode = '', count = 10) {
-    // Create a simple seeded random number generator
-    let seed = 0;
-    for (let i = 0; i < roomCode.length; i++) {
-        seed += roomCode.charCodeAt(i);
-    }
-    const timestamp = Date.now();
-    seed += timestamp; // Add timestamp for extra uniqueness
-    
-    console.log(`🔵 SERVER: generateVirusPositions for room ${roomCode} - seed calculation:`);
-    console.log(`🔵 SERVER: Room code chars: ${roomCode.split('').map(c => `${c}(${c.charCodeAt(0)})`).join('+')}`);
-    console.log(`🔵 SERVER: Char sum: ${roomCode.split('').reduce((sum, c) => sum + c.charCodeAt(0), 0)}`);
-    console.log(`🔵 SERVER: Timestamp: ${timestamp}`);
-    console.log(`🔵 SERVER: Final seed: ${seed}`);
-    
-    // Simple linear congruential generator
-    function seededRandom() {
-        seed = (seed * 1664525 + 1013904223) % 2147483648;
-        return seed / 2147483648;
-    }
-    
-    const positions = [];
-    for (let i = 0; i < count; i++) {
-        positions.push({
-            x: Math.floor(seededRandom() * 7),
-            y: Math.floor(seededRandom() * 5)
-        });
-    }
-    console.log(`🔵 SERVER: Generated virus positions: [${positions.map(p => `(${p.x},${p.y})`).join(', ')}]`);
-    return positions;
+/**
+ * A seeded random number generator (mulberry32): 32-bit integer maths throughout.
+ * The old one multiplied a seed of about 1.8 trillion (it included Date.now())
+ * by 1664525, which is past the numbers JavaScript can hold exactly, so it kept
+ * coming back 0 - the same virus spot again and again.
+ */
+function seededRandom(roomCode = '') {
+    let seed = Date.now() >>> 0;
+    for (let i = 0; i < roomCode.length; i++) seed = Math.imul(seed ^ roomCode.charCodeAt(i), 2654435761) >>> 0;
+    return function next() {
+        seed = (seed + 0x6D2B79F5) >>> 0;
+        let t = seed;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
 }
 
 /**
- * Generates a random pill color list for fair multiplayer games
- * Uses room code and timestamp to ensure unique sequences for each room
- * @param {string} roomCode - The room code to use as seed
- * @returns {Array} Array of 100 random numbers (0, 1, or 2)
+ * Virus spots for a room: all different cells, in all 8 columns, in the bottom
+ * 5 rows. Each board colours virus i with colour i % 3 (Board.spawnViruses), so
+ * no three of one colour are put in a row - they would be half-cleared already.
  */
+function generateVirusPositions(roomCode = '', count = 10) {
+    const random = seededRandom(roomCode);
+    const width = 8;
+    const height = 5;
+    const color = new Map(); // "x,y" -> colour index
+    const sameRun = (x, y, c) => {
+        const run = (dx, dy) => {
+            let n = 0;
+            for (let i = 1; i < 3; i++) if (color.get(`${x + dx * i},${y + dy * i}`) === c) n++; else break;
+            return n;
+        };
+        return 1 + run(-1, 0) + run(1, 0) >= 3 || 1 + run(0, -1) + run(0, 1) >= 3;
+    };
+    const positions = [];
+    for (let i = 0; i < Math.min(count, width * height); i++) {
+        let spot = null;
+        for (let tries = 0; tries < 300 && !spot; tries++) {
+            const x = Math.floor(random() * width);
+            const y = Math.floor(random() * height);
+            if (color.has(`${x},${y}`) || (tries < 250 && sameRun(x, y, i % 3))) continue;
+            spot = { x, y };
+        }
+        if (!spot) break; // the bottom rows are full
+        color.set(`${spot.x},${spot.y}`, i % 3);
+        positions.push(spot);
+    }
+    return positions;
+}
+
+// Generate random list of pill colors (seeded) for a room
 function generateRandomList(roomCode = '') {
-    // Create a simple seeded random number generator
-    let seed = 0;
-    for (let i = 0; i < roomCode.length; i++) {
-        seed += roomCode.charCodeAt(i);
-    }
-    const timestamp = Date.now();
-    seed += timestamp; // Add timestamp for extra uniqueness
-    
-    console.log(`🔵 SERVER: generateRandomList for room ${roomCode} - seed calculation:`);
-    console.log(`🔵 SERVER: Room code chars: ${roomCode.split('').map(c => `${c}(${c.charCodeAt(0)})`).join('+')}`);
-    console.log(`🔵 SERVER: Char sum: ${roomCode.split('').reduce((sum, c) => sum + c.charCodeAt(0), 0)}`);
-    console.log(`🔵 SERVER: Timestamp: ${timestamp}`);
-    console.log(`🔵 SERVER: Final seed: ${seed}`);
-    
-    // Simple linear congruential generator
-    function seededRandom() {
-        seed = (seed * 1664525 + 1013904223) % 2147483648;
-        return seed / 2147483648;
-    }
-    
-    const result = Array.from({ length: 100 }, () => Math.floor(seededRandom() * 3));
-    console.log(`🔵 SERVER: Generated pill colors (first 10): [${result.slice(0, 10).join(',')}]`);
-    return result;
+    const random = seededRandom(roomCode + 'pills');
+    return Array.from({ length: 100 }, () => Math.floor(random() * 3));
 }
 
 // Store shared game data per room for multiplayer synchronization
@@ -569,6 +570,12 @@ io.on('connection', (socket) => {
  * players (tvAddCpu / tvRemoveCpu): CPU #1, CPU #2... take a slot like a phone,
  * are always ready and always want a rematch; the TV page plays their boards.
  *
+ * Teams match: the TV sets 2-8 teams (tvSetTeams; 0 = everyone for themselves).
+ * Phones pick a team before READY (tvPickTeam); CPUs are put on the smallest
+ * team (the TV can move one: tvSetCpuTeam), and anyone without a team when
+ * the game starts is too. Teammates don't attack each other; the TV decides
+ * the winning team and tells the server (tvGameOver team).
+ *
  * Socket rooms: the host is alone in `tvh:<code>`, the phones share `tvp:<code>`.
  */
 const tvRooms = {};
@@ -576,6 +583,26 @@ const TV_MAX_PLAYERS = 8;
 const TV_PHONE_SCREEN_ABOVE = 4; // more players than this: the game always shows on the phones
 const TV_ACTIONS = ['left', 'right', 'rotateLeft', 'rotateRight', 'drop', 'hold'];
 const TV_INPUTS = ['phone', 'controller'];
+const TV_MAX_TEAMS = 8;
+
+/** Teams match: put players without a team (just CPUs, or everyone) on the smallest teams */
+function tvBalanceTeams(room, everyone) {
+    const count = room.settings.teams;
+    if (!count) return;
+    const size = Array(count).fill(0);
+    for (const n of tvSlots()) {
+        const p = room.players[n];
+        if (!p) continue;
+        if (p.team != null && p.team >= count) p.team = null;
+        if (p.team != null) size[p.team]++;
+    }
+    for (const n of tvSlots()) {
+        const p = room.players[n];
+        if (!p || p.team != null || !(everyone || p.cpu)) continue;
+        p.team = size.indexOf(Math.min(...size));
+        size[p.team]++;
+    }
+}
 
 /** Addresses a phone on the same Wi-Fi can reach this computer at, best first */
 function lanOrigins(port) {
@@ -607,6 +634,7 @@ function tvPlayerList(room) {
         inputAt: room.players[n].inputAt,
         showGame: !!room.players[n].showGame,
         cpu: !!room.players[n].cpu,
+        team: room.players[n].team != null ? room.players[n].team : null,
     }));
 }
 
@@ -619,7 +647,7 @@ function tvNames(room, roster) {
 function tvSendLobby(code) {
     const room = tvRooms[code];
     if (!room) return;
-    const lobby = { code, state: room.state, players: tvPlayerList(room), max: TV_MAX_PLAYERS };
+    const lobby = { code, state: room.state, players: tvPlayerList(room), max: TV_MAX_PLAYERS, teams: room.settings.teams || 0 };
     tvLog(room, 'lobby', { state: room.state, players: lobby.players });
     io.to(room.hostId).emit('tvLobby', lobby);
     io.to(`tvp:${code}`).emit('tvLobby', lobby);
@@ -661,7 +689,7 @@ function registerTvRoomHandlers(socket) {
         const soloOnly = !!(payload && payload.solo);
         tvRooms[code] = {
             hostId: socket.id, state: 'lobby', players: {}, ready: new Set(), solo: soloOnly, soloOnly,
-            roster: [], winner: null, places: {}, rematch: new Set(), settings: { virusCount: 5 },
+            roster: [], winner: null, places: {}, rematch: new Set(), settings: { virusCount: 5, teams: 0 },
             controllers: { list: [], bindings: {} },
             logId: null, preLog: (socket.data.preLog || []).map(e => ({ ...e, src: 'tv' })), rounds: 0, // game log: one per round; lobby events wait for the first
         };
@@ -707,7 +735,8 @@ function registerTvRoomHandlers(socket) {
         const input = TV_INPUTS.includes(payload.input) ? payload.input : (previous && previous.input) || 'phone';
         const inputAt = previous && previous.input === input ? previous.inputAt : Date.now();
         const showGame = payload.showGame !== undefined ? !!payload.showGame : !!(previous && previous.showGame);
-        room.players[slot] = { name, clientId, socketId: socket.id, connected: true, input, inputAt, showGame };
+        const team = previous && previous.clientId === clientId ? previous.team : null; // coming back: same team
+        room.players[slot] = { name, clientId, socketId: socket.id, connected: true, input, inputAt, showGame, team };
         socket.data.tvPlayer = { code, player: slot };
         // What this phone logged before it joined goes in the room's log too
         if (socket.data.preLog && socket.data.preLog.length) {
@@ -780,9 +809,40 @@ function registerTvRoomHandlers(socket) {
         const taken = new Set(tvSlots().filter(n => room.players[n] && room.players[n].cpu).map(n => room.players[n].cpuNumber));
         let number = 1;
         while (taken.has(number)) number++;
-        room.players[slot] = { name: `CPU #${number}`, cpu: true, cpuNumber: number, clientId: null, socketId: null, connected: true, input: 'cpu', inputAt: 0 };
+        room.players[slot] = { name: `CPU #${number}`, cpu: true, cpuNumber: number, clientId: null, socketId: null, connected: true, input: 'cpu', inputAt: 0, team: null };
         room.ready.add(slot); // a CPU is always ready
+        tvBalanceTeams(room, false);
         room.solo = false;
+        tvSendLobby(code);
+    });
+
+    // Host: teams match with this many teams (0 = everyone for themselves)
+    socket.on('tvSetTeams', (payload = {}) => {
+        const { code, room } = tvHostRoom(socket);
+        if (!room || room.state !== 'lobby' || room.soloOnly) return;
+        const count = parseInt(payload.count, 10);
+        room.settings.teams = count >= 2 ? Math.min(count, TV_MAX_TEAMS) : 0;
+        if (!room.settings.teams) for (const n of tvSlots()) if (room.players[n]) room.players[n].team = null;
+        tvBalanceTeams(room, false); // CPUs onto teams; phones pick their own
+        tvSendLobby(code);
+    });
+
+    // Phone: join this team (teams match, before the game starts)
+    socket.on('tvPickTeam', (payload = {}) => {
+        const { code, room, player } = tvPhoneRoom(socket);
+        const team = parseInt(payload.team, 10);
+        if (!room || room.state !== 'lobby' || !room.players[player] || !(team >= 0 && team < room.settings.teams)) return;
+        room.players[player].team = team;
+        tvSendLobby(code);
+    });
+
+    // Host: move a CPU to another team
+    socket.on('tvSetCpuTeam', (payload = {}) => {
+        const { code, room } = tvHostRoom(socket);
+        const n = parseInt(payload.player, 10);
+        const team = parseInt(payload.team, 10);
+        if (!room || room.state !== 'lobby' || !room.players[n] || !room.players[n].cpu || !(team >= 0 && team < room.settings.teams)) return;
+        room.players[n].team = team;
         tvSendLobby(code);
     });
 
@@ -875,6 +935,8 @@ function registerTvRoomHandlers(socket) {
         const winner = parseInt(payload.winner, 10);
         room.state = 'over';
         room.winner = room.roster.includes(winner) ? winner : null;
+        const team = parseInt(payload.team, 10);
+        room.winnerTeam = room.teams && team >= 0 && team < room.teams.count ? team : null;
         for (const [n, place] of Object.entries(payload.places || {})) {
             if (room.roster.includes(+n)) room.places[n] = parseInt(place, 10) || room.places[n];
         }
@@ -960,6 +1022,14 @@ function startTvRound(code) {
     room.soloStats = null;
     room.rematch = new Set();
     room.ready = new Set();
+    room.winnerTeam = null;
+    // Teams match: anyone without a team joins the smallest; with fewer than two teams in it, it's everyone for themselves
+    room.teams = null;
+    if (room.settings.teams && roster.length > 1) {
+        tvBalanceTeams(room, true);
+        const of = Object.fromEntries(roster.map(n => [n, room.players[n].team]));
+        if (new Set(Object.values(of)).size >= 2) room.teams = { count: room.settings.teams, of };
+    }
     const gameData = generateNewGameData(code, true);
     const cpus = roster.filter(n => room.players[n].cpu);
     // Each round gets its own game log; what happened in the lobby before goes at its top
@@ -968,11 +1038,11 @@ function startTvRound(code) {
         code, round: room.rounds, roster, names: tvNames(room, roster), cpus,
         inputs: Object.fromEntries(roster.map(n => [n, room.players[n].input])),
         showGame: Object.fromEntries(roster.map(n => [n, !!room.players[n].showGame])),
-        controllers: room.controllers, settings: room.settings, gameData,
+        controllers: room.controllers, settings: room.settings, teams: room.teams, gameData,
     });
     if (room.preLog.length) gameLogs.write(room.logId, 'lobby', room.preLog);
     room.preLog = [];
-    const round = { code, names: tvNames(room, roster), roster, cpus, boardForced: tvBoardForced(room), logId: room.logId };
+    const round = { code, names: tvNames(room, roster), roster, cpus, teams: room.teams, boardForced: tvBoardForced(room), logId: room.logId };
     io.to(room.hostId).emit('tvGameStarted', { ...round, gameData });
     io.to(`tvp:${code}`).emit('tvGameStarted', round);
 }
@@ -1093,9 +1163,12 @@ function registerGameLog(socket) {
 
 function tvResultFor(room, player) {
     if (room.state !== 'over' || !room.roster.includes(player)) return null;
+    const teamWon = room.teams && room.winnerTeam != null;
     return {
-        won: room.winner === player,
+        won: teamWon ? room.teams.of[player] === room.winnerTeam : room.winner === player,
         winnerName: room.winner ? room.players[room.winner] && room.players[room.winner].name : null,
+        team: teamWon ? room.winnerTeam : null,              // the winning team, in a teams match
+        myTeam: room.teams ? room.teams.of[player] : null,
         place: room.places[player] || null,
         of: room.roster.length,
         solo: room.roster.length === 1 ? room.soloStats : null,

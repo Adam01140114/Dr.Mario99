@@ -21,6 +21,9 @@
  *   players every phone shows it.
  * - ADD CPU adds computer players (CPU #1, CPU #2...) that take a slot like a
  *   phone; this page plays their boards (scripts/cpuPlayer.js).
+ * - TEAMS: 2-8 teams named by colour (TEAMS). Phones pick theirs before READY;
+ *   teammates don't attack each other; a team is out when all its players
+ *   are; the last team standing, or the first to clear a board, wins.
  * - Presses and pictures go straight between phone and this page over their
  *   Wi-Fi (WebRTC) when possible, through the server otherwise.
  *
@@ -32,6 +35,8 @@ import { attackSent, attackReceived } from "./attackFx.js"
 import { startCpu } from "./cpuPlayer.js"
 
 const MAX_PLAYERS = 8
+// Teams match: names and colours (same list in controller.html and replays.html)
+const TEAMS = [['RED', '#ff4d6d'], ['BLUE', '#4dc3ff'], ['GREEN', '#00ff66'], ['YELLOW', '#ffd60a'], ['PURPLE', '#c77dff'], ['ORANGE', '#ff9f1c'], ['TEAL', '#2ee6d6'], ['PINK', '#ff70d9']]
 const TV_KEYS = { left: 'a', right: 'd', rotateLeft: 'w', rotateRight: 'Shift', drop: 's', hold: 'c' }
 const TV_REPEAT = { left: 166, right: 166, drop: 60 } // held-key repeat, as on the keyboard (Board.js)
 const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -59,6 +64,8 @@ const tv = window.tvHost = {
     soloOnly: false,    // single player with the phone as the controller: one phone, starts when it joins
     boardForced: false, // five or more players: every phone shows its own board
     cpus: new Set(),    // players the computer plays
+    lobbyTeams: 0,      // teams match in the lobby: how many teams (0 = everyone for themselves)
+    teams: null,        // this round's teams: { count, of: player -> team }, or null
     cpuStops: {},       // player -> stops that CPU
     names: {},
     roster: [],         // players in this round
@@ -111,6 +118,7 @@ socket.on('tvRoomCreated', (data) => {
 socket.on('tvLobby', (data) => {
     if (data.code !== tv.code) return
     tv.lobby = data.players
+    tv.lobbyTeams = data.teams || 0
     reconcileBindings()
     if (!tv.started) renderLobby()
 })
@@ -141,6 +149,24 @@ function renderLobby() {
         input.textContent = p.cpu ? '🤖 CPU' : p.input !== 'controller' ? '📱' : pad ? '🎮 ' + pad.name.toUpperCase() : '🎮 PRESS A'
         input.classList.toggle('waiting', p.input === 'controller' && !pad)
         input.classList.toggle('pad', !!pad)
+        if (tv.lobbyTeams) {
+            const team = document.createElement(p.cpu ? 'button' : 'span')
+            team.className = 'tv-slot-team'
+            if (p.team != null && TEAMS[p.team]) {
+                team.textContent = TEAMS[p.team][0]
+                team.style.background = TEAMS[p.team][1]
+            } else {
+                team.textContent = 'NO TEAM'
+                team.classList.add('none')
+            }
+            // A CPU's team: click to move it to the next one
+            if (p.cpu) {
+                team.type = 'button'
+                team.title = 'Move ' + p.name + ' to the next team'
+                team.onclick = () => socket.emit('tvSetCpuTeam', { player: p.player, team: ((p.team != null ? p.team : -1) + 1) % tv.lobbyTeams })
+            }
+            slot.insertBefore(team, slot.querySelector('.tv-slot-ready'))
+        }
         if (p.cpu) {
             const remove = document.createElement('button')
             remove.type = 'button'
@@ -194,6 +220,23 @@ function renderLobby() {
     // ADD CPU: while there's an empty slot
     $('tvAddCpu').classList.toggle('hidden', tv.soloOnly || players.length >= MAX_PLAYERS)
 
+    // Free for all, or teams (and how many)
+    $('tvModeFfa').classList.toggle('on', !tv.lobbyTeams)
+    $('tvModeTeams').classList.toggle('on', !!tv.lobbyTeams)
+    $('tvTeamCountLabel').classList.toggle('hidden', !tv.lobbyTeams)
+    if (tv.lobbyTeams && document.activeElement !== $('tvTeamCount')) $('tvTeamCount').value = tv.lobbyTeams
+    const summary = $('tvTeamSummary')
+    summary.innerHTML = ''
+    if (tv.lobbyTeams) {
+        for (let t = 0; t < tv.lobbyTeams; t++) {
+            const members = players.filter(p => p.team === t).map(p => p.name)
+            const chip = document.createElement('span')
+            chip.style.color = TEAMS[t][1]
+            chip.textContent = TEAMS[t][0] + ': ' + (members.join(', ') || '-')
+            summary.appendChild(chip)
+        }
+    }
+
     $('tvSoloNote').textContent = !tv.soloOnly ? ''
         : connected.length ? '✅ ' + connected[0].name + "'s phone is connected. Starting..."
         : "Point your phone's camera at the code. Your phone becomes the controller and the game starts as soon as it connects."
@@ -218,6 +261,14 @@ $('tvRoom').onclick = () => startTvRoom()
 $('tvStart').onclick = startTvGame
 $('tvCancel').onclick = () => { location.href = location.pathname }
 $('tvAddCpu').onclick = () => socket.emit('tvAddCpu')
+// Teams match: how many teams (2-8); FREE FOR ALL turns it off
+const teamCount = () => Math.min(TEAMS.length, Math.max(2, parseInt($('tvTeamCount').value, 10) || 2))
+$('tvModeFfa').onclick = () => socket.emit('tvSetTeams', { count: 0 })
+$('tvModeTeams').onclick = () => socket.emit('tvSetTeams', { count: teamCount() })
+$('tvTeamCount').addEventListener('change', () => {
+    $('tvTeamCount').value = teamCount()
+    socket.emit('tvSetTeams', { count: teamCount() })
+})
 // Everyone pressed READY on their phone: start without anyone touching the computer
 socket.on('tvAutoStart', ({ code }) => {
     if (code === tv.code && !tv.started) startTvGame()
@@ -273,9 +324,10 @@ socket.on('tvGameStarted', async (data) => {
     tv.places = {}
     tv.boardForced = !!data.boardForced
     tv.cpus = new Set(data.cpus || [])
+    tv.teams = data.teams || null
     tv.sent = {}
     if (window.gameLog) window.gameLog.setId(data.logId)
-    glog('round-start', { roster: tv.roster, names: tv.names, cpus: [...tv.cpus], boardForced: tv.boardForced, bindings: Object.fromEntries(tv.bindings), screen: { w: innerWidth, h: innerHeight } })
+    glog('round-start', { roster: tv.roster, names: tv.names, cpus: [...tv.cpus], teams: tv.teams, boardForced: tv.boardForced, bindings: Object.fromEntries(tv.bindings), screen: { w: innerWidth, h: innerHeight } })
     closeOverlay()
     if (first) {
         roomCode = data.code
@@ -303,7 +355,8 @@ async function buildGames() {
             container.id = 'game' + n
             row.appendChild(container)
         }
-        container.className = 'game-container'
+        container.className = 'game-container' + (teamOf(n) != null ? ' team' : '')
+        container.style.setProperty('--team', teamOf(n) != null ? TEAMS[teamOf(n)][1] : 'transparent')
         container.innerHTML = ''
         const tag = document.createElement('div')
         tag.className = 'tv-name-tag tv-p' + n
@@ -311,6 +364,7 @@ async function buildGames() {
             + `<span class="tv-link hidden" id="tvLink${n}" title="Controller connected straight over the Wi-Fi">⚡</span>`
             + `<span class="tv-pad-tag hidden" id="tvPadTag${n}" title="Playing with a controller"></span>`
             + (tv.cpus.has(n) ? '<span class="tv-cpu-tag" title="The computer plays this board">🤖</span>' : '')
+            + (teamOf(n) != null ? `<span class="tv-team-tag" style="background:${TEAMS[teamOf(n)][1]}">TEAM ${TEAMS[teamOf(n)][0]}</span>` : '')
             + `<span class="tv-target" id="tvTarget${n}"></span>`
         tag.querySelector('#tvName' + n).textContent = tv.names[n]
         container.appendChild(tag)
@@ -373,7 +427,16 @@ function assignTargets() {
     tv.targets = {}
     const alive = tv.roster.filter(n => tv.alive.includes(n))
     if (alive.length >= 2) {
-        alive.forEach((n, i) => { tv.targets[n] = alive[(i + 1) % alive.length] })
+        alive.forEach((n, i) => {
+            // The next player round the circle who isn't on your team
+            for (let k = 1; k < alive.length; k++) {
+                const other = alive[(i + k) % alive.length]
+                if (teamOf(other) == null || teamOf(other) !== teamOf(n)) {
+                    tv.targets[n] = other
+                    break
+                }
+            }
+        })
     }
     glog('targets', { targets: tv.targets })
     for (const n of tv.roster) {
@@ -450,6 +513,8 @@ function eliminate(player) {
     if (game) game.freeze()
     socket.emit('tvEliminated', { player, place })
     if (tv.alive.length === 1) return endMatch(tv.alive[0], 'last', player)
+    // Teams match: one team left standing
+    if (tv.teams && new Set(tv.alive.map(teamOf)).size === 1) return endMatch(tv.alive[0], 'last', player)
 
     // Out: grey the board, say so, then take it off the screen and spread the rest out
     const container = $('game' + player)
@@ -480,9 +545,17 @@ function endMatch(winner, how, lastOut) {
         if (tv.games[n]) tv.games[n].freeze()
     }
     tv.places[winner] = 1
-    glog('match-over', { winner, how, lastOut, places: tv.places })
-    socket.emit('tvGameOver', { winner, places: tv.places })
+    const team = teamOf(winner)
+    glog('match-over', { winner, team, how, lastOut, places: tv.places })
+    socket.emit('tvGameOver', { winner, team, places: tv.places })
     const name = tv.names[winner]
+    if (team != null) {
+        const teamName = 'TEAM ' + TEAMS[team][0]
+        const members = tv.roster.filter(n => teamOf(n) === team).map(n => tv.names[n]).join(', ')
+        const reason = how === 'cleared' ? name + ' cleared all the viruses for ' + teamName + '. (' + members + ')'
+            : teamName + ' is the last team standing! (' + members + ')'
+        return showOverlay({ title: '🏆 VICTORY! 🏆', win: true, name: teamName + ' WINS!', reason, color: TEAMS[team][1] })
+    }
     const reason = how === 'cleared' ? name + ' cleared all the viruses first.'
         : tv.roster.length === 2 ? tv.names[lastOut] + "'s bottle filled up."
         : name + ' is the last one standing!'
@@ -539,7 +612,7 @@ function closeOverlay() {
     if (overlay) overlay.remove()
 }
 
-function showOverlay({ title, win, name, reason }) {
+function showOverlay({ title, win, name, reason, color }) {
     closeOverlay()
     const overlay = document.createElement('div')
     overlay.className = 'alert-overlay tv-victory'
@@ -557,6 +630,7 @@ function showOverlay({ title, win, name, reason }) {
     const nameEl = document.createElement('div')
     nameEl.className = 'alert-message tv-winner-name'
     nameEl.textContent = name
+    if (color) nameEl.style.color = color
     const reasonEl = document.createElement('div')
     reasonEl.className = 'alert-message tv-victory-reason'
     reasonEl.textContent = reason
@@ -843,6 +917,11 @@ setInterval(() => {
         sendToPhone(n, state)
     }
 }, STATE_MS)
+
+/** Teams match: this player's team (an index into TEAMS), or null */
+function teamOf(n) {
+    return tv.teams && tv.teams.of && tv.teams.of[n] != null ? tv.teams.of[n] : null
+}
 
 /** This player switched SHOW MY GAME on, on their phone */
 function wantsBoard(n) {

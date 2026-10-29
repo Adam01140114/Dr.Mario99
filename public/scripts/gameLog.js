@@ -13,6 +13,10 @@
  *   viruses), junk coming in and dropping, hold, stage clear, topping out
  * - each board once a second while it changes (Board.snapshot() plus the
  *   board's inner state: timers running, input blocked, junk falling)
+ * - frames for replays (replays.html): every FRAME_MS, the cells of each board
+ *   that changed ('frame', d: "index,char;..."), a full picture every
+ *   KEYFRAME_MS ('keyframe', g), and score / viruses / level / next / hold
+ *   whenever they change (hud)
  * - errors, rejected promises, console warnings and errors
  * - the connection: drops, reconnects, round trip to the server every 5 s
  * - slow frames (the page froze for 250 ms or more), long tasks, the page
@@ -34,12 +38,15 @@ import { Virus } from "./Shape.js"
 
 const FLUSH_MS = 500
 const SNAPSHOT_MS = 1000
+const FRAME_MS = 50
+const KEYFRAME_MS = 2000
 const PING_MS = 5000
 const HITCH_MS = 250
 
 const log = window.gameLog = {
     id: null,         // this game's log id (shown on the result screens)
     active: false,    // a game or TV room is on
+    ended: false,     // its result is on screen: no more pings (they'd make the game look longer)
     queue: [],
     event,
     begin,
@@ -49,6 +56,7 @@ const log = window.gameLog = {
 
 /** Write something down (it goes to the server with the next batch) */
 function event(type, details = {}) {
+    if (type === 'result-shown' || type === 'match-over' || type === 'solo-game-over') log.ended = true
     log.queue.push({ ct: Date.now(), type, ...details })
     if (log.queue.length > 5000) log.queue.splice(0, log.queue.length - 5000)
 }
@@ -57,6 +65,7 @@ function event(type, details = {}) {
 function begin(mode, details = {}) {
     flush()
     log.active = true
+    log.ended = false
     log.id = null
     socket.emit('logOpen', { mode, ...details, ...screenInfo() }, (id) => {
         log.id = id
@@ -67,6 +76,7 @@ function begin(mode, details = {}) {
 /** TV Room: the server made this round's log */
 function setId(id) {
     log.active = true
+    log.ended = false
     log.id = id
     showLogId()
 }
@@ -151,6 +161,53 @@ setInterval(() => {
         event('board', { p: +n, ...state })
     }
 }, SNAPSHOT_MS)
+
+/* ---------- Frames, for watching a game back (replays.html) ---------- */
+
+// One character per cell, top row first - the same as Board.snapshot().g
+function gridOf(board) {
+    let grid = ''
+    for (let y = board.height - 1; y >= 0; y--)
+        for (let x = 0; x < board.width; x++)
+            grid += board.fields[x][y].spriteCode || '.'
+    return grid
+}
+
+function hudOf(board) {
+    const next = board.throwingBoard && board.throwingBoard.currentPill && board.throwingBoard.currentPill.pieces
+    return { s: board.score, v: board.virusCount, l: board.level, n: next && next.length >= 2 ? [next[0].color, next[1].color] : null, h: board.heldPill || null, hu: !!board.holdUsed }
+}
+
+const frames = {} // player -> { grid, hud, keyAt, board }
+setInterval(() => {
+    if (!log.active) return
+    const now = Date.now()
+    for (const [n, board] of activeBoards()) {
+        let grid, hud
+        try {
+            grid = gridOf(board)
+            hud = JSON.stringify(hudOf(board))
+        } catch (e) {
+            continue
+        }
+        const last = frames[n]
+        const changed = !last || last.grid !== grid
+        const hudChanged = !last || last.hud !== hud
+        if (!changed && !hudChanged) continue
+        const extra = hudChanged ? { hud: JSON.parse(hud) } : {}
+        // A new board, or one that's been changing for a while: the whole picture (for seeking)
+        if (!last || last.board !== board || now - last.keyAt >= KEYFRAME_MS) {
+            event('keyframe', { p: +n, g: grid, ...extra })
+            frames[n] = { grid, hud, keyAt: now, board }
+            continue
+        }
+        let diff = ''
+        if (changed) for (let i = 0; i < grid.length; i++) if (grid[i] !== last.grid[i]) diff += (diff ? ';' : '') + i + ',' + grid[i]
+        event('frame', { p: +n, ...(diff ? { d: diff } : {}), ...extra })
+        last.grid = grid
+        last.hud = hud
+    }
+}, FRAME_MS)
 
 /* ---------- Moves and what they did (wrapping the game's own methods) ---------- */
 
@@ -276,7 +333,7 @@ function watchSocket() {
     socket.on('connect_error', (e) => event('socket-error', { message: e && e.message }))
     if (socket.io) socket.io.on('reconnect_attempt', (n) => event('socket-reconnecting', { attempt: n }))
     setInterval(() => {
-        if (!log.active || !socket.connected) return
+        if (!log.active || log.ended || !socket.connected) return
         socket.emit('logPing', Date.now(), (sent) => event('ping', { ms: Date.now() - sent }))
     }, PING_MS)
 }

@@ -1158,6 +1158,37 @@
             cursor: pointer;
         }
         .tv-slots.many .tv-slot .tv-slot-remove { width: 26px; height: 26px; font-size: 0.55rem; }
+        /* Teams match */
+        .tv-mode-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .tv-mode-chip {
+            font-family: 'Press Start 2P', cursive;
+            font-size: 0.75rem;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(0, 0, 0, 0.45);
+            color: #cfd8ff;
+            cursor: pointer;
+        }
+        .tv-mode-chip.on { border-color: #00ffff; color: #00ffff; box-shadow: 0 0 14px rgba(0, 255, 255, 0.35); }
+        .tv-team-summary { display: flex; flex-direction: column; gap: 8px; font-size: 0.65rem; line-height: 1.6; }
+        .tv-team-summary:empty { display: none; }
+        .tv-slot .tv-slot-team {
+            flex: none;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 0.75rem;
+            padding: 7px 9px;
+            border-radius: 8px;
+            border: none;
+            color: #0b0f24;
+            text-shadow: none;
+        }
+        .tv-slot button.tv-slot-team { cursor: pointer; }
+        .tv-slot .tv-slot-team.none { background: transparent; color: rgba(255, 255, 255, 0.5); border: 2px dashed rgba(255, 255, 255, 0.35); }
+        .tv-slots.many .tv-slot .tv-slot-team { font-size: 0.5rem; padding: 5px 6px; }
+        .tv-lobby.solo-only .tv-mode-row, .tv-lobby.solo-only .tv-team-summary { display: none; }
+        .tv-name-tag .tv-team-tag { font-size: 1.3rem; padding: 10px 14px; border-radius: 10px; color: #0b0f24; text-shadow: none; }
+        body.tv-mode .game-container.team game-element { outline: 10px solid var(--team); outline-offset: 3px; }
         .tv-slot.ready .tv-slot-ready { color: #00ff66; text-shadow: 0 0 10px #00ff66; }
         /* Player colours: same list in attackFx.js and controller.html */
         .tv-p1 { --tv-slot-color: #ff4d6d; --tv-slot-glow: rgba(255, 77, 109, 0.55); }
@@ -1359,6 +1390,9 @@
                 <button id="rulesBtn" class="menu-button secondary-button">
                     <span class="emoji">📜</span>RULES
                 </button>
+                <button id="replaysBtn" class="menu-button secondary-button">
+                    <span class="emoji">🎬</span>REPLAYS
+                </button>
             </div>
         </div>
 
@@ -1448,6 +1482,12 @@
                         <span class="tv-pad-count" id="tvPadCount"></span>
                         <button id="tvPadConnect" class="tv-copy-button hidden" type="button">🎮 CONNECT CONTROLLER</button>
                     </div>
+                    <div class="tv-mode-row" id="tvModeRow">
+                        <button id="tvModeFfa" class="tv-mode-chip on" type="button">FREE FOR ALL</button>
+                        <button id="tvModeTeams" class="tv-mode-chip" type="button">👥 TEAMS</button>
+                        <label class="tv-options hidden" id="tvTeamCountLabel">TEAMS <input type="number" id="tvTeamCount" min="2" max="8" value="2"></label>
+                    </div>
+                    <div class="tv-team-summary" id="tvTeamSummary"></div>
                     <label class="tv-options">VIRUSES <input type="number" id="tvVirusCount" min="1" max="30" value="5"></label>
                     <div class="tv-actions">
                         <button id="tvAddCpu" class="menu-button secondary-button tv-add-cpu" type="button">
@@ -2091,6 +2131,9 @@
                 showRoomCode('❌ Invalid room code! Must be 4 letters.', true);
             }
         };
+
+        // Replays: watch the last 100 games back (replays.html)
+        document.getElementById('replaysBtn').onclick = () => { location.href = '/replays.html'; };
 
         // Rules button
         document.getElementById('rulesBtn').onclick = function() {
