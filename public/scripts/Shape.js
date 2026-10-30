@@ -370,8 +370,8 @@ export class Pill extends Shape {
             if (this.rotation-- == 0) this.rotation = 3
 
         if (this.rotation == Rotation.HORIZONTAL && this.centerField.x == this.board.width - 1) {
-            this.pieces[1].setField(this.fieldTo(Direction.LEFT))
-            this.pieces[0].setField(this.centerField)
+            this.pieces[0].setField(this.fieldTo(Direction.LEFT))
+            this.pieces[1].setField(this.centerField)
         } else if (this.rotation == Rotation.HORIZONTAL_REVERSED && this.centerField.x == this.board.width - 1) {
             this.pieces[0].setField(this.centerField)
             this.pieces[1].setField(this.fieldTo(Direction.LEFT))

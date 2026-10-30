@@ -3,7 +3,7 @@
  * =============================================
  *
  * This page shows every player's board; each player scans the QR code and uses
- * their phone as the controller (controller.html). 1 to 8 players:
+ * their phone as the controller (controller.html). 1 to 20 players:
  *
  * - This page runs all the games. Each player attacks a target: the next player
  *   still in, going round the circle. A player whose bottle fills up is out and
@@ -18,7 +18,8 @@
  *   lobby, A on your own controller is the same as READY on the phone.
  * - A player can show their own board on their phone (a switch on the phone):
  *   this page sends them a picture of it (Board.snapshot()). With five or more
- *   players every phone shows it.
+ *   players every phone shows it, because the boards get small here. From nine
+ *   boards the name tags grow and the targets are left to the phones (layout()).
  * - ADD CPU adds computer players (CPU #1, CPU #2...) that take a slot like a
  *   phone; this page plays their boards (scripts/cpuPlayer.js).
  * - TEAMS: 2-8 teams named by colour (TEAMS). Phones pick theirs before READY;
@@ -34,7 +35,7 @@
 import { attackSent, attackReceived } from "./attackFx.js"
 import { startCpu } from "./cpuPlayer.js"
 
-const MAX_PLAYERS = 8
+const MAX_PLAYERS = 20
 // Teams match: names and colours (same list in controller.html and replays.html)
 const TEAMS = [['RED', '#ff4d6d'], ['BLUE', '#4dc3ff'], ['GREEN', '#00ff66'], ['YELLOW', '#ffd60a'], ['PURPLE', '#c77dff'], ['ORANGE', '#ff9f1c'], ['TEAL', '#2ee6d6'], ['PINK', '#ff70d9']]
 const TV_KEYS = { left: 'a', right: 'd', rotateLeft: 'w', rotateRight: 'Shift', drop: 's', hold: 'c' }
@@ -43,6 +44,8 @@ const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }]
 const BOARD_W = 960 + 14       // game-element plus its border
 const BOARD_H = 576 + 14
 const TAG_H = 56               // name tag over each board (index.html: 50px tall + 6px below)
+const TAG_H_MANY = 102         // ...with MANY_BOARDS or more (body.tv-many: 96px tall + 6px below)
+const MANY_BOARDS = 9
 const GAP = 24                 // between boards (index.html: body.tv-mode .ai-boards-row gap)
 const EDGE = 16                // room left around the edge of the screen
 const STACK_BIAS = 0.04        // stack in more rows when that's at most this much smaller
@@ -194,13 +197,14 @@ function renderLobby() {
         slots.appendChild(waiting)
     }
     slots.classList.toggle('many', players.length >= 4)
+    slots.classList.toggle('crowded', players.length >= 9)
     $('tvCount').textContent = `${connected.length} / ${MAX_PLAYERS} PLAYERS`
 
     const qrCard = $('tvQrCard')
     if (open !== null && tv.code) {
         const url = `${tv.joinOrigin}/controller.html?room=${tv.code}&player=${open}` + (tv.soloOnly ? '&solo=1' : '')
         qrCard.classList.remove('hidden')
-        qrCard.className = qrCard.className.replace(/\btv-p\d\b/g, '').trim() + ' tv-p' + open
+        qrCard.className = qrCard.className.replace(/\btv-p\d+\b/g, '').trim() + ' tv-p' + open
         $('tvQrLabel').textContent = tv.soloOnly ? 'SCAN WITH YOUR PHONE' : 'PLAYER ' + open + ': SCAN TO JOIN'
         $('tvQrUrl').textContent = url
         if (tv.qrUrl !== url) {
@@ -403,6 +407,8 @@ function layout() {
     const row = document.querySelector('.ai-boards-row')
     if (!row || !document.body.classList.contains('tv-mode')) return
     const count = Math.max(1, row.querySelectorAll(':scope > .game-container:not(.hidden):not(.leaving)').length)
+    document.body.classList.toggle('tv-many', count >= MANY_BOARDS)
+    const tagH = count >= MANY_BOARDS ? TAG_H_MANY : TAG_H
     // Every way to split them into rows; the biggest boards win. A layout with more rows
     // (two on top, one below) wins when it's nearly as big: it fills the screen better
     // than one long strip.
@@ -410,7 +416,7 @@ function layout() {
     for (let cols = 1; cols <= count; cols++) {
         const rows = Math.ceil(count / cols)
         const width = cols * BOARD_W + (cols - 1) * GAP
-        const height = rows * (BOARD_H + TAG_H) + (rows - 1) * GAP
+        const height = rows * (BOARD_H + tagH) + (rows - 1) * GAP
         layouts.push({ cols, width, scale: Math.min((window.innerWidth - EDGE) / width, (window.innerHeight - EDGE) / height) })
     }
     const biggest = Math.max(...layouts.map(l => l.scale))

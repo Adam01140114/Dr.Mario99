@@ -336,11 +336,11 @@ function generateNewGameData(roomCode, forceNew = false) {
  */
 /**
  * Per-socket limits on how many of each message a client may send per second.
- * Normal play stays far below them (a TV with 8 phones sends about 160 board
+ * Normal play stays far below them (a TV with 20 phones sends at most 400 board
  * pictures a second); anything over is dropped, so one client can't flood the
  * server and slow everyone else down.
  */
-const RATE_LIMITS = { tvState: 400, tvInput: 60, partyBoard: 120, partyAttack: 30, log: 12, logPing: 2, default: 40 };
+const RATE_LIMITS = { tvState: 1000, tvInput: 60, partyBoard: 120, partyAttack: 30, log: 12, logPing: 2, default: 40 };
 function rateLimit(socket) {
     let windowStart = Date.now();
     let counts = {};
@@ -623,7 +623,7 @@ io.on('connection', (socket) => {
  * pairs phones with the host and relays presses, results and (when a phone shows
  * its own board) the board pictures.
  *
- * 1 to 8 players. One player plays solo (levels, like single player); five or
+ * 1 to 20 players. One player plays solo (levels, like single player); five or
  * more always show the game on their phones. Single player's PHONE choice opens
  * a room for one phone (`solo`) that starts as soon as the phone joins.
  *
@@ -647,7 +647,7 @@ io.on('connection', (socket) => {
  * Socket rooms: the host is alone in `tvh:<code>`, the phones share `tvp:<code>`.
  */
 const tvRooms = {};
-const TV_MAX_PLAYERS = 8;
+const TV_MAX_PLAYERS = 20;
 const TV_PHONE_SCREEN_ABOVE = 4; // more players than this: the game always shows on the phones
 const TV_ACTIONS = ['left', 'right', 'rotateLeft', 'rotateRight', 'drop', 'hold', 'pause'];
 const TV_INPUTS = ['phone', 'controller'];

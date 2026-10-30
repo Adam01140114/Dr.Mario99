@@ -23,7 +23,7 @@ node tools/gamelog.js grep latest input-ignored # events matching a type or text
 node tools/gamelog.js audit latest              # find glitches by itself (floating pieces, virus counts, stuck pills...)
 ```
 
-The user can watch any game back at `/replays` (replays.html), which plays the `keyframe` / `frame` events. To check the game itself after changing gameplay code, run a TV Room with 8 CPUs (ADD CPU PLAYER ×8, START GAME), let it finish, then `audit latest`.
+The user can watch any game back at `/replays` (replays.html), which plays the `keyframe` / `frame` events. To check the game itself after changing gameplay code, run a TV Room with 8 CPUs (ADD CPU PLAYER ×8, START GAME), let it finish, then `audit latest`. For anything about how the TV Room copes with many players, use the full 20.
 
 `<when>` can also be a time of day (`15:42:07`), `+93.5` (seconds into the game) or `error` / `error:2`.
 

@@ -15,8 +15,8 @@
 
 "use strict"
 
-// TV Room player colours (index.html .tv-p1 ... .tv-p8, controller.html body.p1 ... body.p8)
-const PLAYER_COLORS = { 1: "#ff4d6d", 2: "#4dc3ff", 3: "#ffd60a", 4: "#00ff66", 5: "#c77dff", 6: "#ff9f1c", 7: "#2ee6d6", 8: "#ff70d9" }
+// TV Room player colours (index.html .tv-p1 ... .tv-p20, controller.html body.p1 ... body.p20)
+const PLAYER_COLORS = { 1: "#ff4d6d", 2: "#4dc3ff", 3: "#ffd60a", 4: "#00ff66", 5: "#c77dff", 6: "#ff9f1c", 7: "#2ee6d6", 8: "#ff70d9", 9: "#f1f5f9", 10: "#b4ff39", 11: "#8093ff", 12: "#ff8a6b", 13: "#d9a066", 14: "#8dffcf", 15: "#e040fb", 16: "#c9a227", 17: "#a8e6ff", 18: "#ffb3c7", 19: "#d7c4ff", 20: "#9aa93a" }
 const DEFAULT_COLOR = "#00ffff"
 const FLIGHT_MS = 520
 

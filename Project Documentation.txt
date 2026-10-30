@@ -279,7 +279,7 @@ nobody plays with lag (`public/scripts/partyClient.js`; server: PARTIES in
 TV ROOM (PHONES AS CONTROLLERS)
 -------------------------------
 The computer (usually on a TV) shows every player's board; each player scans a
-QR code and uses their phone as the controller. 1 to 8 players. The TV side is
+QR code and uses their phone as the controller. 1 to 20 players. The TV side is
 `public/scripts/tvHost.js`, the phone is `public/controller.html`, the server
 side is the TV ROOM section of `server.js`.
 
@@ -290,7 +290,7 @@ side is the TV ROOM section of `server.js`.
   the next open slot (1-8), on the computer's Wi-Fi address when the page is
   opened on localhost (`os.networkInterfaces()`), otherwise the site's own
   address. The phone enters a name; it appears on the TV and the QR moves on to
-  the next slot until 8 are in. A 9th phone is told the room is full
+  the next slot until 20 are in. A 21st phone is told the room is full
 - **Ready**: each phone's waiting screen has READY (`tvReady`, tap again to
   undo). When everyone in is ready (2+ players), the server tells the TV
   (`tvAutoStart`) and it starts - nobody touches the computer. Alone in the
@@ -307,6 +307,10 @@ side is the TV ROOM section of `server.js`.
   for everyone and the switches are locked (`boardForced`). Pictures are sent
   only when they change, up to 20 a second, over the direct link when there
   is one (else `tvState`)
+- **Big rooms (9 to 20 players)**: the lobby switches to small slots in a wider
+  panel with a smaller QR code (`.tv-slots.crowded`), and from 9 boards the name
+  tags grow and leave out the target, which the phones still show (`body.tv-many`,
+  `TAG_H_MANY`). As players go out the boards spread out and the tags shrink back
 - **CPU players**: ADD CPU PLAYER on the TV lobby adds a computer player in the
   next empty slot - CPU #1, CPU #2... (the lowest free number) - and ✕ on its
   slot takes it out (`tvAddCpu` / `tvRemoveCpu`). A CPU is always ready (so one

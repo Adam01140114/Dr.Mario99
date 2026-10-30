@@ -142,7 +142,7 @@
         const KEY = new URLSearchParams(location.search).get('key');
         const withKey = url => KEY ? url + (url.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(KEY) : url;
         // Player colours (index.html .tv-p1 ...) and team colours (tvHost.js TEAMS)
-        const PLAYER_COLORS = ['#ff4d6d', '#4dc3ff', '#ffd60a', '#00ff66', '#c77dff', '#ff9f1c', '#2ee6d6', '#ff70d9'];
+        const PLAYER_COLORS = ['#ff4d6d', '#4dc3ff', '#ffd60a', '#00ff66', '#c77dff', '#ff9f1c', '#2ee6d6', '#ff70d9', '#f1f5f9', '#b4ff39', '#8093ff', '#ff8a6b', '#d9a066', '#8dffcf', '#e040fb', '#c9a227', '#a8e6ff', '#ffb3c7', '#d7c4ff', '#9aa93a'];
         const TEAMS = [['RED', '#ff4d6d'], ['BLUE', '#4dc3ff'], ['GREEN', '#00ff66'], ['YELLOW', '#ffd60a'], ['PURPLE', '#c77dff'], ['ORANGE', '#ff9f1c'], ['TEAL', '#2ee6d6'], ['PINK', '#ff70d9']];
         // One character per cell: '.' empty, 'a' + index into this list (components.js SPRITE_CODES)
         const SPRITES = [];
@@ -193,7 +193,7 @@
                 if (names) {
                     for (const [n, name] of Object.entries(names)) {
                         const b = document.createElement('b');
-                        b.style.color = PLAYER_COLORS[(n - 1) % 8];
+                        b.style.color = PLAYER_COLORS[(n - 1) % PLAYER_COLORS.length];
                         b.textContent = name;
                         players.append(b, document.createTextNode('  '));
                     }
@@ -348,7 +348,7 @@
                 const el = document.createElement('div');
                 el.className = 'board';
                 el.id = 'board' + p;
-                el.style.setProperty('--c', PLAYER_COLORS[(p - 1) % 8]);
+                el.style.setProperty('--c', PLAYER_COLORS[(p - 1) % PLAYER_COLORS.length]);
                 el.innerHTML = '<div class="tag"><span class="num"></span><span class="name"></span></div>'
                     + '<div class="body"><canvas width="192" height="408"></canvas><div class="hud">'
                     + '<div>SCORE<b data-s>0</b></div><div>VIRUS<b data-v>0</b></div><div>LEVEL<b data-l>00</b></div>'

@@ -28,7 +28,7 @@ const DIR = path.join(ROOT, 'games');
 const MARKERS = path.join(ROOT, 'markers.jsonl'); // every 🐞, across games
 const INDEX = path.join(ROOT, 'index.json');      // a summary of each game
 const KEEP = 100;
-const MAX_BYTES = 25 * 1024 * 1024; // one game's file stops growing past this
+const MAX_BYTES = 60 * 1024 * 1024; // one game's file stops growing past this (a 20-player game writes up to about 5 MB a minute)
 const FLUSH_MS = 250;
 const ID = /^\d{8}-\d{6}-[a-z0-9-]{2,40}$/;
 // Events that don't make a game longer (a page left open on the result screen keeps sending these)
