@@ -42,7 +42,7 @@ export function startCpu(game, seed = Math.random()) {
             pill = current
             plan = choosePlace(board, current, sloppy)
             steps = 0
-            glog('cpu-plan', { p: game.playerNumber, colors: current.pieces.map(piece => piece.color), plan })
+            glog('cpu-plan', { p: game.playerNumber, colors: current.pieces.map(piece => piece.color), plan, ...(plan ? {} : { topRow: board.fields.map(column => (column[SPAWN_Y].locked ? '#' : column[SPAWN_Y].isTaken() ? 'o' : '.')).join('') }) })
         }
         // No good place, or stuck turning against a wall: just drop it
         if (plan && steps === 40) glog('cpu-gave-up', { p: game.playerNumber, plan, rot: current.rotation, x: current.centerField.x })
@@ -170,5 +170,7 @@ function scorePlace(grid, cells, isVirus, width, height) {
     const top = Math.max(...cells.map(cell => cell.y))
     score -= top * 1.2
     if (top >= DANGER_Y) score -= 80
+    // Right under the mouth of the bottle: the next pill has nowhere to go
+    if (cells.some(({ x, y }) => y === SPAWN_Y - 1 && (x === 3 || x === 4))) score -= 200
     return score
 }

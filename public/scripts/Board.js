@@ -305,9 +305,13 @@ export class PlayingBoard extends Board {
         return true
     }
 
-    /** Columns junk can drop down: full ones would put it on top of what's there */
+    /**
+     * Columns junk can drop down: full ones would put it on top of what's there. It can't
+     * stop in the mouth of the bottle either: the next pill came in on top of it (a virus
+     * vanished but still counted).
+     */
     junkColumns() {
-        return [0, 1, 2, 3, 4, 5, 6, 7].filter(x => !this.fields[x][JUNK_ROW].isTaken() && !this.fields[x][JUNK_ROW].locked && this.fields[x][JUNK_ROW].color === Color.NONE)
+        return [0, 1, 2, 3, 4, 5, 6, 7].filter(x => !this.fields[x][JUNK_ROW].isTaken() && !this.fields[x][JUNK_ROW].locked && this.fields[x][JUNK_ROW].color === Color.NONE && !((x === 3 || x === 4) && this.fields[x][14].isTaken()))
     }
 
     /** Junk on its way: where and what it will be, see-through and blinking until it drops */
