@@ -33,6 +33,9 @@ const BOARD_MS = 200     // how often this page sends its boards' changes to the
 const KEYFRAME_MS = 2000 // ...and a full picture this often, for anyone who missed some
 const BOARD_W = 960 + 14
 const BOARD_H = 576 + 14
+const BOTTLE = { x: 383, y: 48, w: 258, h: 505 } // what shows of the board on a phone (index.html: the clip-path)
+const HUD_W = 80         // the columns of numbers either side of the bottle on a phone
+const HUD_MS = 120
 
 const party = window.party = {
     code: null,
@@ -274,6 +277,7 @@ async function startMatch(data) {
     if (window.gameLog) window.gameLog.begin('party', { code: data.code, slot: data.slot, round: data.round, roster: data.roster, names: data.names, cpus: mine, freePlay: party.freePlay, gameData: data.gameData })
     glog('party-match-start', { roster: data.roster, names: data.names, targets: data.targets, local })
     match.sender = setInterval(sendBoards, BOARD_MS)
+    match.hud = setInterval(updateHud, HUD_MS)
     layout()
     setTimeout(layout, 50)
 }
@@ -291,6 +295,7 @@ function teardownMatch() {
     const match = party.match
     if (!match) return
     clearInterval(match.sender)
+    clearInterval(match.hud)
     for (const stop of Object.values(match.cpuStops)) stop()
     const row = document.querySelector('.ai-boards-row')
     for (const [n, game] of Object.entries(match.games)) {
@@ -367,7 +372,8 @@ function makeOpponents() {
         card.innerHTML = '<div class="op-name"><span class="op-dot"></span><span class="op-label"></span></div>'
             + '<canvas width="192" height="408"></canvas><div class="op-info"><span class="op-virus">VIRUS --</span><span class="op-target"></span></div><div class="op-status hidden"></div>'
         const isCpu = n in match.cpus && !match.disguised.has(n) // Free Play's CPUs look like anyone else
-        card.querySelector('.op-label').textContent = (isCpu ? '🤖 ' : '') + match.names[n]
+        card.querySelector('.op-label').textContent = match.names[n]
+        if (isCpu) card.querySelector('.op-label').insertAdjacentHTML('afterbegin', '<span class="op-bot">🤖 </span>')
         panel.appendChild(card)
         match.views[n] = { grid: null, ctx: card.querySelector('canvas').getContext('2d'), card }
     }
@@ -585,6 +591,9 @@ function layout() {
     if (!container) return
     const panel = $('partyOpponents')
     const count = Object.keys(match.views).length
+    const phone = innerWidth <= 768 || (innerHeight <= 500 && matchMedia('(pointer: coarse)').matches)
+    document.body.classList.toggle('phone-play', phone)
+    if (phone) return layoutPhone(container, panel, count)
     const narrow = innerWidth < 900
     let panelW = 0, panelH = 0
     if (narrow) {
@@ -608,21 +617,101 @@ function layout() {
 }
 window.addEventListener('resize', layout)
 
-function sizeCards(panel, count, width, height) {
-    if (!count) return
-    const narrow = innerWidth < 900
-    let cell = 4
-    if (narrow) {
-        cell = Math.max(3, Math.floor((height - 34) / 17))
+/** A phone: just the bottle, as big as fits between the other players and the buttons */
+function layoutPhone(container, panel, count) {
+    const landscape = innerWidth > innerHeight
+    document.body.classList.toggle('phone-landscape', landscape)
+    const controls = $('touchControls')
+    const controlsH = controls.offsetHeight
+    document.body.style.setProperty('--party-controls', controlsH + 'px')
+    const room = (w, h) => Math.min(h / BOTTLE.h, (w - 2 * HUD_W - 16) / BOTTLE.w)
+    let area
+    panel.classList.toggle('many', count >= 4)
+    if (landscape) {
+        const scale = room(innerWidth - 2 * 170, innerHeight - 12)
+        const center = BOTTLE.w * scale + 2 * HUD_W + 16
+        const side = (innerWidth - center) / 2
+        controls.style.setProperty('--party-center', center + 'px')
+        area = { x: side, y: 6, w: center, h: innerHeight - 12 }
+        const h = innerHeight - controlsH
+        panel.style.cssText = `left:0;top:0;width:${side}px;height:${h}px`
+        sizeCardsToFit(panel, count, side, h)
     } else {
-        for (let cols = 1; cols <= count; cols++) {
-            const rows = Math.ceil(count / cols)
-            const w = (width - 24 - (cols - 1) * 12) / cols
-            const h = (height - 24 - (rows - 1) * 12) / rows - 44
-            cell = Math.max(cell, Math.floor(Math.min(w / 8, h / 17)))
+        const strip = count ? Math.round(Math.min(92, innerHeight * 0.13)) : 0
+        area = { x: 0, y: strip + 6, w: innerWidth, h: innerHeight - strip - controlsH - 12 }
+        panel.style.cssText = `left:0;right:0;top:0;height:${strip}px`
+        const cell = (strip - 12 - (count >= 4 ? 14 : 0)) / 17
+        for (const canvas of panel.querySelectorAll('canvas')) {
+            canvas.style.width = cell * 8 + 'px'
+            canvas.style.height = cell * 17 + 'px'
         }
     }
-    cell = Math.min(cell, 26)
+    const scale = room(area.w, area.h)
+    const left = area.x + (area.w - BOTTLE.w * scale) / 2
+    const top = area.y + (area.h - BOTTLE.h * scale) / 2
+    container.style.position = 'fixed'
+    container.style.margin = '0'
+    container.style.transformOrigin = 'top left'
+    container.style.transform = `scale(${scale})`
+    container.style.left = Math.round(left - BOTTLE.x * scale) + 'px'
+    container.style.top = Math.round(top - BOTTLE.y * scale) + 'px'
+    $('hudLeft').style.cssText = `left:${left - HUD_W - 6}px;top:${top}px;width:${HUD_W}px`
+    $('hudRight').style.cssText = `left:${left + BOTTLE.w * scale + 6}px;top:${top}px;width:${HUD_W}px`
+    updateHud()
+}
+
+/** On a phone: what the board's side panels would show */
+function updateHud() {
+    const match = party.match
+    const game = match && match.games[party.slot]
+    if (!game || !game.board || !game.board.fields || !document.body.classList.contains('phone-play')) return
+    const { v, s, l, n, h, hu } = game.board.snapshot()
+    setText('hudVirus', String(v).padStart(2, '0'))
+    setText('hudScore', String(s))
+    setText('hudLevel', String(l))
+    setPill('hudNext', n)
+    setPill('hudHold', h)
+    $('hudHold').classList.toggle('used', !!hu)
+}
+
+function setText(id, text) {
+    const el = $(id)
+    if (el.textContent !== text) el.textContent = text
+}
+
+function setPill(id, colors) {
+    const el = $(id)
+    const key = colors ? colors.join() : ''
+    if (el.dataset.pill === key) return
+    el.dataset.pill = key
+    el.innerHTML = ''
+    if (colors) colors.forEach((color, i) => {
+        const img = document.createElement('img')
+        img.alt = ''
+        img.src = `./img/${color}_${i ? 'right' : 'left'}.png`
+        el.appendChild(img)
+    })
+}
+
+function sizeCards(panel, count, width, height) {
+    if (!count) return
+    if (innerWidth >= 900) return sizeCardsToFit(panel, count, width, height)
+    setCardCell(panel, Math.min(26, Math.max(3, Math.floor((height - 34) / 17))))
+}
+
+function sizeCardsToFit(panel, count, width, height) {
+    if (!count) return
+    let cell = 4
+    for (let cols = 1; cols <= count; cols++) {
+        const rows = Math.ceil(count / cols)
+        const w = (width - 24 - (cols - 1) * 12) / cols
+        const h = (height - 24 - (rows - 1) * 12) / rows - 44
+        cell = Math.max(cell, Math.floor(Math.min(w / 8, h / 17)))
+    }
+    setCardCell(panel, Math.min(cell, 26))
+}
+
+function setCardCell(panel, cell) {
     for (const canvas of panel.querySelectorAll('canvas')) {
         canvas.style.width = cell * 8 + 'px'
         canvas.style.height = cell * 17 + 'px'

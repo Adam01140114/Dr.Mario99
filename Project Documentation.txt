@@ -263,6 +263,12 @@ nobody plays with lag (`public/scripts/partyClient.js`; server: PARTIES in
   circle (partyAttack -> partyJunk to whoever runs that board). A full bottle
   is out (partyOut); clearing your board wins (partyCleared); the last one
   left wins (partyOver). Keyboard, the touch buttons and a controller all work
+- **On a phone** (`layoutPhone`, `body.phone-play`, also in landscape): only the
+  bottle shows (a clip-path on the board, `BOTTLE`), with VIRUS, SCORE, LEVEL,
+  NEXT and HOLD beside it (`#partyHud`, `updateHud`), the other players as a strip
+  above and large thumb buttons below: move and drop on the left, turn and hold
+  on the right. A tap on any button is one step however long the thumb stays
+  down; a held move repeats after a moment, a held DROP keeps dropping
 - **Results**: standings; the host gets PLAY AGAIN and BACK TO THE ROOM,
   everyone else waits for the host; LEAVE
 - **Dropping out**: a player who loses the connection mid-match has 8 s
