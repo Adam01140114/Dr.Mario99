@@ -586,6 +586,7 @@ function renderResultButtons() {
         wait.textContent = 'Waiting for ' + ((party.players.find(p => p.host) || {}).name || 'the host') + ' to start the next match...'
         buttons.appendChild(wait)
     }
+    const share = button('📣 SHARE THIS GAME', () => window.shareGame('share', share), true)
     button('LEAVE', () => {
         socket.emit('partyLeave')
         location.href = location.pathname

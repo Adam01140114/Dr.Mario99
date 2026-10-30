@@ -588,6 +588,18 @@ of server logs, and the page then keeps it on that device.
 - Its request also wakes the server, so while the Mac is on a new player is less
   likely to wait for a server that fell asleep.
 
+SHARING AND SEARCH
+------------------
+- index.html has a description and link-preview tags; `public/og.png` is the preview
+  picture and `public/icon.svg` the icon. Neither uses Nintendo's characters.
+- The game is promoted openly as Dr. Mario, always with the line that it's an
+  unofficial fan project, not affiliated with Nintendo (menu, previews, README, posts).
+- SHARE THIS GAME on the Multiplayer / Free Play results and on the phone's TV Room
+  result (`scripts/share.js`): the share sheet, or the link copied. Its `?ref=` shows
+  on the stats page (`share`, `tv-share`).
+- `robots.txt` and `sitemap.xml` are for search engines; the file named after a key in
+  `public/` proves ownership of the site to IndexNow (Bing and others).
+
 RUNNING IT FOR REAL (PRODUCTION / RENDER)
 -----------------------------------------
 Measured on this Mac with 300 simulated players (50 rooms of 6, every board

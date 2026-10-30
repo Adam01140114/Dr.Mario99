@@ -17,7 +17,18 @@
             document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
         })();
     </script>
-    <title>Dr. Mario 99</title>
+    <title>Dr. Mario 99: Dr. Mario Like Never Before</title>
+    <meta name="description" content="Dr. Mario like never before: battle up to 20 players on one TV with your phones as controllers, or up to 8 online. Free, in your browser, no download. Unofficial fan project, not affiliated with Nintendo.">
+    <link rel="canonical" href="https://dr-mario99.onrender.com/">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://dr-mario99.onrender.com/">
+    <meta property="og:title" content="Dr. Mario 99: Dr. Mario like never before">
+    <meta property="og:description" content="Dr. Mario like never before: battle up to 20 players on one TV with your phones as controllers, or up to 8 online. Free, in your browser, no download. Unofficial fan project, not affiliated with Nintendo.">
+    <meta property="og:image" content="https://dr-mario99.onrender.com/og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
     <script>
         // On the live site, debug logging (there's a lot of it) costs time every frame: keep
         // warnings and errors, drop the rest. ?debug in the address keeps everything.
@@ -291,6 +302,7 @@
             background: linear-gradient(45deg, #4ecdc4, #45b7aa);
         }
 
+        .fan-note { margin: 18px auto 0; max-width: 420px; text-align: center; font-size: 8px; line-height: 1.8; color: rgba(255, 255, 255, 0.5); }
         .room-section {
             display: flex;
             gap: 20px;
@@ -1744,6 +1756,7 @@
                     <span class="emoji">🎬</span>REPLAYS
                 </button>
             </div>
+            <p class="fan-note">Unofficial fan project. Not affiliated with or endorsed by Nintendo. Dr. Mario is a trademark of Nintendo.</p>
         </div>
 
         <!-- Rules overlay (hidden by default) -->
@@ -2862,6 +2875,7 @@
     </script>
     <!-- Game log: everything that happens in a game, for tracking down glitches -->
     <script src="./scripts/hello.js"></script>
+    <script src="./scripts/share.js"></script>
     <script type="module" src="./scripts/gameLog.js"></script>
     <!-- TV Room: the computer shows the boards, phones are the controllers -->
     <script type="module" src="./scripts/tvHost.js"></script>

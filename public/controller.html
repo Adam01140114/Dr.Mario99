@@ -6,6 +6,8 @@
     <meta name="theme-color" content="#1a1a2e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Dr. Mario 99 - Controller</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <meta name="robots" content="noindex">
     <script>
         // Phones: a double tap or a pinch must never zoom the game. iOS ignores user-scalable=no,
         // so stop it here too. Buttons and text boxes need their taps, and touch-action covers them.
@@ -557,6 +559,7 @@
         <div class="result-title" id="resultTitle"></div>
         <p id="resultMessage"></p>
         <button class="big-button rematch-button" id="rematchButton" type="button">🔁 REMATCH</button>
+        <button class="big-button solo-button" id="shareButton" type="button">📣 SHARE THIS GAME</button>
         <p id="rematchStatus" class="rematch-status"></p>
         <p id="resultNext" class="hidden">Scan the new QR code on the TV to play again.</p>
     </section>
@@ -1297,5 +1300,7 @@
         document.addEventListener('touchmove', (e) => { if (screen === 'controller') e.preventDefault(); }, { passive: false });
     </script>
     <script src="/scripts/hello.js"></script>
+    <script src="/scripts/share.js"></script>
+    <script>document.getElementById('shareButton').onclick = function () { window.shareGame('tv-share', this) };</script>
 </body>
 </html>
