@@ -28,6 +28,7 @@ const path = require('path');
 const cors = require('cors');
 const os = require('os');
 const QRCode = require('qrcode');
+const analytics = require('./analytics');
 const fs = require('fs');
 const zlib = require('zlib');
 const crypto = require('crypto');
@@ -129,6 +130,13 @@ app.get('/logs/:id', (req, res) => {
     const text = gameLogs.read(req.params.id);
     if (text == null) return res.status(404).send('No such game');
     res.type('text/plain').send(text);
+});
+
+// Player stats (analytics.js, stats.html): for the owner, like the game logs
+app.get('/stats', (req, res) => res.redirect('/stats.html' + (req.query.key ? '?key=' + encodeURIComponent(req.query.key) : '')));
+app.get('/stats.json', (req, res) => {
+    if (!canReadLogs(req)) return res.status(404).json({ error: 'not allowed' });
+    res.set('Cache-Control', 'no-store').json(analytics.report(liveGames()));
 });
 
 // TV Room shortcut: /tv opens the game and starts a TV Room right away
@@ -360,6 +368,7 @@ function rateLimit(socket) {
 io.on('connection', (socket) => {
     rateLimit(socket);
     registerGameLog(socket);
+    registerStats(socket);
     registerTvRoomHandlers(socket);
     registerPartyHandlers(socket);
     
@@ -807,6 +816,7 @@ function registerTvRoomHandlers(socket) {
         const showGame = payload.showGame !== undefined ? !!payload.showGame : !!(previous && previous.showGame);
         const team = previous && previous.clientId === clientId ? previous.team : null; // coming back: same team
         room.players[slot] = { name, clientId, socketId: socket.id, connected: true, input, inputAt, showGame, team };
+        analytics.named(socket.data.statsId, name);
         socket.data.tvPlayer = { code, player: slot };
         // What this phone logged before it joined goes in the room's log too
         if (socket.data.preLog && socket.data.preLog.length) {
@@ -1122,9 +1132,42 @@ function startTvRound(code) {
     });
     if (room.preLog.length) gameLogs.write(room.logId, 'lobby', room.preLog);
     room.preLog = [];
+    for (const n of roster) {
+        const socket = io.sockets.sockets.get(room.players[n].socketId);
+        if (socket) analytics.played(socket.data.statsId, room.soloOnly ? 'phone' : 'tv');
+    }
     const round = { code, names: tvNames(room, roster), roster, cpus, teams: room.teams, boardForced: tvBoardForced(room), logId: room.logId };
     io.to(room.hostId).emit('tvGameStarted', { ...round, gameData });
     io.to(`tvp:${code}`).emit('tvGameStarted', round);
+}
+
+/* ---------- Player stats (analytics.js) ---------- */
+
+const SOLO_MODES = ['single', 'ai'];
+
+function registerStats(socket) {
+    const connectedAt = Date.now();
+    socket.on('hello', (hello) => {
+        if (socket.data.statsId !== undefined) return;
+        socket.data.statsId = analytics.visit(hello, socket.handshake.headers['user-agent']);
+    });
+    socket.on('disconnect', () => analytics.left(socket.data.statsId, (Date.now() - connectedAt) / 1000));
+}
+
+/** Every game going on right now, for /stats. CPUs are only counted, even the ones with real names */
+function liveGames() {
+    const games = [];
+    const room = (mode, code, state, players) => {
+        const list = Object.values(players);
+        const people = list.filter(p => !p.cpu);
+        if (people.length) games.push({ mode, code, state, players: people.map(p => p.name), cpus: list.length - people.length });
+    };
+    for (const [code, r] of Object.entries(tvRooms)) room(r.soloOnly ? 'phone' : 'tv', code, r.state, r.players);
+    for (const [code, p] of Object.entries(parties)) room(p.freePlay ? 'free-play' : 'multiplayer', code, p.state, p.players);
+    for (const socket of io.sockets.sockets.values()) {
+        if (socket.data.soloMode) games.push({ mode: socket.data.soloMode, code: null, state: 'playing', players: [null], cpus: 0 });
+    }
+    return games;
 }
 
 /* ---------- Game logs (gameLogs.js) ---------- */
@@ -1191,6 +1234,9 @@ function registerGameLog(socket) {
         const mode = String(meta.mode || 'game').replace(/[^a-z-]/gi, '').slice(0, 16) || 'game';
         const code = meta.code ? String(meta.code).replace(/[^a-z0-9]/gi, '').slice(0, 8) : undefined;
         const id = gameLogs.start(mode, { ...meta, mode, code, socketId: socket.id, ua });
+        const statsMode = mode === 'party' ? (meta.freePlay ? 'free-play' : 'multiplayer') : mode;
+        analytics.played(socket.data.statsId, statsMode);
+        socket.data.soloMode = SOLO_MODES.includes(mode) ? mode : null;
         if (socket.data.preLog.length) gameLogs.write(id, 'before', socket.data.preLog);
         socket.data.preLog = [];
         socket.data.logId = id;
@@ -1344,6 +1390,7 @@ function addToParty(party, socket, name, clientId) {
     const slot = partySlots().find(n => !party.players[n]);
     if (!slot) return null;
     party.players[slot] = { name, clientId, socketId: socket.id, connected: true };
+    analytics.named(socket.data.statsId, name);
     socket.data.party = { code: party.code, slot };
     socket.join('party:' + party.code);
     return slot;

@@ -544,6 +544,26 @@ CLAUDE.md for how to read them (`node tools/gamelog.js`).
   when what it landed on was cleared; junk dropped into a full column landed
   on top of a virus (which vanished but still counted)
 
+PLAYER STATS
+------------
+`/stats` (`public/stats.html`) shows who is online and in which game, players per
+day (new and returning), how many come back, games by mode, where players came
+from and the latest players. It reads `/stats.json`, with the same access as the
+game logs: this computer, its Wi-Fi, or `?key=` set to `LOG_KEY`.
+
+- Every page runs `scripts/hello.js`: a random id kept in the browser's
+  localStorage, where it came from (`?ref=` or `utm_source` on the link, an invite,
+  the TV's QR code, or the referring site), phone or computer, and language. No IP
+  addresses, cookies or third parties. The rules say so.
+- `analytics.js` counts a visitor when a page says hello and a player when they
+  start a game (`logOpen`, or `startTvRound` for each phone). CPUs never count, not
+  even Free Play's with real names. One person on two devices counts twice.
+- Opening `/stats` turns off counting on that device (`statsIgnore`; a switch on the
+  page turns it back on), so the owner's own games don't inflate the numbers.
+- The numbers are saved to `analytics.json` beside the logs every 30 s and when the
+  server stops. On a host whose disk is wiped on every deploy they need a persistent
+  disk with `LOG_DIR` pointing at it; the page warns when that isn't set up.
+
 RUNNING IT FOR REAL (PRODUCTION / RENDER)
 -----------------------------------------
 Measured on this Mac with 300 simulated players (50 rooms of 6, every board

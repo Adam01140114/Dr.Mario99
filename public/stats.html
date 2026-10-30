@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Player Stats</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0b0f24;
+            --surface: #141a33;
+            --line: #2a3358;
+            --text: #eef1ff;
+            --dim: #a9b4dc;
+            --new: #3987e5;
+            --returning: #d95926;
+            --bar: #3987e5;
+            --live: #00ff66;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+        main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; }
+        header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+        h1 { margin: 0; font-size: 26px; }
+        h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; }
+        .dim { color: var(--dim); font-size: 13px; }
+        .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+        .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+        @media (max-width: 720px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        .tile b { display: block; font-size: 32px; line-height: 1.15; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .tile span { display: block; font-size: 13px; color: var(--dim); }
+        .tile small { display: block; margin-top: 4px; font-size: 12px; color: var(--dim); }
+        .tile.live b { color: var(--live); }
+        .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+        .warn { background: #33280a; border: 1px solid #8a6d12; border-radius: 12px; padding: 12px 16px; font-size: 14px; }
+        .hidden { display: none !important; }
+
+        .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 10px; font-size: 13px; color: var(--dim); }
+        .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; }
+        .chart { position: relative; height: 220px; margin-left: 30px; }
+        .grid-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--line); }
+        .grid-line span { position: absolute; right: 100%; margin-right: 8px; top: -9px; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+        .columns { position: absolute; inset: 0; display: flex; align-items: flex-end; }
+        .column { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; background: none; border: 0; padding: 0; outline-offset: -1px; }
+        .column:hover, .column:focus-visible { background: rgba(255, 255, 255, 0.06); }
+        .column i { display: block; width: min(70%, 16px); }
+        .column i:first-child { border-radius: 4px 4px 0 0; }
+        .axis { display: flex; margin: 6px 0 0 30px; }
+        .axis span { flex: 1 1 0; min-width: 0; font-size: 12px; color: var(--dim); text-align: center; white-space: nowrap; overflow: visible; }
+        #tip { position: fixed; z-index: 10; pointer-events: none; background: #05081a; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; white-space: nowrap; }
+        #tip b { font-variant-numeric: tabular-nums; }
+
+        .hbar { display: grid; grid-template-columns: 100px 1fr 44px; gap: 10px; align-items: center; padding: 4px 0; font-size: 14px; }
+        .hbar div { height: 12px; }
+        .hbar i { display: block; height: 100%; background: var(--bar); border-radius: 0 4px 4px 0; min-width: 2px; }
+        .hbar b { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .scroll { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { text-align: left; font-weight: 500; color: var(--dim); font-size: 13px; }
+        th, td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+        td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+        tr:last-child td { border-bottom: 0; }
+        .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--live); margin-right: 6px; }
+        .game { padding: 10px 0; border-bottom: 1px solid var(--line); }
+        .game:last-child { border-bottom: 0; }
+        .game b { font-weight: 600; }
+        summary { cursor: pointer; color: var(--dim); font-size: 13px; margin-top: 12px; }
+        .empty { color: var(--dim); font-size: 14px; }
+        .switch { margin-left: auto; font-size: 13px; color: var(--dim); display: flex; align-items: center; gap: 8px; }
+        .switch input { width: 18px; height: 18px; }
+    </style>
+</head>
+<body>
+<main>
+    <header>
+        <h1>Player stats</h1>
+        <span class="dim" id="since"></span>
+        <label class="switch"><input type="checkbox" id="countMe"> Count this device's games</label>
+    </header>
+    <div class="warn hidden" id="noDisk">These numbers are only in the server's memory and files, and start again from zero every time it restarts or redeploys. Keep them by giving it a persistent disk and setting LOG_DIR to that disk.</div>
+    <div class="warn hidden" id="noAccess">No access. Open this page with <code>?key=</code> set to the server's LOG_KEY.</div>
+
+    <section class="tiles" aria-label="Headline numbers">
+        <div class="card tile live"><b id="online">-</b><span>online now</span><small id="peak"></small></div>
+        <div class="card tile"><b id="today">-</b><span>played today</span><small id="todayV"></small></div>
+        <div class="card tile"><b id="week">-</b><span>played, last 7 days</span><small id="weekV"></small></div>
+        <div class="card tile"><b id="month">-</b><span>played, last 30 days</span><small id="monthV"></small></div>
+        <div class="card tile"><b id="total">-</b><span>players ever</span><small id="totalV"></small></div>
+        <div class="card tile"><b id="day1">-</b><span>came back next day</span><small id="day1N"></small></div>
+        <div class="card tile"><b id="day7">-</b><span>came back on day 7</span><small id="day7N"></small></div>
+        <div class="card tile"><b id="visit">-</b><span>average visit, 7 days</span></div>
+    </section>
+
+    <section class="card">
+        <h2>Players per day, last 30 days</h2>
+        <div class="legend"><span><i style="background:var(--new)"></i>New players</span><span><i style="background:var(--returning)"></i>Returning players</span></div>
+        <div class="chart" id="chart"></div>
+        <div class="axis" id="axis"></div>
+        <details>
+            <summary>Show as a table</summary>
+            <div class="scroll"><table id="dailyTable"></table></div>
+        </details>
+    </section>
+
+    <div class="two">
+        <section class="card">
+            <h2>Playing right now</h2>
+            <div id="games"></div>
+        </section>
+        <section class="card">
+            <h2>Games started by mode, last 30 days</h2>
+            <div id="modes"></div>
+        </section>
+    </div>
+
+    <section class="card">
+        <h2>Where players come from</h2>
+        <div class="scroll"><table id="sources"></table></div>
+        <p class="dim">Add <code>?ref=name</code> to any link you share (for example <code>?ref=reddit</code>) and it shows up here. "Came back" means they played again on a later day.</p>
+    </section>
+
+    <section class="card">
+        <h2>Recent players</h2>
+        <div class="scroll"><table id="recent"></table></div>
+        <p class="dim" id="devices"></p>
+    </section>
+</main>
+<div id="tip" class="hidden"></div>
+
+<script>
+    const $ = id => document.getElementById(id);
+    const search = location.search;
+    const MODES = { single: 'Single player', ai: 'AI mode', tv: 'TV Room', phone: 'Phone controller', 'free-play': 'Free Play', multiplayer: 'Multiplayer', online: 'Online room', room: 'Online room' };
+    const modeName = m => MODES[m] || m;
+
+    // Opening this page turns off counting on this device, so the owner's games don't count
+    const store = {
+        get: k => { try { return localStorage.getItem(k) } catch (e) { return null } },
+        set: (k, v) => { try { localStorage.setItem(k, v) } catch (e) { /* the switch just won't stick */ } },
+    };
+    if (store.get('statsIgnore') === null) store.set('statsIgnore', '1');
+    $('countMe').checked = store.get('statsIgnore') !== '1';
+    $('countMe').onchange = e => store.set('statsIgnore', e.target.checked ? '0' : '1');
+
+    const el = (tag, text, cls) => {
+        const node = document.createElement(tag);
+        if (text != null) node.textContent = text;
+        if (cls) node.className = cls;
+        return node;
+    };
+    const num = n => Number(n).toLocaleString();
+    const shortDate = date => new Date(date + 'T12:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    const percent = ({ cohort, returned }) => cohort ? Math.round(returned / cohort * 100) + '%' : '-';
+    const duration = s => s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60) + 's' : s + 's';
+
+    function table(node, heads, rows) {
+        node.replaceChildren();
+        const head = el('tr');
+        heads.forEach(([label, numeric]) => head.appendChild(el('th', label, numeric ? 'n' : '')));
+        node.appendChild(head);
+        for (const row of rows) {
+            const tr = el('tr');
+            row.forEach((cell, i) => {
+                const td = el('td', null, heads[i][1] ? 'n' : '');
+                if (cell instanceof Node) td.appendChild(cell); else td.textContent = cell;
+                tr.appendChild(td);
+            });
+            node.appendChild(tr);
+        }
+    }
+
+    function drawChart(daily) {
+        const chart = $('chart');
+        chart.replaceChildren();
+        const biggest = Math.max(...daily.map(d => d.new + d.returning), 0);
+        const step = biggest <= 4 ? 1 : Math.ceil(biggest / 4 / Math.pow(10, Math.floor(Math.log10(biggest / 4)))) * Math.pow(10, Math.floor(Math.log10(biggest / 4)));
+        const top = Math.max(Math.ceil(biggest / step) * step, 4);
+        for (let v = 0; v <= top; v += step) {
+            const line = el('div', null, 'grid-line');
+            line.style.bottom = (v / top * 100) + '%';
+            line.appendChild(el('span', num(v)));
+            chart.appendChild(line);
+        }
+        const columns = el('div', null, 'columns');
+        for (const d of daily) {
+            const column = el('button', null, 'column');
+            column.type = 'button';
+            column.setAttribute('aria-label', `${shortDate(d.date)}: ${d.new} new, ${d.returning} returning`);
+            for (const [count, color] of [[d.returning, 'var(--returning)'], [d.new, 'var(--new)']]) {
+                if (!count) continue;
+                const seg = el('i');
+                seg.style.height = (count / top * 100) + '%';
+                seg.style.background = color;
+                column.appendChild(seg);
+            }
+            const show = e => {
+                const tip = $('tip');
+                tip.replaceChildren(el('div', shortDate(d.date)));
+                for (const [label, value] of [['New', d.new], ['Returning', d.returning], ['Games', d.plays], ['Visitors', d.visitors]]) {
+                    const row = el('div');
+                    row.append(el('b', num(value)), ' ' + label);
+                    tip.appendChild(row);
+                }
+                tip.classList.remove('hidden');
+                const box = column.getBoundingClientRect();
+                tip.style.left = Math.max(8, Math.min(innerWidth - tip.offsetWidth - 8, box.left + box.width / 2 - tip.offsetWidth / 2)) + 'px';
+                tip.style.top = Math.max(8, box.top + 20) + 'px';
+            };
+            column.addEventListener('pointerenter', show);
+            column.addEventListener('focus', show);
+            for (const type of ['pointerleave', 'blur']) column.addEventListener(type, () => $('tip').classList.add('hidden'));
+            columns.appendChild(column);
+        }
+        chart.appendChild(columns);
+        const axis = $('axis');
+        axis.replaceChildren();
+        const gap = innerWidth < 600 ? 10 : 5;
+        daily.forEach((d, i) => axis.appendChild(el('span', (daily.length - 1 - i) % gap === 0 ? shortDate(d.date) : '')));
+        table($('dailyTable'), [['Day'], ['New', 1], ['Returning', 1], ['Games', 1], ['Visitors', 1]],
+            daily.slice().reverse().map(d => [shortDate(d.date), num(d.new), num(d.returning), num(d.plays), num(d.visitors)]));
+    }
+
+    function drawGames(games) {
+        const box = $('games');
+        box.replaceChildren();
+        if (!games.length) return box.appendChild(el('p', 'Nobody is in a game right now.', 'empty'));
+        for (const g of games) {
+            const row = el('div', null, 'game');
+            const title = el('div');
+            title.appendChild(el('span', null, 'dot'));
+            title.appendChild(el('b', modeName(g.mode)));
+            if (g.code) title.append(` · ${g.code} · ${g.state}`);
+            row.appendChild(title);
+            const names = g.players.map(n => n || 'Anonymous').join(', ');
+            row.appendChild(el('div', names + (g.cpus ? ` + ${g.cpus} CPU${g.cpus > 1 ? 's' : ''}` : ''), 'dim'));
+            box.appendChild(row);
+        }
+    }
+
+    function drawModes(modes) {
+        const box = $('modes');
+        box.replaceChildren();
+        const entries = Object.entries(modes).sort((a, b) => b[1] - a[1]);
+        if (!entries.length) return box.appendChild(el('p', 'No games yet.', 'empty'));
+        const biggest = entries[0][1];
+        for (const [mode, n] of entries) {
+            const row = el('div', null, 'hbar');
+            row.appendChild(el('span', modeName(mode)));
+            const track = el('div');
+            const bar = el('i');
+            bar.style.width = (n / biggest * 100) + '%';
+            track.appendChild(bar);
+            row.append(track, el('b', num(n)));
+            box.appendChild(row);
+        }
+    }
+
+    function render(r) {
+        $('since').textContent = 'Counting since ' + new Date(r.since).toLocaleDateString() + ' · days in ' + r.timezone;
+        $('noDisk').classList.toggle('hidden', r.persistent);
+        $('online').textContent = num(r.now.online);
+        $('peak').textContent = r.peak.n ? 'most at once: ' + num(r.peak.n) : '';
+        $('today').textContent = num(r.today.players);
+        $('todayV').textContent = num(r.today.visitors) + ' visitors';
+        $('week').textContent = num(r.week.players);
+        $('weekV').textContent = num(r.week.visitors) + ' visitors';
+        $('month').textContent = num(r.month.players);
+        $('monthV').textContent = num(r.month.visitors) + ' visitors';
+        $('total').textContent = num(r.total.players);
+        $('totalV').textContent = num(r.total.plays) + ' games, ' + num(r.total.visitors) + ' visitors';
+        $('day1').textContent = percent(r.cameBack.day1);
+        $('day1N').textContent = 'of ' + num(r.cameBack.day1.cohort) + ' players';
+        $('day7').textContent = percent(r.cameBack.day7);
+        $('day7N').textContent = 'of ' + num(r.cameBack.day7.cohort) + ' players';
+        $('visit').textContent = r.avgVisitSeconds ? duration(r.avgVisitSeconds) : '-';
+        drawChart(r.daily);
+        drawGames(r.now.games);
+        drawModes(r.modes);
+        table($('sources'), [['Source'], ['Visitors', 1], ['Played', 1], ['Came back', 1]],
+            r.sources.map(s => [s.name, num(s.visitors), num(s.players), num(s.repeat)]));
+        const name = p => {
+            const cell = el('span');
+            if (p.online) cell.appendChild(el('span', null, 'dot'));
+            cell.append(p.name || 'Anonymous');
+            return cell;
+        };
+        table($('recent'), [['Name'], ['Games', 1], ['Last played'], ['First seen'], ['From'], ['Device']],
+            r.recent.map(p => [name(p), num(p.plays), shortDate(p.last), shortDate(p.first), p.src, p.phone ? 'Phone' : 'Computer']));
+        const langs = r.languages.map(l => `${l.name} (${num(l.n)})`).join(', ');
+        $('devices').textContent = `All visitors: ${num(r.devices.phone)} on phones, ${num(r.devices.computer)} on computers.` + (langs ? ` Languages: ${langs}.` : '');
+    }
+
+    async function refresh() {
+        try {
+            const response = await fetch('/stats.json' + search, { cache: 'no-store' });
+            if (response.status === 404) return $('noAccess').classList.remove('hidden');
+            $('noAccess').classList.add('hidden');
+            render(await response.json());
+        } catch (e) { /* the server is restarting: the next refresh will catch up */ }
+    }
+    refresh();
+    setInterval(refresh, 10000);
+</script>
+</body>
+</html>
