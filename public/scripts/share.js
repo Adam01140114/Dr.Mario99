@@ -4,7 +4,7 @@
  */
 window.shareGame = async (ref, button) => {
     const url = `${location.origin}/?ref=${ref}`
-    const text = 'Come play: a puzzle battle for up to 20 players. Free, no download.'
+    const text = 'Dr. Mario like never before: up to 20 players on one TV, with your phones as controllers. Free, no download.'
     const label = button.textContent
     try {
         if (navigator.share) return await navigator.share({ title: document.title, text, url })
