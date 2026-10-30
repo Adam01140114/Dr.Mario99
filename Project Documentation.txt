@@ -280,11 +280,14 @@ nobody plays with lag (`public/scripts/partyClient.js`; server: PARTIES in
   (setupTouchControls in index.html): a tap is one step, held moves repeat, held DROP keeps dropping that pill
 - **FREE PLAY** first asks how you want to play, like Single Player (touch or keyboard, phone, Pro Controller).
   A phone pairs through a one-phone TV room that only passes its presses on (`pairOnly`, `tv.forFreePlay`)
-- **FREE PLAY**: players looking for a game are paired (freePlay). Anyone
-  still waiting after 1.5 s (FREE_WAIT_MS; straight away if nobody else is free) plays a CPU with an ordinary name
-  (CPU_NAMES: Maya, Jordan, Ethan...), labelled like any player, so the game
-  never feels empty; its board runs on that player's screen. FIND ANOTHER
-  MATCH from the results looks again
+- **FREE PLAY**: a 100-player match, last one standing. Everyone pressing it within 1.5 s (FREE_WAIT_MS;
+  straight away if nobody else is free) shares one, and opponents with ordinary names fill the other seats.
+  They aren't boards: royale.js keeps a few numbers for each on the server, ticked once a second (royaleTick), so
+  a phone only runs its own board. Each attacks the next one still in, round the circle, as usual; real players'
+  boards go only to the two players who show them. The screen shows how many are left, a square per player, and
+  my target and attacker. Clearing your bottle is the next level and a big attack, not a win. Out: your place
+  at once. Last one left: the VICTORY screen. `node tools/royale-sim.js` shows how long a match lasts (about 6
+  minutes); ROYALE_SPEED=20 on the server runs it faster for testing. FIND ANOTHER MATCH looks again
 - **Game logs**: each screen logs its own boards (mode `party`), so a
   multiplayer match has one log per player, replays included
 

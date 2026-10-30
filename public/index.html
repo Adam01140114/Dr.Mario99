@@ -1416,6 +1416,44 @@
         .party-cpu-boards { position: fixed; left: -20000px; top: 0; pointer-events: none; visibility: hidden; }
         .party-cpu-boards .game-container { position: absolute; top: 0; left: 0; transform: none; }
 
+        /* Free Play (scripts/partyClient.js): how many are left, one square per player */
+        body.party-mode .party-opponents.royale-panel { flex-wrap: nowrap; align-items: center; }
+        .royale-status { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: none; color: #fff; }
+        .royale-left { display: flex; align-items: baseline; gap: 6px; }
+        .royale-left b { font-size: 28px; font-weight: normal; color: #00ff66; text-shadow: 0 0 10px rgba(0, 255, 102, 0.6); }
+        .royale-left span, .royale-kos { font-size: 11px; color: #9fb3ff; }
+        .royale-tiles { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; width: 150px; }
+        .royale-tiles i { display: block; aspect-ratio: 1; border-radius: 2px; background: #00ff66; }
+        .royale-tiles i.out { background: rgba(255, 255, 255, 0.12); }
+        .royale-tiles i.target { background: #ff4d6d; box-shadow: 0 0 6px #ff4d6d; }
+        .royale-tiles i.me { background: #fff; box-shadow: 0 0 6px #fff; }
+        .royale-tiles i.me.out { background: #ff4d6d; }
+        .op-card.attacker canvas { border-color: #ff9f1c; }
+        body.party-mode.phone-play .royale-status { gap: 2px; }
+        body.party-mode.phone-play .royale-left b { font-size: 18px; }
+        body.party-mode.phone-play .royale-left span, body.party-mode.phone-play .royale-kos { font-size: 8px; }
+        body.party-mode.phone-play .royale-tiles { width: 50px; gap: 1px; }
+        body.party-mode.phone-play .royale-tiles i { border-radius: 1px; }
+        body.party-mode.phone-play .royale-panel .op-card .op-info { font-size: 8px; }
+        body.party-mode.phone-play .royale-panel .op-card .op-name { font-size: 10px; }
+        body.party-mode.phone-landscape.phone-play .party-opponents.royale-panel { flex-wrap: wrap; align-content: center; }
+
+        /* The result of a Free Play match */
+        .royale-place { font-size: 56px; color: #fff; text-shadow: 0 0 18px #00ffff; margin: 14px 0 6px; }
+        .royale-place small { font-size: 16px; color: #9fb3ff; text-shadow: none; }
+        .royale-tag { font-size: 13px; color: #ffd60a; margin-bottom: 8px; }
+        .royale-stats { display: flex; justify-content: center; gap: 22px; margin: 12px 0 18px; font-size: 9px; color: #9fb3ff; }
+        .royale-stats span { display: flex; flex-direction: column; gap: 6px; font-size: inherit; }
+        .royale-stats b { font-weight: normal; font-size: 15px; color: #fff; }
+        .royale-win .alert-modal { position: relative; z-index: 1; border-color: #ffd60a; box-shadow: 0 0 50px rgba(255, 214, 10, 0.7); }
+        .royale-win .alert-title { color: #ffd60a; text-shadow: 0 0 18px #ffd60a; animation: royalePop 0.7s cubic-bezier(.2, 1.6, .4, 1); }
+        .royale-win .royale-place { color: #ffd60a; text-shadow: 0 0 24px #ffd60a; animation: royalePop 0.9s cubic-bezier(.2, 1.6, .4, 1); }
+        @keyframes royalePop { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .royale-rain { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        .royale-rain img { position: absolute; top: -50px; image-rendering: pixelated; animation: royaleFall linear infinite; }
+        @keyframes royaleFall { to { transform: translateY(calc(100vh + 100px)) rotate(540deg); } }
+        @media (prefers-reduced-motion: reduce) { .royale-rain { display: none; } }
+
         /* Phone (layoutPhone in scripts/partyClient.js): the bottle is the screen, the other
            players a strip above it, and the buttons as big as the thumbs can use */
         .party-hud { display: none; }
@@ -1713,10 +1751,10 @@
             <div class="rules-modal">
                 <h2 class="rules-title">How to Play</h2>
                 <ol class="rules-list">
-                    <li><span class="rules-emoji">🎮</span> Press <strong>Free Play</strong> to be matched with a random player.</li>
+                    <li><span class="rules-emoji">🎮</span> Press <strong>Free Play</strong> to jump into a 100-player match where the last one standing wins. Computer players fill any seats that real people don't.</li>
                     <li><span class="rules-emoji">🤝</span> Or press <strong>Multiplayer</strong> and make a room for up to 8 friends.</li>
                     <li><span class="rules-emoji">🦠</span> Every time your opponent kills a germ, it sends a germ your way!</li>
-                    <li><span class="rules-emoji">🏆</span> The person who gets rid of all their germs first wins!</li>
+                    <li><span class="rules-emoji">🏆</span> In a room, the person who gets rid of all their germs first wins. In Free Play, clearing your bottle sends a big attack and starts the next level, and the last one standing wins.</li>
                     <li><span class="rules-emoji">📊</span> We count visits and games with a random ID on this device, to see how the game is doing. No ads, no tracking across sites.</li>
                 </ol>
                 <button id="rulesClose" class="rules-close-btn">Got it! </button>

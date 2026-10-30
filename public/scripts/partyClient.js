@@ -242,6 +242,7 @@ async function startMatch(data) {
     for (const id of ['mpMenu', 'partyLobby', 'freeSearch']) hide(id)
     $('playbuttons').classList.add('hidden')
     document.body.classList.add('party-mode', 'in-game')
+    document.body.classList.toggle('royale', !!data.royale)
     party.code = data.code
     party.slot = data.slot
     party.freePlay = !!data.freePlay
@@ -257,6 +258,7 @@ async function startMatch(data) {
     const match = party.match = {
         round: data.round, roster: data.roster, names: data.names, cpus: data.cpus, disguised: new Set(data.disguised || []),
         targets: data.targets, alive: new Set(data.roster), local, games: {}, cpuStops: {}, sent: {}, views: {}, places: {},
+        royale: !!data.royale, humans: data.humans || 0, kos: 0, startedAt: Date.now(),
     }
     window.gameInstances = match.games
 
@@ -275,7 +277,7 @@ async function startMatch(data) {
     }
     window.currentGame = match.games[data.slot]
 
-    makeOpponents()
+    makeOpponents(data)
     $('touchControls').classList.remove('hidden')
     if (window.padInput) window.padInput.start() // a controller works here too
     if (window.gameLog) window.gameLog.begin('party', { freePlay: party.freePlay, code: data.code, slot: data.slot, round: data.round, roster: data.roster, names: data.names, cpus: mine, freePlay: party.freePlay, gameData: data.gameData })
@@ -318,6 +320,7 @@ function teardownMatch() {
     }
     party.match = null
     $('partyOpponents').innerHTML = ''
+    $('partyOpponents').classList.remove('royale-panel')
 }
 
 /* ---------- Sending my boards, showing everyone else's ---------- */
@@ -332,7 +335,7 @@ function gridOf(board) {
 
 function sendBoards() {
     const match = party.match
-    if (!match) return
+    if (!match || (match.royale && match.humans < 2)) return // Free Play with nobody else real: nobody to send it to
     const now = Date.now()
     for (const n of match.local) {
         const game = match.games[n]
@@ -363,10 +366,12 @@ const sprites = SPRITE_CODES.map((name) => {
     return img
 })
 
-function makeOpponents() {
+function makeOpponents(data) {
     const match = party.match
     const panel = $('partyOpponents')
     panel.innerHTML = ''
+    panel.classList.toggle('royale-panel', match.royale)
+    if (match.royale) return makeRoyalePanel(panel, data)
     for (const n of match.roster) {
         if (n === party.slot) continue
         const card = document.createElement('div')
@@ -398,12 +403,15 @@ function showBoard({ slot, g, d, h }) {
     }
     if (h) view.card.querySelector('.op-virus').textContent = 'VIRUS ' + String(h.split(',')[0]).padStart(2, '0')
     if (!view.grid) return
-    const ctx = view.ctx
+    drawGrid(view.ctx, view.grid)
+}
+
+function drawGrid(ctx, grid) {
     ctx.imageSmoothingEnabled = false
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, 192, 408)
-    for (let i = 0; i < view.grid.length; i++) {
-        const code = view.grid.charCodeAt(i)
+    for (let i = 0; i < grid.length; i++) {
+        const code = grid.charCodeAt(i)
         if (code === 46) continue
         const img = sprites[code - 97]
         if (img && img.complete && img.naturalWidth) ctx.drawImage(img, (i % 8) * 24, Math.floor(i / 8) * 24, 24, 24)
@@ -413,7 +421,7 @@ function showBoard({ slot, g, d, h }) {
 /** Who I attack, and who attacks me */
 function showTargets() {
     const match = party.match
-    if (!match) return
+    if (!match || match.royale) return
     for (const [n, view] of Object.entries(match.views)) {
         const attacksMe = match.targets[n] === party.slot && match.alive.has(+n)
         const mine = match.targets[party.slot] === +n && match.alive.has(party.slot)
@@ -456,14 +464,16 @@ function finished(slot, won) {
     const match = party.match
     if (!match) return
     const game = match.games[slot]
+    if (match.royale && won) return bottleCleared(game)
     if (game) game.freeze()
     glog(won ? 'party-cleared' : 'party-topped-out', { p: slot })
     socket.emit(won ? 'partyCleared' : 'partyOut', { slot })
 }
 
-socket.on('partyEliminated', ({ slot, place, targets }) => {
+socket.on('partyEliminated', ({ slot, place, targets, royale, left, kos, target, attacker }) => {
     const match = party.match
     if (!match) return
+    if (royale) return royaleEliminated({ slot, place, left, kos, target, attacker })
     match.alive.delete(slot)
     match.targets = targets
     match.places[slot] = place
@@ -482,9 +492,11 @@ socket.on('partyEliminated', ({ slot, place, targets }) => {
     showTargets()
 })
 
-socket.on('partyOver', ({ winner, how, places, names }) => {
+socket.on('partyOver', ({ winner, how, places, names, royale, kos, size }) => {
     const match = party.match
-    glog('match-over', { winner, how, places })
+    glog('match-over', { winner, how, places, kos })
+    // In Free Play the others have seen their result already
+    if (royale) return winner === party.slot ? showVictory(kos, size) : undefined
     if (match) {
         clearInterval(match.sender)
         sendBoards() // a last picture of every board
@@ -580,6 +592,207 @@ function renderResultButtons() {
     }, true)
 }
 
+/* ---------- Free Play: 100 players, last one standing ---------- */
+
+// A stack for an opponent that isn't a real board: the same picture every time for the same height
+function fakeStack(slot, height) {
+    let grid = ''
+    const top = Math.floor(height)
+    for (let y = 16; y >= 0; y--) {
+        for (let x = 0; x < 8; x++) {
+            const noise = Math.abs(Math.sin(slot * 12.9898 + x * 78.233 + y * 37.719) * 43758.5453) % 1
+            if (y >= top || noise < 0.22) { grid += '.'; continue }
+            const color = Math.floor(noise * 300) % 3
+            grid += String.fromCharCode(97 + color * 8 + (noise > 0.8 ? 1 : 0)) // a pill piece, or now and then a virus
+        }
+    }
+    return grid
+}
+
+function makeRoyalePanel(panel, data) {
+    const match = party.match
+    const card = (role) => {
+        const el = document.createElement('div')
+        el.className = 'op-card ' + (role === 'target' ? 'target' : 'attacker')
+        el.innerHTML = '<div class="op-name"><span class="op-dot"></span><span class="op-label"></span></div>'
+            + '<canvas width="192" height="408"></canvas><div class="op-info"><span class="op-virus">VIRUS --</span><span class="op-target"></span></div>'
+        el.querySelector('.op-target').textContent = role === 'target' ? '▸ YOUR TARGET' : '⚔ ATTACKING YOU'
+        return { card: el, ctx: el.querySelector('canvas').getContext('2d'), grid: null, slot: null }
+    }
+    match.spots = { target: card('target'), attacker: card('attacker') }
+    const status = document.createElement('div')
+    status.className = 'royale-status'
+    status.innerHTML = '<div class="royale-left"><b id="royaleLeft"></b><span>LEFT</span></div><div class="royale-kos" id="royaleKos">0 KO</div><div class="royale-tiles" id="royaleTiles"></div>'
+    panel.append(match.spots.target.card, status, match.spots.attacker.card)
+    match.tiles = {}
+    for (const n of match.roster) {
+        const tile = document.createElement('i')
+        if (n === party.slot) tile.className = 'me'
+        status.querySelector('#royaleTiles').appendChild(tile)
+        match.tiles[n] = tile
+    }
+    setLeft(match.roster.length)
+    showSpots(data.target, data.attacker)
+    showNotice(match.roster.length + ' players. Last one standing wins!', 3000)
+}
+
+function setLeft(left) {
+    const match = party.match
+    if (match.left && match.left > left) for (const mark of [50, 25, 10, 5, 3, 2]) {
+        if (left <= mark && match.left > mark && match.alive.has(party.slot)) showNotice(left === 2 ? 'Final two!' : 'Top ' + mark + '!', 1800)
+    }
+    match.left = left
+    $('royaleLeft').textContent = left
+}
+
+/** Who I attack and who attacks me: real boards when they're people, a stack otherwise */
+function showSpots(target, attacker) {
+    const match = party.match
+    if (!match || !match.spots) return
+    match.views = {}
+    if (match.targetTile) match.targetTile.classList.remove('target')
+    match.targetTile = target && match.tiles[target.slot]
+    if (match.targetTile) match.targetTile.classList.add('target')
+    const same = target && attacker && target.slot === attacker.slot
+    for (const [role, info] of [['target', target], ['attacker', same ? null : attacker]]) {
+        const view = match.spots[role]
+        view.card.classList.toggle('hidden', !info)
+        if (!info) { view.slot = null; continue }
+        if (view.slot !== info.slot) {
+            view.slot = info.slot
+            view.grid = null
+            view.stack = null
+            view.card.querySelector('.op-label').textContent = info.name
+            drawGrid(view.ctx, '.'.repeat(136))
+        }
+        if (info.real) {
+            match.views[info.slot] = view
+        } else {
+            view.card.querySelector('.op-virus').textContent = 'VIRUS ' + String(info.virus).padStart(2, '0')
+            if (view.stack !== info.stack) {
+                view.stack = info.stack
+                drawGrid(view.ctx, fakeStack(info.slot, info.stack))
+            }
+        }
+    }
+}
+
+socket.on('partyRoyale', ({ left, target, attacker }) => {
+    if (!party.match || !party.match.royale) return
+    setLeft(left)
+    showSpots(target, attacker)
+})
+
+socket.on('partyKO', ({ kos, name }) => {
+    const match = party.match
+    if (!match || !match.royale) return
+    match.kos = kos
+    setText('royaleKos', kos + ' KO')
+    glog('royale-ko', { kos, name })
+    showNotice('💥 You knocked out ' + name + '!', 1800)
+})
+
+function royaleEliminated({ slot, place, left, kos, target, attacker }) {
+    const match = party.match
+    match.alive.delete(slot)
+    match.places[slot] = place
+    if (match.tiles[slot]) match.tiles[slot].classList.add('out')
+    glog('eliminated', { p: slot, place, left })
+    if (slot === party.slot) {
+        const game = match.games[slot]
+        if (game) game.freeze()
+        if (window.padInput) window.padInput.stop()
+        match.kos = kos
+        $('royaleLeft').textContent = left
+        return showRoyaleResult(place, match.roster.length)
+    }
+    setLeft(left)
+    showSpots(target, attacker)
+}
+
+/** My bottle is clear: a level up and a big attack, because here only the last one standing wins */
+function bottleCleared(game) {
+    game.freeze()
+    const img = document.createElement('img')
+    img.src = game.getScSrc()
+    img.id = 'sc'
+    game.appendChild(img)
+    glog('party-cleared', { p: party.slot })
+    showNotice('Bottle clear! Big attack sent', 2000)
+    socket.emit('partyCleared', { slot: party.slot })
+}
+
+socket.on('partyLevel', ({ gameData }) => {
+    const match = party.match
+    const game = match && match.games[party.slot]
+    if (!game || !game.board || !match.alive.has(party.slot)) return
+    setTimeout(() => {
+        if (party.match !== match || !match.alive.has(party.slot)) return
+        const level = game.board.level + 1
+        const score = game.board.score
+        const sc = game.querySelector('#sc')
+        if (sc) sc.remove()
+        window.sharedGameData = gameData
+        window.myRandomList = [...gameData.randomList]
+        window.tvColorPositions[party.slot] = 1
+        game.restart(level, score)
+    }, 1500)
+})
+
+const minutes = ms => Math.floor(ms / 60000) + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0')
+
+function royaleStats() {
+    const match = party.match
+    const board = party.myBoard()
+    return [['TIME', minutes(Date.now() - match.startedAt)], ['KOS', match.kos], ['SCORE', board ? board.score : 0]]
+        .map(([label, value]) => `<span><b>${value}</b>${label}</span>`).join('')
+}
+
+function royaleOverlay(extraClass, title, line) {
+    removeResults()
+    const overlay = document.createElement('div')
+    overlay.className = 'alert-overlay party-results ' + extraClass
+    overlay.id = 'partyResults'
+    overlay.innerHTML = `<div class="alert-modal"><div class="alert-title">${title}</div><div class="royale-place">${line}</div>`
+        + `<div class="royale-stats">${royaleStats()}</div><div class="party-result-buttons" id="partyResultButtons"></div>`
+        + `<div class="log-id" data-log-id="">${window.gameLog && window.gameLog.id ? 'Game log: ' + window.gameLog.id : ''}</div></div>`
+    document.body.appendChild(overlay)
+    renderResultButtons()
+    return overlay
+}
+
+function showRoyaleResult(place, size) {
+    royaleOverlay('royale-out', '💀 OUT', `#${place} <small>of ${size}</small>`)
+    if (window.gameLog) window.gameLog.event('result-shown', { title: 'out', place, win: false })
+}
+
+/** Last one standing: pills raining down, and a big #1 */
+function showVictory(kos, size) {
+    const match = party.match
+    if (!match) return
+    match.kos = kos
+    clearInterval(match.sender)
+    for (const game of Object.values(match.games)) game.freeze()
+    if (window.padInput) window.padInput.stop()
+    const overlay = royaleOverlay('royale-win', '🏆 VICTORY! 🏆', `#1 <small>of ${size}</small>`)
+    overlay.querySelector('.royale-place').insertAdjacentHTML('afterend', '<div class="royale-tag">LAST ONE STANDING</div>')
+    const rain = document.createElement('div')
+    rain.className = 'royale-rain'
+    const colors = ['bl', 'br', 'yl']
+    for (let i = 0; i < 60; i++) {
+        const img = document.createElement('img')
+        img.alt = ''
+        img.src = `/img/${colors[i % 3]}_${i % 4 === 0 ? 'covid' : i % 2 ? 'left' : 'right'}.png`
+        img.style.left = Math.random() * 100 + '%'
+        img.style.width = img.style.height = 18 + Math.random() * 22 + 'px'
+        img.style.animationDelay = -Math.random() * 4 + 's'
+        img.style.animationDuration = 2.5 + Math.random() * 3 + 's'
+        rain.appendChild(img)
+    }
+    overlay.prepend(rain)
+    if (window.gameLog) window.gameLog.event('result-shown', { title: 'victory', place: 1, win: true })
+}
+
 function removeResults() {
     const old = $('partyResults')
     if (old) old.remove()
@@ -594,7 +807,7 @@ function layout() {
     const container = $('game' + party.slot)
     if (!container) return
     const panel = $('partyOpponents')
-    const count = Object.keys(match.views).length
+    const count = match.royale ? 2 : Object.keys(match.views).length
     const phone = innerWidth <= 768 || (innerHeight <= 500 && matchMedia('(pointer: coarse)').matches)
     document.body.classList.toggle('phone-play', phone)
     if (phone) return layoutPhone(container, panel, count)
@@ -608,6 +821,8 @@ function layout() {
         panel.style.cssText = `top:0;right:0;bottom:0;width:${panelW}px`
     }
     sizeCards(panel, count, narrow ? innerWidth : panelW, narrow ? panelH : innerHeight)
+    // Free Play: target, how many are left, attacker, side by side
+    if (match.royale && !narrow) setCardCell(panel, Math.floor(Math.min((panelW - 24 - 150 - 24) / 16, (innerHeight - 90) / 17)))
     const touch = narrow && innerWidth <= 768 ? 190 : 0 // the touch buttons along the bottom
     const availW = innerWidth - panelW - 24
     const availH = innerHeight - panelH - touch - 24
@@ -631,6 +846,7 @@ function layoutPhone(container, panel, count) {
     const room = (w, h) => Math.min(h / BOTTLE.h, (w - 2 * HUD_W - 16) / BOTTLE.w)
     let area
     panel.classList.toggle('many', count >= 4)
+    // Free Play: my target and attacker either side of how many are left
     if (landscape) {
         const scale = room(innerWidth - 2 * 170, innerHeight - 12)
         const center = BOTTLE.w * scale + 2 * HUD_W + 16

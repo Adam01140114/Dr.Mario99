@@ -33,6 +33,7 @@ const fs = require('fs');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const gameLogs = require('./gameLogs');
+const royale = require('./royale');
 
 // Running on a hosting service (Render sets RENDER; NODE_ENV=production also counts)
 const PRODUCTION = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
@@ -1338,9 +1339,10 @@ function tvResultFor(room, player) {
  *   CPUs (their boards run on the host's screen), remove anyone (partyKick),
  *   set the viruses, and starts the match (partyStart) - and starts the next
  *   one from the results. If the host leaves, the next player takes over.
- * - FREE PLAY: players looking for a game are paired (freePlay). Anyone left
- *   waiting FREE_WAIT_MS plays a CPU with an ordinary name instead, so it
- *   never feels empty; its board runs on that player's screen.
+ * - FREE PLAY: a 100-player match, last one standing. Everyone pressing it within
+ *   FREE_WAIT_MS shares one (no wait if nobody else is free); opponents with
+ *   ordinary names fill the other seats (royale.js). They run here, not as boards,
+ *   so a phone only runs its own. Clearing your bottle is the next level, not a win.
  * - In a match each board sends what changed on it (partyBoard: the changed
  *   cells, a full picture every couple of seconds) and the server passes it
  *   to the others for their opponent views. A clear of 4+ (partyAttack) sends
@@ -1352,14 +1354,16 @@ function tvResultFor(room, player) {
  */
 const parties = {};
 const PARTY_MAX = 8;
+const ALL_SLOTS = Array.from({ length: royale.SIZE }, (_, i) => i + 1); // a room stops at PARTY_MAX, Free Play at royale.SIZE
+const ROYALE_TICK_MS = 1000;
+const ROYALE_SPEED = parseFloat(process.env.ROYALE_SPEED) || 1; // for testing: how much faster the opponents' match runs
+const ROYALE_CLEAR_ATTACKS = 3; // clearing your whole bottle
+let formingMatch = null; // the Free Play match about to start: anyone pressing FREE PLAY now joins it
 const FREE_WAIT_MS = 1500; // only when someone else is around who could press FREE PLAY too
 const FREE_START_MS = 300; // from a match being made to it starting, when it's a CPU
 const PARTY_GRACE_MS = 8000; // a player who drops mid-match has this long to come back before they're out
-const freeQueue = []; // { socketId, name, timer }
-// Free Play CPUs get names like these, so the game feels full
-const CPU_NAMES = ['Maya', 'Jordan', 'Ethan', 'Sofia', 'Liam', 'Ava', 'Noah', 'Chloe', 'Lucas', 'Emma', 'Mateo', 'Zoe', 'Oliver', 'Mia',
-    'Leo', 'Aria', 'Caleb', 'Nora', 'Isaac', 'Ruby', 'Dylan', 'Hana', 'Marcus', 'Elena', 'Theo', 'Priya', 'Owen', 'Lila', 'Andre', 'Kai'];
-const partySlots = () => Array.from({ length: PARTY_MAX }, (_, i) => i + 1);
+const partySlots = () => ALL_SLOTS;
+const partyCap = party => (party.freePlay ? royale.SIZE : PARTY_MAX);
 const cleanName = (name, fallback) => String(name || '').trim().replace(/\s+/g, ' ').slice(0, 16) || fallback;
 
 function newCode() {
@@ -1376,6 +1380,7 @@ function partyList(party) {
 }
 
 function sendPartyLobby(party) {
+    if (party.freePlay) return; // no lobby: it starts by itself
     io.to('party:' + party.code).emit('partyLobby', {
         code: party.code, state: party.state, hostSlot: party.hostSlot, players: partyList(party),
         settings: party.settings, freePlay: party.freePlay, max: PARTY_MAX,
@@ -1405,7 +1410,7 @@ function partyOf(socket) {
 
 function addToParty(party, socket, name, clientId) {
     const slot = partySlots().find(n => !party.players[n]);
-    if (!slot) return null;
+    if (!slot || slot > partyCap(party)) return null;
     party.players[slot] = { name, clientId, socketId: socket.id, connected: true };
     analytics.named(socket.data.statsId, name);
     socket.data.party = { code: party.code, slot };
@@ -1413,20 +1418,13 @@ function addToParty(party, socket, name, clientId) {
     return slot;
 }
 
-function addPartyCpu(party, hostSlot, disguised) {
+function addPartyCpu(party, hostSlot) {
     const slot = partySlots().find(n => !party.players[n]);
-    if (!slot) return null;
+    if (!slot || slot > partyCap(party)) return null;
     const taken = new Set(partySlots().map(n => party.players[n] && party.players[n].name));
-    let name;
-    if (disguised) {
-        const names = CPU_NAMES.filter(n => !taken.has(n));
-        name = names[Math.floor(Math.random() * names.length)] || 'Sam';
-    } else {
-        let k = 1;
-        while (taken.has('CPU #' + k)) k++;
-        name = 'CPU #' + k;
-    }
-    party.players[slot] = { name, cpu: true, disguised: !!disguised, hostedBy: hostSlot, connected: true };
+    let k = 1;
+    while (taken.has('CPU #' + k)) k++;
+    party.players[slot] = { name: 'CPU #' + k, cpu: true, hostedBy: hostSlot, connected: true };
     return slot;
 }
 
@@ -1447,7 +1445,12 @@ function createParty(socket, name, clientId, options = {}) {
 function partyTargets(party) {
     const alive = party.roster.filter(n => party.alive.includes(n));
     party.targets = {};
-    if (alive.length >= 2) alive.forEach((n, i) => { party.targets[n] = alive[(i + 1) % alive.length]; });
+    party.attackers = {};
+    if (alive.length >= 2) alive.forEach((n, i) => {
+        const next = alive[(i + 1) % alive.length];
+        party.targets[n] = next;
+        party.attackers[next] = n;
+    });
     return party.targets;
 }
 
@@ -1492,6 +1495,7 @@ function partyEliminate(party, slot) {
     party.places[slot] = place;
     party.alive = party.alive.filter(n => n !== slot);
     partyTargets(party);
+    if (party.royale) return royaleEliminated(party, slot, place);
     io.to('party:' + party.code).emit('partyEliminated', { slot, place, targets: party.targets });
     if (party.alive.length <= 1) endPartyMatch(party, party.alive[0] || null, 'last');
 }
@@ -1501,6 +1505,10 @@ function endPartyMatch(party, winner, how) {
     party.state = 'over';
     party.winner = winner;
     if (winner) party.places[winner] = 1;
+    if (party.royale) {
+        io.to('party:' + party.code).emit('partyOver', { winner, how, royale: true, kos: party.kos[winner] || 0, size: party.roster.length });
+        return closeParty(party);
+    }
     io.to('party:' + party.code).emit('partyOver', { winner, how, places: party.places, names: Object.fromEntries(party.roster.map(n => [n, party.players[n] ? party.players[n].name : '?'])) });
     sendPartyLobby(party);
 }
@@ -1535,6 +1543,9 @@ function removeFromParty(party, slot, reason) {
 }
 
 function closeParty(party) {
+    clearInterval(party.ticker);
+    if (formingMatch === party) formingMatch = null;
+    if (party.royale) io.in('party:' + party.code).socketsLeave('party:' + party.code);
     delete parties[party.code];
     delete roomVirusPositions[party.code];
     delete roomPillColors[party.code];
@@ -1546,18 +1557,132 @@ function leaveParty(socket) {
     socket.data.party = null;
 }
 
-function leaveFreeQueue(socket) {
-    const i = freeQueue.findIndex(q => q.socketId === socket.id);
-    if (i >= 0) {
-        clearTimeout(freeQueue[i].timer);
-        freeQueue.splice(i, 1);
+/* ---------- Free Play: 100 players, last one standing (the opponents: royale.js) ---------- */
+
+const isSim = (party, n) => !!(party.players[n] && party.players[n].bot);
+const royaleHumans = party => party.roster.filter(n => party.players[n] && !party.players[n].bot);
+
+/** Join the match about to start, or begin one. It waits only if someone else could join */
+function joinFreePlay(socket, name, clientId) {
+    leaveParty(socket);
+    const open = formingMatch && parties[formingMatch.code] === formingMatch && formingMatch.state === 'lobby' ? formingMatch : null;
+    if (open) {
+        const slot = addToParty(open, socket, name, clientId);
+        if (slot) return socket.emit('partyJoined', { code: open.code, slot });
     }
+    const party = formingMatch = createParty(socket, name, clientId, { freePlay: true });
+    socket.emit('partyJoined', { code: party.code, slot: party.hostSlot });
+    const someoneFree = [...io.sockets.sockets.values()].some(s => s.id !== socket.id && !s.data.tvHostOf && !s.data.tvPlayer && !s.data.party);
+    if (someoneFree) socket.emit('freePlaySearching', { waitMs: FREE_WAIT_MS });
+    setTimeout(() => startRoyaleMatch(party), someoneFree ? FREE_WAIT_MS : FREE_START_MS);
+}
+
+function startRoyaleMatch(party) {
+    if (formingMatch === party) formingMatch = null;
+    if (parties[party.code] !== party || party.state !== 'lobby') return;
+    const humans = partySlots().filter(n => party.players[n] && !party.players[n].cpu && party.players[n].connected);
+    if (!humans.length) return closeParty(party);
+    const taken = new Set(humans.map(n => party.players[n].name));
+    const names = royale.names(royale.SIZE - humans.length, taken);
+    for (const n of partySlots()) {
+        if (!party.players[n]) party.players[n] = { name: names.pop(), cpu: true, disguised: true, connected: true, bot: royale.newBot() };
+    }
+    // Seats round the circle at random, so real players aren't always next to each other
+    const seats = partySlots().slice();
+    for (let i = seats.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [seats[i], seats[j]] = [seats[j], seats[i]];
+    }
+    party.royale = true;
+    party.state = 'playing';
+    party.round++;
+    party.roster = seats;
+    party.alive = seats.slice();
+    party.places = {};
+    party.kos = {};
+    party.startedAt = Date.now();
+    partyTargets(party);
+    const gameData = generateNewGameData(party.code, true);
+    const names100 = Object.fromEntries(seats.map(n => [n, party.players[n].name]));
+    for (const n of humans) {
+        io.to(party.players[n].socketId).emit('partyStarted', {
+            code: party.code, round: party.round, slot: n, roster: seats, names: names100, cpus: {}, disguised: [],
+            targets: { [n]: party.targets[n] }, gameData, freePlay: true, royale: true, humans: humans.length,
+            target: royaleInfo(party, party.targets[n]), attacker: royaleInfo(party, party.attackers[n]),
+        });
+    }
+    party.ticker = setInterval(() => royaleTick(party), ROYALE_TICK_MS);
+}
+
+/** What a player's screen shows of their target or attacker */
+function royaleInfo(party, n) {
+    const p = party.players[n];
+    if (!p) return null;
+    return p.bot ? { slot: n, name: p.name, stack: Math.round(p.bot.stack * 2) / 2, virus: royale.virusCount(p.bot) } : { slot: n, name: p.name, real: true };
+}
+
+function royaleTick(party) {
+    if (parties[party.code] !== party || party.state !== 'playing') return clearInterval(party.ticker);
+    const t = (Date.now() - party.startedAt) / 1000 * ROYALE_SPEED;
+    const dt = ROYALE_TICK_MS / 1000 * ROYALE_SPEED;
+    for (const n of party.alive) {
+        const p = party.players[n];
+        if (!p || !p.bot || !royale.step(p.bot, t, dt)) continue;
+        royaleAttack(party, n, party.targets[n]);
+    }
+    for (const n of party.alive.slice()) {
+        if (party.state !== 'playing') return;
+        if (isSim(party, n) && royale.isOut(party.players[n].bot)) partyEliminate(party, n);
+    }
+    if (party.state !== 'playing' || parties[party.code] !== party) return;
+    for (const n of royaleHumans(party)) {
+        if (!party.alive.includes(n) || !party.players[n].connected) continue;
+        io.to(party.players[n].socketId).emit('partyRoyale', {
+            left: party.alive.length, target: royaleInfo(party, party.targets[n]), attacker: royaleInfo(party, party.attackers[n]),
+        });
+    }
+}
+
+/** An attack, from anyone to anyone: junk for a real player, a bigger stack for an opponent */
+function royaleAttack(party, from, target, color) {
+    const p = party.players[target];
+    if (!p) return;
+    if (p.bot) {
+        royale.hit(p.bot);
+        p.bot.lastHit = { by: from, at: Date.now() };
+        return;
+    }
+    if (!p.connected) return;
+    const pill = color || ['bl', 'br', 'yl'][Math.floor(Math.random() * 3)];
+    io.to(p.socketId).emit('partyJunk', { slot: target, from, points: 4, color: pill });
+    io.to(p.socketId).emit('partyFx', { from, to: target });
+}
+
+function royaleEliminated(party, slot, place) {
+    const out = party.players[slot];
+    // Who gets the KO: the last real player to hit it, if that was recent
+    const by = out && out.bot && out.bot.lastHit;
+    if (by && Date.now() - by.at < 20000 && !isSim(party, by.by) && party.alive.includes(by.by)) {
+        party.kos[by.by] = (party.kos[by.by] || 0) + 1;
+        const killer = party.players[by.by];
+        if (killer) io.to(killer.socketId).emit('partyKO', { kos: party.kos[by.by], name: out.name });
+    }
+    const humans = royaleHumans(party);
+    for (const n of humans) {
+        const p = party.players[n];
+        if (!p.connected) continue;
+        io.to(p.socketId).emit('partyEliminated', {
+            slot, place, left: party.alive.length, kos: party.kos[n] || 0, royale: true,
+            target: royaleInfo(party, party.targets[n]), attacker: royaleInfo(party, party.attackers[n]),
+        });
+    }
+    if (!party.alive.some(n => !isSim(party, n))) return closeParty(party); // only opponents left: nobody to play for
+    if (party.alive.length <= 1) endPartyMatch(party, party.alive[0], 'last');
 }
 
 function registerPartyHandlers(socket) {
     // MULTIPLAYER: make a room; you're the host
     socket.on('partyCreate', (payload = {}) => {
-        leaveFreeQueue(socket);
         const party = createParty(socket, cleanName(payload.name, 'Player'), String(payload.clientId || '').slice(0, 64), { virusCount: payload.virusCount });
         socket.emit('partyJoined', { code: party.code, slot: party.hostSlot });
         sendPartyLobby(party);
@@ -1565,7 +1690,6 @@ function registerPartyHandlers(socket) {
 
     // MULTIPLAYER: join a room by its code (or come back to it after losing the connection)
     socket.on('partyJoin', (payload = {}) => {
-        leaveFreeQueue(socket);
         const code = String(payload.code || '').toUpperCase().slice(0, 8);
         const party = parties[code];
         const clientId = String(payload.clientId || '').slice(0, 64);
@@ -1626,7 +1750,16 @@ function registerPartyHandlers(socket) {
         const { party, owns } = partyOf(socket);
         const n = parseInt(payload.slot, 10);
         if (!party || party.state !== 'playing' || !owns.has(n)) return;
-        socket.to('party:' + party.code).emit('partyBoard', { slot: n, g: payload.g, d: payload.d, h: payload.h });
+        const board = { slot: n, g: payload.g, d: payload.d, h: payload.h };
+        if (party.royale) {
+            // Only the two players who show it (100 boards to 100 screens would swamp the server)
+            for (const other of [party.targets[n], party.attackers[n]]) {
+                const p = party.players[other];
+                if (p && !p.bot && p.connected) io.to(p.socketId).emit('partyBoard', board);
+            }
+            return;
+        }
+        socket.to('party:' + party.code).emit('partyBoard', board);
     });
 
     // A clear of 4+: junk for the attacker's target
@@ -1635,9 +1768,14 @@ function registerPartyHandlers(socket) {
         const from = parseInt(payload.slot, 10);
         if (!party || party.state !== 'playing' || !owns.has(from) || !party.alive.includes(from)) return;
         const target = party.targets[from];
+        const color = ['bl', 'br', 'yl'].includes(payload.color) ? payload.color : null;
+        if (party.royale) {
+            if (target) royaleAttack(party, from, target, color);
+            if (target && isSim(party, target) && royale.isOut(party.players[target].bot)) partyEliminate(party, target);
+            return;
+        }
         const owner = target && partyOwner(party, target);
         if (!owner) return;
-        const color = ['bl', 'br', 'yl'].includes(payload.color) ? payload.color : null;
         io.to(owner).emit('partyJunk', { slot: target, from, points: Math.min(parseInt(payload.points, 10) || 4, 40), color });
         io.to('party:' + party.code).emit('partyFx', { from, to: target });
     });
@@ -1651,48 +1789,18 @@ function registerPartyHandlers(socket) {
     socket.on('partyCleared', (payload = {}) => {
         const { party, owns } = partyOf(socket);
         const n = parseInt(payload.slot, 10);
-        if (party && owns.has(n) && party.alive.includes(n)) endPartyMatch(party, n, 'cleared');
+        if (!party || !owns.has(n) || !party.alive.includes(n)) return;
+        if (!party.royale) return endPartyMatch(party, n, 'cleared');
+        // Last one standing wins here: a clear bottle is the next level, and a big attack
+        for (let i = 0; i < ROYALE_CLEAR_ATTACKS; i++) royaleAttack(party, n, party.targets[n]);
+        socket.emit('partyLevel', { gameData: generateNewGameData(party.code, true) });
     });
 
-    // FREE PLAY: someone else looking for a game, or a CPU with an ordinary name after FREE_WAIT_MS
-    socket.on('freePlay', (payload = {}) => {
-        leaveFreeQueue(socket);
-        leaveParty(socket);
-        const name = cleanName(payload.name, 'Player');
-        const clientId = String(payload.clientId || '').slice(0, 64);
-        const other = freeQueue.find(q => q.socketId !== socket.id && io.sockets.sockets.get(q.socketId));
-        if (other) {
-            leaveFreeQueue(io.sockets.sockets.get(other.socketId));
-            const otherSocket = io.sockets.sockets.get(other.socketId);
-            const party = createParty(otherSocket, other.name, other.clientId, { freePlay: true });
-            const slot = addToParty(party, socket, name, clientId);
-            otherSocket.emit('partyJoined', { code: party.code, slot: party.hostSlot });
-            socket.emit('partyJoined', { code: party.code, slot });
-            sendPartyLobby(party);
-            setTimeout(() => { if (parties[party.code] && party.state === 'lobby') startPartyMatch(party); }, 1500);
-            return;
-        }
-        const playCpu = () => {
-            leaveFreeQueue(socket);
-            if (!socket.connected) return;
-            const party = createParty(socket, name, clientId, { freePlay: true });
-            addPartyCpu(party, party.hostSlot, true);
-            socket.emit('partyJoined', { code: party.code, slot: party.hostSlot });
-            sendPartyLobby(party);
-            setTimeout(() => { if (parties[party.code] && party.state === 'lobby') startPartyMatch(party); }, FREE_START_MS);
-        };
-        // Everyone else is already in a game (or nobody's here): no point waiting
-        const someoneFree = [...io.sockets.sockets.values()].some(s => s.id !== socket.id && !s.data.tvHostOf && !s.data.tvPlayer && !s.data.party);
-        if (!someoneFree) return playCpu();
-        const entry = { socketId: socket.id, name, clientId, timer: null };
-        entry.timer = setTimeout(playCpu, FREE_WAIT_MS);
-        freeQueue.push(entry);
-        socket.emit('freePlaySearching', { waitMs: FREE_WAIT_MS });
-    });
-    socket.on('freePlayCancel', () => leaveFreeQueue(socket));
+    // FREE PLAY: a 100-player match, with anyone else pressing it now
+    socket.on('freePlay', (payload = {}) => joinFreePlay(socket, cleanName(payload.name, 'Player'), String(payload.clientId || '').slice(0, 64)));
+    socket.on('freePlayCancel', () => leaveParty(socket));
 
     socket.on('disconnect', () => {
-        leaveFreeQueue(socket);
         const { party, slot } = partyOf(socket);
         if (!party) return;
         const p = party.players[slot];

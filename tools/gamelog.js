@@ -418,6 +418,7 @@ function audit(which) {
             const bad = e.cells.filter(([x, y, color]) => Math.max(line(x, y, color, 1, 0), line(x, y, color, 0, 1)) < 4);
             if (bad.length) find(e.at, e.p, 'bad-clear', `cleared without a line of 4: ${JSON.stringify(bad)}`);
         }
+        if (e.type === 'board-created') shownNext[e.p] = null; // a new level has a new list of pills
         if (e.type === 'pill' && e.pill && e.pill.cells) {
             const colors = e.pill.cells.map(c => c && c[2]);
             if (shownNext[e.p] && shownNext[e.p].join() !== colors.join()) find(e.at, e.p, 'next-pill', `showed ${shownNext[e.p]} as next, got ${colors}`);
