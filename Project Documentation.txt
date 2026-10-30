@@ -549,7 +549,10 @@ PLAYER STATS
 `/stats` (`public/stats.html`) shows who is online and in which game, players per
 day (new and returning), how many come back, games by mode, where players came
 from and the latest players. It reads `/stats.json`, with the same access as the
-game logs: this computer, its Wi-Fi, or `?key=` set to `LOG_KEY`.
+game logs: this computer, its Wi-Fi, or the owner's key. The code holds only its
+hash (`OWNER_KEY_HASH` in server.js), so nothing has to be set on the host; `LOG_KEY`
+works as well if it is set. The private link puts the key after a #, so it stays out
+of server logs, and the page then keeps it on that device.
 
 - Every page runs `scripts/hello.js`: a random id kept in the browser's
   localStorage, where it came from (`?ref=` or `utm_source` on the link, an invite,

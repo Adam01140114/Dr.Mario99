@@ -105,10 +105,16 @@ app.use(express.static(PUBLIC, { maxAge: '7d', etag: true }));
 
 // Game logs (gameLogs.js): the last 100 games, for tracking down glitches and watching
 // games back (replays.html). Only from this computer or a device on its own network - a
-// request through a proxy (a hosted server) needs ?key= matching the LOG_KEY environment variable.
+// request through a proxy (a hosted server) needs the owner's key: ?key= or the x-owner-key
+// header (stats.html), matching the hash below or the LOG_KEY environment variable. Only the
+// hash is in the code, so this works with nothing to set on the host; a new key just needs a
+// new hash (printf %s KEY | shasum -a 256).
+const OWNER_KEY_HASH = 'a9e61ada47418c8aa5e7fe3f0ff5b90b67bc65f019351e5239a1f7ad24064199';
+const isOwnerKey = key => typeof key === 'string' && key.length > 0
+    && (key === process.env.LOG_KEY || crypto.createHash('sha256').update(key).digest('hex') === OWNER_KEY_HASH);
 const isPrivateAddress = ip => /^(::1|127\.|::ffff:127\.|10\.|::ffff:10\.|192\.168\.|::ffff:192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::ffff:172\.(1[6-9]|2\d|3[01])\.|f[cd][0-9a-f]{2}:|fe80:)/i.test(ip || '');
 const canReadLogs = req => (!req.headers['x-forwarded-for'] && isPrivateAddress(req.socket.remoteAddress))
-    || (process.env.LOG_KEY && req.query.key === process.env.LOG_KEY);
+    || isOwnerKey(req.query.key) || isOwnerKey(req.headers['x-owner-key']);
 const escapeHtml = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 app.get('/replays', (req, res) => res.redirect('/replays.html' + (req.query.key ? '?key=' + encodeURIComponent(req.query.key) : '')));
 app.get('/logs/list.json', (req, res) => {

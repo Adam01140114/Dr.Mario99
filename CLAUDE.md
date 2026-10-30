@@ -6,7 +6,7 @@ It runs live on Render (pushes to `main` deploy). Keep it fast for hundreds of p
 
 ## "How many people are playing?"
 
-`/stats` (`public/stats.html`, data from `analytics.js` via `/stats.json`) shows who is online, players per day, how many come back, modes and where players came from. Same access as the game logs: this computer, its Wi-Fi, or `?key=` set to `LOG_KEY`. Pages say hello with a random id on the device (`scripts/hello.js`); no IP addresses or third parties. The numbers live in `analytics.json` next to the logs, so on a host they need a persistent disk (`LOG_DIR`). Tag links you share with `?ref=name`.
+`/stats` (`public/stats.html`, data from `analytics.js` via `/stats.json`) shows who is online, players per day, how many come back, modes and where players came from. Same access as the game logs: this computer, its Wi-Fi, or the owner's key (`OWNER_KEY_HASH` in `server.js`; the link is in `~/DrMario99/private-stats-link.txt`, never in git). Pages say hello with a random id on the device (`scripts/hello.js`); no IP addresses or third parties. The numbers live in `analytics.json` next to the logs, so on a host they need a persistent disk (`LOG_DIR`). Tag links you share with `?ref=name`.
 
 ## "Something glitched in a game - what happened?"
 

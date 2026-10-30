@@ -79,7 +79,7 @@
         <label class="switch"><input type="checkbox" id="countMe"> Count this device's games</label>
     </header>
     <div class="warn hidden" id="noDisk">These numbers are only in the server's memory and files, and start again from zero every time it restarts or redeploys. Keep them by giving it a persistent disk and setting LOG_DIR to that disk.</div>
-    <div class="warn hidden" id="noAccess">No access. Open this page with <code>?key=</code> set to the server's LOG_KEY.</div>
+    <div class="warn hidden" id="noAccess">No access. Open this page from the owner's private link.</div>
 
     <section class="tiles" aria-label="Headline numbers">
         <div class="card tile live"><b id="online">-</b><span>online now</span><small id="peak"></small></div>
@@ -130,7 +130,15 @@
 
 <script>
     const $ = id => document.getElementById(id);
-    const search = location.search;
+    // The owner's link has the key after the #, which never reaches a server or its logs. It's
+    // kept on this device and taken out of the address bar; ?key= still works too.
+    const keyStore = (() => { try { return localStorage } catch (e) { return null } })();
+    const linkKey = new URLSearchParams(location.hash.slice(1)).get('key') || new URLSearchParams(location.search).get('key');
+    if (linkKey) {
+        if (keyStore) keyStore.setItem('ownerKey', linkKey);
+        history.replaceState(null, '', location.pathname);
+    }
+    const ownerKey = linkKey || (keyStore && keyStore.getItem('ownerKey')) || '';
     const MODES = { single: 'Single player', ai: 'AI mode', tv: 'TV Room', phone: 'Phone controller', 'free-play': 'Free Play', multiplayer: 'Multiplayer', online: 'Online room', room: 'Online room' };
     const modeName = m => MODES[m] || m;
 
@@ -293,7 +301,7 @@
 
     async function refresh() {
         try {
-            const response = await fetch('/stats.json' + search, { cache: 'no-store' });
+            const response = await fetch('/stats.json', { cache: 'no-store', headers: ownerKey ? { 'x-owner-key': ownerKey } : {} });
             if (response.status === 404) return $('noAccess').classList.remove('hidden');
             $('noAccess').classList.add('hidden');
             render(await response.json());
