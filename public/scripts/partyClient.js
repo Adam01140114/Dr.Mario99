@@ -278,7 +278,7 @@ async function startMatch(data) {
     makeOpponents()
     $('touchControls').classList.remove('hidden')
     if (window.padInput) window.padInput.start() // a controller works here too
-    if (window.gameLog) window.gameLog.begin('party', { code: data.code, slot: data.slot, round: data.round, roster: data.roster, names: data.names, cpus: mine, freePlay: party.freePlay, gameData: data.gameData })
+    if (window.gameLog) window.gameLog.begin('party', { freePlay: party.freePlay, code: data.code, slot: data.slot, round: data.round, roster: data.roster, names: data.names, cpus: mine, freePlay: party.freePlay, gameData: data.gameData })
     glog('party-match-start', { roster: data.roster, names: data.names, targets: data.targets, local })
     match.sender = setInterval(sendBoards, BOARD_MS)
     match.hud = setInterval(updateHud, HUD_MS)
