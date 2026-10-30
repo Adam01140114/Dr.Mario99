@@ -17,7 +17,18 @@
             document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
         })();
     </script>
-    <title>Dr. Mario 99</title>
+    <title>Dr. Mario 99: Free Multiplayer Puzzle Battle</title>
+    <meta name="description" content="A free multiplayer puzzle battle in your browser. Play now, or put it on a TV and use up to 20 phones as controllers. No download.">
+    <link rel="canonical" href="https://dr-mario99.onrender.com/">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://dr-mario99.onrender.com/">
+    <meta property="og:title" content="One TV. Up to 20 phones. Free puzzle battle.">
+    <meta property="og:description" content="A free multiplayer puzzle battle in your browser. Play now, or put it on a TV and use up to 20 phones as controllers. No download.">
+    <meta property="og:image" content="https://dr-mario99.onrender.com/og.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
     <script>
         // On the live site, debug logging (there's a lot of it) costs time every frame: keep
         // warnings and errors, drop the rest. ?debug in the address keeps everything.
@@ -2824,6 +2835,7 @@
     </script>
     <!-- Game log: everything that happens in a game, for tracking down glitches -->
     <script src="./scripts/hello.js"></script>
+    <script src="./scripts/share.js"></script>
     <script type="module" src="./scripts/gameLog.js"></script>
     <!-- TV Room: the computer shows the boards, phones are the controllers -->
     <script type="module" src="./scripts/tvHost.js"></script>
