@@ -558,9 +558,20 @@ export class PlayingBoard extends Board {
                 return
             if (this.intervals[e.key])
                 return
+            // A down held from an earlier pill (or while junk fell) must not drive the new pill.
+            if (e.repeat && (e.key == "ArrowDown" || e.key == 's'))
+                return
             this.movementFromKey(e.key)
-            const repeatDelay = (e.key == "ArrowDown" || e.key == 's') ? 60 : DELAY.readInput
+            const isDrop = e.key == "ArrowDown" || e.key == 's'
+            const pill = this.currentPill
+            const repeatDelay = isDrop ? 60 : DELAY.readInput
             this.intervals[e.key] = setInterval(() => {
+                // Held down only drops the pill it was pressed for; press again for the next one.
+                if (isDrop && this.currentPill !== pill) {
+                    clearInterval(this.intervals[e.key])
+                    this.intervals[e.key] = 'spent'
+                    return
+                }
                 this.movementFromKey(e.key)
             }, repeatDelay)
         }
@@ -655,7 +666,7 @@ export class PlayingBoard extends Board {
            // return
 		//}
 
-        if (!this.currentPill || this.currentPill.placed){
+        if (!this.currentPill || this.currentPill.placed || window.gamePaused){
             return
 		}
 
@@ -784,6 +795,7 @@ export class PlayingBoard extends Board {
     }
 
     nextFrame() {
+        if (window.gamePaused) return // TV Room pause: nothing falls
 
 		//where the magic happens
 
@@ -943,7 +955,8 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
             // Accelerate damage-virus settling while player is waiting for next pill.
             if (!this.fastDamageDropInterval) {
                 this.fastDamageDropInterval = setInterval(() => {
-                    if (!this.pendingSpawnAfterDamage || !this.hasActiveDamageDrop()) {
+                    // Only junk may fall fast; never let this timer move a player's pill.
+                    if (this.currentPill || !this.pendingSpawnAfterDamage || !this.hasActiveDamageDrop()) {
                         clearInterval(this.fastDamageDropInterval)
                         this.fastDamageDropInterval = null
                         return
@@ -987,6 +1000,7 @@ if (this.randy4 != 0 && this.hurting4 == 1) {
     useGravitation() {
     if (this.gravitationInterval) return;
     this.gravitationInterval = setInterval(() => {
+        if (window.gamePaused) return;
         let moved = false;
         for (let y = 0; y < this.height; y++) {
             for (let x = 0; x < this.width; x++) {
@@ -1496,6 +1510,7 @@ class ThrowingBoard extends Board {
     }
 
     nextFrame() {
+        if (window.gamePaused) return // TV Room pause: the next pill waits in the air
 
         if (this.currentFrame >= this.frames.length - 1) {
             // Junk from an attack falls all the way first (fast: a row each throw frame),

@@ -57,6 +57,7 @@ const BUTTON_ACTIONS = {
 }
 const ONCE_PER_PRESS = new Set(['rotateLeft', 'rotateRight', 'hold'])
 const PLUS = 9
+const MINUS = 8
 const BY_POSITION = { a: 1, b: 0, x: 3, y: 2 } // Chrome, WebHID
 const BY_LETTER = { a: 0, b: 1, x: 2, y: 3 }   // Safari (macOS's GameController), for Nintendo controllers
 const STICK = 0.5               // how far the stick must lean to count as a press
@@ -70,9 +71,10 @@ const pad = window.padInput = {
     target: null,        // the button A / + would press, and since when
     targetSince: 0,
     listeners: new Set(),
-    all: null,           // TV Room: fn({ key, action, pressed }) and fn({ key, button: 'a' })
+    all: null,           // TV Room: fn({ key, action, pressed }), fn({ key, button: 'a' }) and fn({ key, button: 'pause' })
     allHeld: new Map(),  // ...controller key -> actions down
     allA: new Map(),     // ...controller key -> A down
+    allPause: new Map(), // ...controller key -> + or - down
     listListeners: new Set(),
     hidError: '',        // why a WebHID controller couldn't be opened
     start,
@@ -181,6 +183,7 @@ function watchAll(fn) {
     pad.all = fn
     pad.allHeld = new Map()
     pad.allA = new Map()
+    pad.allPause = new Map()
     wake()
     return () => {
         if (pad.all !== fn) return
@@ -286,12 +289,17 @@ function readAll(list) {
         const a = isDown(gamepad, faceButtons(gamepad).a)
         if (a && !pad.allA.get(key)) pad.all({ key, button: 'a' })
         pad.allA.set(key, a)
+        // + or - pauses (or resumes) the TV Room game
+        const menu = isDown(gamepad, PLUS) || isDown(gamepad, MINUS)
+        if (menu && !pad.allPause.get(key)) pad.all({ key, button: 'pause' })
+        pad.allPause.set(key, menu)
     }
     // A controller that went away lets go of everything
     for (const [key, held] of pad.allHeld) {
         if (present.has(key)) continue
         pad.allHeld.delete(key)
         pad.allA.delete(key)
+        pad.allPause.delete(key)
         for (const action of held) pad.all({ key, action, pressed: false })
     }
 }

@@ -387,6 +387,11 @@
         /* 🐞: something glitched - mark it in the game log */
         .controller-top .bug-switch { font-family: inherit; font-size: 14px; padding: 2px 6px; border-radius: 8px; border: 2px solid #8892b0; background: transparent; line-height: 1.4; }
         .controller-top .bug-switch.marked { border-color: #ffd60a; background: rgba(255, 214, 10, 0.25); }
+        /* ⏸: pause the whole TV game; while it's paused the pad dims */
+        .controller-top .pause-switch { color: #fff; }
+        .controller-top .pause-switch.on { border-color: #ffd60a; color: #ffd60a; background: rgba(255, 214, 10, 0.25); }
+        #controllerScreen.paused .pad { opacity: 0.35; }
+        #controllerScreen.paused #padHint { color: #ffd60a; }
 
         /* Teams match: pick a team before READY */
         .team-choice { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 10px; }
@@ -462,6 +467,7 @@
                 <span class="badge" id="padBadge">P?</span>
                 <span class="top-name" id="topName"></span>
                 <button class="board-switch" type="button" data-board-toggle="pad" title="Show your own board on this phone"></button>
+                <button class="bug-switch pause-switch" type="button" id="pauseButton" title="Pause the game for everyone">⏸</button>
                 <button class="bug-switch" type="button" id="bugButton" title="Something glitched? Mark this moment in the game log">🐞</button>
                 <span class="link" id="linkBadge" title="How your buttons reach the TV">☁ SERVER</span>
             </div>
@@ -981,8 +987,14 @@
                 else box.innerHTML = '<span class="empty">EMPTY</span>';
                 document.querySelector('.pad .hold').classList.toggle('used', !!state.hu);
             }
+            // Pause: someone paused the TV game (this phone, another one, a controller or the TV)
+            $('controllerScreen').classList.toggle('paused', !!state.paused);
+            $('pauseButton').classList.toggle('on', !!state.paused);
+            $('pauseButton').textContent = state.paused ? '▶' : '⏸';
             $('padHint').innerHTML = '';
-            if (state.t) {
+            if (state.paused) {
+                $('padHint').textContent = '⏸ PAUSED - PRESS ▶ TO PLAY';
+            } else if (state.t) {
                 $('padHint').append('TARGET ▸ ');
                 const t = document.createElement('span');
                 t.className = 'target';
@@ -1197,6 +1209,11 @@
             button.classList.remove('down');
             sendInput(button.dataset.action, false);
         }
+        $('pauseButton').addEventListener('click', () => {
+            sendInput('pause', true);
+            sendInput('pause', false);
+            $('pauseButton').blur();
+        });
         function releaseAll() {
             for (const button of new Set(held.values())) release(button);
             held.clear();

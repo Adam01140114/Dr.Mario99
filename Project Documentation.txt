@@ -372,8 +372,29 @@ side is the TV ROOM section of `server.js`.
   on the phone's button and in a HOLD box on the board, over "SPEED LOW"
 - **Rematch / Restart**: each phone's result screen has REMATCH (PLAY AGAIN
   solo). When everyone still in the room has asked, the server starts the next
-  round (`startTvRound`); the TV shows who has asked. The TV's RESTART does the
-  same at once. EXIT reloads to the menu, which closes the room
+  round (`startTvRound`); the TV shows who has asked. Pressing A on your own
+  controller there is the same as REMATCH (`tvRematchFor`, from the TV). The
+  TV's RESTART does the same at once. EXIT reloads to the menu, which closes
+  the room
+- **Pause**: + or - on a controller, ⏸ at the top of a phone (the `pause`
+  action through tvInput / the direct link) or PAUSE at the bottom left of the
+  TV pauses every board for everyone; any of them resumes. `setPaused` in
+  tvHost.js sets `window.gamePaused`, and Board.nextFrame, the throwing board,
+  gravity, movementFromKey and the CPUs skip their ticks while it's on. Held
+  buttons are let go and other presses are ignored (input-ignored "paused").
+  Phones get `paused` in their state, dim their pad and show ▶. The TV shows
+  "⏸ PAUSED BY NAME". Logged as `paused` / `resumed`. A new round or the
+  end of the match always unpauses
+- **Held drop**: a held DROP (phone, controller or keyboard) only drops the
+  pill it was pressed for. When that pill lands, the repeat stops until DROP is
+  pressed again, so a press made while junk falls never sends the next pill
+  straight down. The fast junk drop (`fastDamageDropInterval`) stops as soon
+  as there's a pill, so it never moves one
+- **Fullscreen**: ⛶ FULLSCREEN at the bottom right of the TV (lobby and game).
+  Every try is logged (`fullscreen-click`, `fullscreen-change`,
+  `fullscreen-error` with the browser's reason, `fullscreen-no-change` when
+  nothing happened, with whether the click counted as a user gesture), and a
+  tip offers F11 when the browser says no
 - **Anywhere, not just this computer**: on the public site anyone can open a
   TV Room. Each phone opens a WebRTC data channel straight to the TV page
   (`tvSignal` carries only the set-up; STUN: stun.l.google.com), so presses
@@ -415,7 +436,7 @@ side is the TV ROOM section of `server.js`.
 - **Server events**: tvCreateRoom, tvJoin, tvReady, tvStartGame, tvInput,
   tvState, tvEliminated, tvNextLevel, tvGameOver, tvFx, tvRestart, tvRematch,
   tvSignal, tvChooseInput, tvPickController, tvControllers, tvShowGame,
-  tvAddCpu, tvRemoveCpu, tvReadyFor (in);
+  tvAddCpu, tvRemoveCpu, tvReadyFor, tvRematchFor (in);
   tvRoomCreated, tvLobby (TV and phones), tvAutoStart, tvJoined, tvJoinError,
   tvGameStarted, tvInput, tvState, tvEliminated, tvLevelData, tvResult, tvFx,
   tvRematch, tvSignal, tvRoomClosed, tvPickController, tvControllers (out). QR

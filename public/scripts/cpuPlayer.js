@@ -32,6 +32,7 @@ export function startCpu(game, seed = Math.random()) {
     let steps = 0
     const timer = setInterval(() => {
         if (!game.isConnected) return clearInterval(timer)
+        if (window.gamePaused) return
         const board = game.board
         const current = board && board.currentPill
         if (!current || current.placed || board.blockInput || !current.centerField) return

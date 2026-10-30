@@ -1401,6 +1401,65 @@
         .bug-button:hover { opacity: 1; }
         body.in-game .bug-button,
         body.tv-mode .bug-button { display: block; }
+        /* ⛶: TV Room fullscreen, so the boards fill the TV */
+        .fullscreen-button {
+            position: fixed;
+            right: 70px;
+            bottom: 14px;
+            z-index: 3600;
+            display: none;
+            height: 46px;
+            padding: 0 16px;
+            border-radius: 23px;
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            background: rgba(0, 0, 0, 0.55);
+            color: #fff;
+            font-family: inherit;
+            font-size: 14px;
+            cursor: pointer;
+            opacity: 0.55;
+        }
+        .fullscreen-button:hover { opacity: 1; }
+        body.tv-mode #fullscreenButton,
+        body:has(#tvLobby:not(.hidden)) #fullscreenButton { display: block; }
+        /* ⏸: TV Room pause (also + or - on a controller, or ⏸ on a phone) */
+        .pause-button { right: auto; left: 14px; }
+        body.tv-playing #tvPauseButton { display: block; }
+        body.tv-paused .pause-button { opacity: 1; border-color: #ffd60a; color: #ffd60a; }
+        .tv-pause {
+            position: fixed;
+            inset: 0;
+            z-index: 3550;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            background: rgba(0, 0, 20, 0.72);
+            color: #fff;
+            text-align: center;
+            pointer-events: none;
+        }
+        body.tv-paused .tv-pause { display: flex; }
+        .tv-pause-title { font-size: clamp(32px, 7vw, 72px); color: #ffd60a; text-shadow: 0 0 18px rgba(255, 214, 10, 0.6); }
+        .tv-pause-by { font-size: clamp(12px, 2vw, 20px); color: #9fb3ff; min-height: 1.4em; }
+        .tv-pause-hint { font-size: clamp(10px, 1.4vw, 14px); line-height: 1.8; max-width: 640px; padding: 0 16px; }
+        .fullscreen-tip {
+            position: fixed;
+            left: 50%;
+            bottom: 74px;
+            transform: translateX(-50%);
+            z-index: 3600;
+            max-width: min(520px, calc(100vw - 32px));
+            padding: 10px 14px;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            border: 2px solid #ffd60a;
+            color: #ffd60a;
+            font-size: 12px;
+            line-height: 1.7;
+            text-align: center;
+        }
         .bug-toast {
             position: fixed;
             right: 14px;
@@ -1725,6 +1784,15 @@
     </div>
 
     <!-- 🐞: something looked wrong - mark this moment in the game log (scripts/gameLog.js) -->
+    <!-- ⛶: TV Room fullscreen, for the people watching the TV -->
+    <!-- ⏸: TV Room pause, and what everyone sees while it's paused (scripts/tvHost.js) -->
+    <button id="tvPauseButton" class="fullscreen-button pause-button" type="button" title="Pause the game (+ or - on a controller)">⏸ PAUSE</button>
+    <div class="tv-pause" id="tvPause">
+        <div class="tv-pause-title">⏸ PAUSED</div>
+        <div class="tv-pause-by" id="tvPauseBy"></div>
+        <div class="tv-pause-hint">Press + or − on a controller, ⏸ on your phone, or RESUME to keep playing</div>
+    </div>
+    <button id="fullscreenButton" class="fullscreen-button" type="button" title="Fill the whole screen (Esc to leave)">⛶ FULLSCREEN</button>
     <button id="bugButton" class="bug-button" type="button" title="Something glitched? Mark this moment in the game log">🐞</button>
 
     <script src="/socket.io/socket.io.min.js"></script>
@@ -2554,6 +2622,59 @@
 
         // 🐞: mark this moment in the game log
         document.getElementById('bugButton').onclick = () => window.gameLog && window.gameLog.mark();
+
+        // ⛶: TV Room fullscreen on and off. Every try is in the game log (fullscreen-*), with
+        // the browser's reason when it says no, and the F11 tip shows so there's always a way.
+        const fullscreenButton = document.getElementById('fullscreenButton');
+        const fsLog = (type, details = {}) => window.gameLog && window.gameLog.event(type, {
+            on: !!(document.fullscreenElement || document.webkitFullscreenElement),
+            active: navigator.userActivation ? navigator.userActivation.isActive : null,
+            focused: document.hasFocus(),
+            screen: { w: innerWidth, h: innerHeight },
+            ...details,
+        });
+        let fullscreenTip = null;
+        function showFullscreenTip(text) {
+            if (!fullscreenTip) {
+                fullscreenTip = document.createElement('div');
+                fullscreenTip.className = 'fullscreen-tip';
+                document.body.appendChild(fullscreenTip);
+            }
+            fullscreenTip.textContent = text;
+            clearTimeout(fullscreenTip.timer);
+            fullscreenTip.timer = setTimeout(() => { fullscreenTip.remove(); fullscreenTip = null; }, 6000);
+        }
+        fullscreenButton.onclick = async () => {
+            fullscreenButton.blur();
+            const el = document.documentElement;
+            const isOn = document.fullscreenElement || document.webkitFullscreenElement;
+            fsLog('fullscreen-click');
+            try {
+                if (isOn) await (document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen());
+                else if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' });
+                else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+                else throw new Error('this browser has no fullscreen');
+            } catch (err) {
+                fsLog('fullscreen-error', { name: err && err.name, message: String(err && err.message || err) });
+                showFullscreenTip(isOn ? 'Press Esc to leave fullscreen.' : 'The browser said no to fullscreen. Press F11 (or click the page once and try again).');
+            }
+            // Some browsers never answer: say so if nothing happened
+            setTimeout(() => {
+                const nowOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
+                if (nowOn === !!isOn) {
+                    fsLog('fullscreen-no-change');
+                    showFullscreenTip(isOn ? 'Press Esc to leave fullscreen.' : "Fullscreen didn't start. Press F11 to fill the screen.");
+                }
+            }, 1500);
+        };
+        for (const type of ['fullscreenchange', 'webkitfullscreenchange']) {
+            document.addEventListener(type, () => {
+                const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+                fullscreenButton.textContent = on ? '✕ EXIT FULLSCREEN' : '⛶ FULLSCREEN';
+                fsLog('fullscreen-change');
+            });
+        }
+        document.addEventListener('fullscreenerror', () => fsLog('fullscreen-error-event'));
 
         // Add click sounds to buttons
         document.addEventListener('DOMContentLoaded', function() {

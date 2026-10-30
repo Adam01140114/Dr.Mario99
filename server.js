@@ -649,7 +649,7 @@ io.on('connection', (socket) => {
 const tvRooms = {};
 const TV_MAX_PLAYERS = 8;
 const TV_PHONE_SCREEN_ABOVE = 4; // more players than this: the game always shows on the phones
-const TV_ACTIONS = ['left', 'right', 'rotateLeft', 'rotateRight', 'drop', 'hold'];
+const TV_ACTIONS = ['left', 'right', 'rotateLeft', 'rotateRight', 'drop', 'hold', 'pause'];
 const TV_INPUTS = ['phone', 'controller'];
 const TV_MAX_TEAMS = 8;
 
@@ -1033,14 +1033,24 @@ function registerTvRoomHandlers(socket) {
     // Phone: "Rematch" on the result screen. When every player asks, the next game starts
     socket.on('tvRematch', () => {
         const { code, room, player } = tvPhoneRoom(socket);
-        if (!room || room.state !== 'over' || !room.roster.includes(player)) return;
+        tvAskRematch(code, room, player);
+    });
+
+    // Host: a player pressed A on their controller on the result screen - the same as REMATCH on their phone
+    socket.on('tvRematchFor', (payload = {}) => {
+        const { code, room } = tvHostRoom(socket);
+        tvAskRematch(code, room, parseInt(payload.player, 10));
+    });
+
+    function tvAskRematch(code, room, player) {
+        if (!room || room.state !== 'over' || !room.roster.includes(player) || room.rematch.has(player)) return;
         room.rematch.add(player);
         const status = { players: [...room.rematch] };
         io.to(room.hostId).emit('tvRematch', status);
         io.to(`tvp:${code}`).emit('tvRematch', status);
         const stillHere = room.roster.filter(n => room.players[n] && room.players[n].connected);
         if (stillHere.every(n => room.rematch.has(n))) startTvRound(code);
-    });
+    }
 
     // WebRTC set-up between a phone and the TV page, so presses (and board pictures)
     // travel straight over their Wi-Fi instead of through this server. Only a room's

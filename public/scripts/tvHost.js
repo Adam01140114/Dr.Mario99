@@ -74,6 +74,7 @@ const tv = window.tvHost = {
     places: {},         // player -> finishing place
     games: {},          // player -> Game
     holds: {},          // player -> action -> repeat timer
+    paused: false,      // someone pressed pause: every board stops (window.gamePaused)
     peers: {},          // player -> { pc, chain, channel }
     sent: {},           // player -> { key, at } last picture sent
     bindings: new Map(),  // controller key -> player
@@ -317,6 +318,8 @@ socket.on('tvGameStarted', async (data) => {
     const first = !tv.started
     tv.started = true
     tv.finished = false
+    setPaused(false)
+    document.body.classList.add('tv-playing')
     tv.names = data.names
     tv.roster = data.roster.slice()
     tv.alive = data.roster.slice()
@@ -472,6 +475,11 @@ function handleInput({ player, action, pressed }, via = '?') {
         return releaseHolds(player)
     }
     if (!tv.started || tv.finished || !tv.alive.includes(player)) return ignored(!tv.started ? 'not started' : tv.finished ? 'match over' : 'player is out')
+    if (action === 'pause') {
+        if (pressed) setPaused(!tv.paused, player)
+        return
+    }
+    if (tv.paused) return pressed ? ignored('paused') : undefined
     const key = TV_KEYS[action]
     if (!key) return ignored('unknown action')
     glog('input', { p: player, action, pressed, via })
@@ -481,12 +489,43 @@ function handleInput({ player, action, pressed }, via = '?') {
         return
     }
     if (holds[action]) return
+    const board = () => { const game = tv.games[player]; return game && game.board }
+    const pill = board() && board().currentPill
     const move = () => {
-        const game = tv.games[player]
-        if (game && game.board && !tv.finished) game.board.movementFromKey(key)
+        const b = board()
+        if (!b || tv.finished) return
+        // Held drop only drops the pill it was pressed for: once that pill lands (or junk is
+        // falling and there is none yet), stop until the player presses down again.
+        if (action === 'drop' && (!pill || b.currentPill !== pill)) {
+            clearInterval(holds[action])
+            holds[action] = 'spent'
+            return
+        }
+        b.movementFromKey(key)
     }
     move()
-    if (TV_REPEAT[action]) holds[action] = setInterval(move, TV_REPEAT[action])
+    if (TV_REPEAT[action] && !holds[action]) holds[action] = setInterval(move, TV_REPEAT[action])
+}
+
+/* ---------- Pause ---------- */
+// + or - on a controller, ⏸ on a phone, or PAUSE on the TV: every board stops until
+// someone presses one again. Board.js, Game.js and cpuPlayer.js skip their ticks while
+// window.gamePaused is on; phones see it in their state ("paused").
+
+function setPaused(paused, player) {
+    paused = !!paused && tv.started && !tv.finished
+    if (paused === tv.paused) return
+    tv.paused = window.gamePaused = paused
+    glog(paused ? 'paused' : 'resumed', { p: player || null })
+    for (const n of tv.roster) releaseHolds(n)
+    document.body.classList.toggle('tv-paused', paused)
+    $('tvPauseBy').textContent = paused && player ? 'PAUSED BY ' + playerName(player).toUpperCase() : ''
+    $('tvPauseButton').textContent = paused ? '▶ RESUME' : '⏸ PAUSE'
+    tv.sent = {} // phones hear about it at once
+}
+$('tvPauseButton').onclick = (e) => {
+    e.currentTarget.blur()
+    setPaused(!tv.paused)
 }
 
 function releaseHolds(player) {
@@ -540,6 +579,8 @@ function eliminate(player) {
 
 function endMatch(winner, how, lastOut) {
     tv.finished = true
+    setPaused(false)
+    document.body.classList.remove('tv-playing')
     for (const n of tv.roster) {
         releaseHolds(n)
         if (tv.games[n]) tv.games[n].freeze()
@@ -590,6 +631,8 @@ socket.on('tvLevelData', ({ code, gameData }) => {
 
 function soloGameOver(player) {
     tv.finished = true
+    setPaused(false)
+    document.body.classList.remove('tv-playing')
     releaseHolds(player)
     const game = tv.games[player]
     if (game) game.freeze()
@@ -647,9 +690,9 @@ function showOverlay({ title, win, name, reason, color }) {
     }
     const hint = document.createElement('div')
     hint.className = 'tv-rematch-hint'
-    hint.textContent = tv.solo ? 'Press PLAY AGAIN on your phone to play again'
-        : tv.roster.length === 2 ? 'Both press REMATCH on your phones to play again'
-        : 'Everyone press REMATCH on your phones to play again'
+    hint.textContent = tv.solo ? 'Press PLAY AGAIN on your phone (or A on your controller) to play again'
+        : tv.roster.length === 2 ? 'Both press REMATCH on your phones (or A on your controllers) to play again'
+        : 'Everyone press REMATCH on your phones (or A on your controllers) to play again'
 
     const buttons = document.createElement('div')
     buttons.className = 'tv-victory-buttons'
@@ -748,6 +791,10 @@ function startControllers() {
 
 function onControllerInput({ key, action, pressed, button }) {
     const player = tv.bindings.get(key)
+    if (button === 'pause') {
+        if (player && tv.alive.includes(player)) setPaused(!tv.paused, player)
+        return
+    }
     if (button === 'a') {
         if (player) {
             pingPlayer(player)
@@ -786,12 +833,15 @@ function bind(key, player) {
     toast(player, `🎮 ${padName(key).toUpperCase()} ▸ ${playerName(player)}`)
 }
 
-/** In the lobby, A on your own controller is the same as READY on your phone */
+/** A on your own controller: READY in the lobby, REMATCH on the result screen - as on your phone */
 function readyUp(player) {
     const p = tv.lobby.find(q => q.player === player)
     if (!tv.started && p && !p.ready) {
         glog('ready-by-controller', { p: player })
         socket.emit('tvReadyFor', { player })
+    } else if (tv.finished && tv.roster.includes(player)) {
+        glog('rematch-by-controller', { p: player })
+        socket.emit('tvRematchFor', { player })
     }
 }
 
@@ -910,6 +960,7 @@ setInterval(() => {
         // The whole board for a phone that shows it; otherwise it still shows what's in HOLD
         const state = tv.boardForced || wantsBoard(n) ? snap : { h: snap.h, hu: snap.hu }
         state.t = tv.alive.length >= 2 && tv.targets[n] ? tv.names[tv.targets[n]] : null
+        if (tv.paused) state.paused = true
         const key = JSON.stringify(state)
         const last = tv.sent[n]
         if (last && last.key === key && now - last.at < STATE_REFRESH_MS) continue
