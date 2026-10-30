@@ -140,6 +140,14 @@ app.get('/logs/:id', (req, res) => {
 
 // Player stats (analytics.js, stats.html): for the owner, like the game logs
 app.get('/stats', (req, res) => res.redirect('/stats.html' + (req.query.key ? '?key=' + encodeURIComponent(req.query.key) : '')));
+// The owner's computer keeps a copy, and gives it back to a server that lost its numbers (tools/stats-keeper.sh)
+app.get('/stats/backup.json', (req, res) => {
+    if (!canReadLogs(req)) return res.status(404).json({ error: 'not allowed' });
+    res.set('Cache-Control', 'no-store').type('application/json').send(analytics.backup());
+});
+app.post('/stats/restore', (req, res, next) => (canReadLogs(req) ? next() : res.status(404).json({ error: 'not allowed' })),
+    express.json({ limit: '100mb' }),
+    (req, res) => res.status(analytics.restore(req.body) ? 200 : 409).json({ restored: !!analytics.report().restored }));
 app.get('/stats.json', (req, res) => {
     if (!canReadLogs(req)) return res.status(404).json({ error: 'not allowed' });
     res.set('Cache-Control', 'no-store').json(analytics.report(liveGames()));

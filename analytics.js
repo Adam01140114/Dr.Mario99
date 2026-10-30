@@ -11,12 +11,15 @@
  * person on two devices counts twice. A device can opt out (the switch on the
  * stats page), so the owner's own games don't inflate the numbers.
  *
- * Kept in analytics.json beside the game logs, so it only survives a redeploy
- * when LOG_DIR is on a persistent disk (report().persistent says which).
+ * Kept in analytics.json beside the game logs. On a host whose disk is wiped by
+ * every restart, the owner's computer keeps a copy (tools/stats-keeper.sh, every 10
+ * minutes, using the owner's key) and sends it back to a server that has lost its
+ * numbers. What happened since the last copy is lost in a restart.
  */
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const ROOT = process.env.LOG_DIR ? path.resolve(process.env.LOG_DIR) : path.join(__dirname, 'logs');
 const FILE = path.join(ROOT, 'analytics.json');
@@ -24,6 +27,7 @@ const TZ = process.env.STATS_TZ || 'America/Los_Angeles'; // when "today" starts
 const KEEP_DAYS = 120;      // who played on which day (for repeat players); longer needs more memory
 const MAX_PLAYERS = 200000; // a limit on memory, should anyone make up ids by the thousand
 const SAVE_MS = 30000;
+const KEEPER_FRESH_MS = 30 * 60000; // how long a copy counts as recent
 const WORD = /^[a-z0-9][a-z0-9._-]{0,31}$/;
 const ID = /^[a-zA-Z0-9-]{8,64}$/;
 const BOTS = /bot|crawl|spider|slurp|headless|lighthouse|preview/i;
@@ -35,6 +39,9 @@ const dayBefore = (day, n) => new Date(Date.parse(day + 'T12:00:00Z') - n * 8640
 let state = { since: new Date().toISOString(), players: {}, days: {}, peak: { n: 0, at: null } };
 const online = new Map(); // id -> how many connections it has open
 let dirty = false;
+let restored = null;   // when this server was given its numbers back
+let lastCopied = null; // when the owner's computer last took a copy
+const keyOf = id => crypto.createHash('sha256').update(id).digest('hex').slice(0, 16);
 
 function emptyDay() {
     return { visitors: new Set(), played: new Set(), plays: {}, seconds: 0, visits: 0, peak: 0 };
@@ -49,13 +56,51 @@ function load() {
     try {
         saved = JSON.parse(fs.readFileSync(FILE, 'utf8'));
     } catch (e) {
-        return; // first run
+        return false; // first run, or the disk was wiped
     }
     for (const day of Object.values(saved.days || {})) {
         day.visitors = new Set(day.visitors);
         day.played = new Set(day.played);
     }
     state = { ...state, ...saved };
+    return true;
+}
+
+/** Add a copy to what this server has counted since it started. Only once: a second time would count everything twice */
+function restore(backup) {
+    if (restored || !backup || typeof backup.players !== 'object' || typeof backup.days !== 'object') return false;
+    for (const [id, theirs] of Object.entries(backup.players || {})) {
+        const mine = state.players[id];
+        state.players[id] = !mine ? theirs : {
+            ...theirs, ...mine,
+            first: theirs.first < mine.first ? theirs.first : mine.first,
+            last: theirs.last > mine.last ? theirs.last : mine.last,
+            firstPlay: theirs.firstPlay && (!mine.firstPlay || theirs.firstPlay < mine.firstPlay) ? theirs.firstPlay : mine.firstPlay,
+            plays: (theirs.plays || 0) + mine.plays,
+            src: theirs.src, phone: theirs.phone, lang: theirs.lang,
+        };
+    }
+    for (const [key, theirs] of Object.entries(backup.days || {})) {
+        const mine = dayOf(key);
+        for (const id of theirs.visitors || []) mine.visitors.add(id);
+        for (const id of theirs.played || []) mine.played.add(id);
+        for (const [mode, n] of Object.entries(theirs.plays || {})) mine.plays[mode] = (mine.plays[mode] || 0) + n;
+        mine.seconds += theirs.seconds || 0;
+        mine.visits += theirs.visits || 0;
+        mine.peak = Math.max(mine.peak, theirs.peak || 0);
+    }
+    if (backup.since && backup.since < state.since) state.since = backup.since;
+    if (backup.peak && backup.peak.n > state.peak.n) state.peak = backup.peak;
+    restored = new Date().toISOString();
+    prune();
+    dirty = true;
+    return true;
+}
+
+/** A copy of everything, for the owner's computer */
+function backup() {
+    lastCopied = Date.now();
+    return serialize();
 }
 
 function serialize() {
@@ -93,11 +138,12 @@ function visit(hello, userAgent) {
     const id = String(hello.id || '');
     if (!ID.test(id)) return null;
     const key = today();
-    let player = state.players[id];
+    const stored = keyOf(id);
+    let player = state.players[stored];
     if (!player) {
         if (Object.keys(state.players).length >= MAX_PLAYERS) return null;
         const src = String(hello.src || 'direct').toLowerCase();
-        player = state.players[id] = {
+        player = state.players[stored] = {
             first: key, last: key, firstPlay: null, plays: 0, name: null,
             src: WORD.test(src) ? src : 'other', phone: !!hello.phone,
             lang: String(hello.lang || '').replace(/[^a-zA-Z-]/g, '').slice(0, 12) || null,
@@ -105,13 +151,13 @@ function visit(hello, userAgent) {
     }
     player.last = key;
     const day = dayOf(key);
-    day.visitors.add(id);
+    day.visitors.add(stored);
     day.visits++;
-    online.set(id, (online.get(id) || 0) + 1);
+    online.set(stored, (online.get(stored) || 0) + 1);
     if (online.size > day.peak) day.peak = online.size;
     if (online.size > state.peak.n) state.peak = { n: online.size, at: new Date().toISOString() };
     dirty = true;
-    return id;
+    return stored;
 }
 
 /** They started a game */
@@ -211,7 +257,9 @@ function report(live = []) {
     return {
         since: state.since,
         timezone: TZ,
-        persistent: !!process.env.LOG_DIR || !(process.env.RENDER || process.env.NODE_ENV === 'production'),
+        persistent: !!process.env.LOG_DIR || !(process.env.RENDER || process.env.NODE_ENV === 'production') || (lastCopied && Date.now() - lastCopied < KEEPER_FRESH_MS) || false,
+        restored,
+        lastCopied: lastCopied ? new Date(lastCopied).toISOString() : null,
         now: { online: online.size, games: live },
         peak: state.peak,
         today: { visitors: todayDay ? todayDay.visitors.size : 0, players: todayDay ? todayDay.played.size : 0 },
@@ -236,4 +284,4 @@ setInterval(save, SAVE_MS).unref();
 setInterval(prune, 3600000).unref();
 process.on('exit', () => save(true));
 
-module.exports = { visit, played, named, left, report };
+module.exports = { visit, played, named, left, report, backup, restore };

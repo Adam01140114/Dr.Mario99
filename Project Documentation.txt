@@ -564,8 +564,15 @@ of server logs, and the page then keeps it on that device.
 - Opening `/stats` turns off counting on that device (`statsIgnore`; a switch on the
   page turns it back on), so the owner's own games don't inflate the numbers.
 - The numbers are saved to `analytics.json` beside the logs every 30 s and when the
-  server stops. On a host whose disk is wiped on every deploy they need a persistent
-  disk with `LOG_DIR` pointing at it; the page warns when that isn't set up.
+  server stops. Render wipes that file on every restart, so the owner's Mac keeps a
+  private copy: `tools/stats-keeper.sh`, run every 10 minutes by launchd
+  (~/Library/LaunchAgents/com.drmario99.stats-keeper.plist), takes
+  `/stats/backup.json` with the owner's key and sends it to `/stats/restore` when
+  the server has fewer players than the copy. It only works while the Mac is on; a
+  restart can lose what happened since the last copy. A persistent disk (`LOG_DIR`)
+  would close that gap.
+- Its request also wakes the server, so while the Mac is on a new player is less
+  likely to wait for a server that fell asleep.
 
 RUNNING IT FOR REAL (PRODUCTION / RENDER)
 -----------------------------------------
