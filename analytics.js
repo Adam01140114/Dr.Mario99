@@ -41,6 +41,7 @@ const online = new Map(); // id -> how many connections it has open
 let dirty = false;
 let restored = null;   // when this server was given its numbers back
 let lastCopied = null; // when the owner's computer last took a copy
+let startedEmpty = false; // no numbers on disk when this server started: it wants its copy back
 const keyOf = id => crypto.createHash('sha256').update(id).digest('hex').slice(0, 16);
 
 function emptyDay() {
@@ -100,7 +101,7 @@ function restore(backup) {
 /** A copy of everything, for the owner's computer */
 function backup() {
     lastCopied = Date.now();
-    return serialize();
+    return JSON.stringify({ ...JSON.parse(serialize()), needsRestore: startedEmpty && !restored });
 }
 
 function serialize() {
@@ -278,7 +279,7 @@ function report(live = []) {
     };
 }
 
-load();
+startedEmpty = !load();
 prune();
 setInterval(save, SAVE_MS).unref();
 setInterval(prune, 3600000).unref();
