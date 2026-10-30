@@ -589,6 +589,8 @@ SHARING AND SEARCH
 ------------------
 - index.html has a description and link-preview tags; `public/og.png` is the preview
   picture and `public/icon.svg` the icon. Neither uses Nintendo's characters.
+- The game is promoted openly as Dr. Mario, always with the line that it's an
+  unofficial fan project, not affiliated with Nintendo (menu, previews, README, posts).
 - SHARE THIS GAME on the Multiplayer / Free Play results and on the phone's TV Room
   result (`scripts/share.js`): the share sheet, or the link copied. Its `?ref=` shows
   on the stats page (`share`, `tv-share`).

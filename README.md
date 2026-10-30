@@ -16,5 +16,5 @@ Unofficial fan project. Not affiliated with or endorsed by Nintendo. Dr. Mario i
 
 ## Screenshots
 
-![screenshot01](screenshots/screenshot01.png)
-![screenshot02](screenshots/screenshot02.png)
+![screenshot01](public/screenshots/screenshot01.png)
+![screenshot03](public/screenshots/screenshot03.png)
