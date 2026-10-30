@@ -267,6 +267,7 @@
     function render(r) {
         $('since').textContent = 'Counting since ' + new Date(r.since).toLocaleDateString() + ' · days in ' + r.timezone;
         $('noDisk').classList.toggle('hidden', r.persistent);
+        if (r.lastCopied) $('since').textContent += ' · copy saved ' + new Date(r.lastCopied).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         $('online').textContent = num(r.now.online);
         $('peak').textContent = r.peak.n ? 'most at once: ' + num(r.peak.n) : '';
         $('today').textContent = num(r.today.players);
