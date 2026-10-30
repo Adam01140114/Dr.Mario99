@@ -48,6 +48,7 @@ const party = window.party = {
     match: null,     // the match on now: { roster, names, cpus, disguised, targets, alive, games, ... }
     openMenu,
     startFreePlay,
+    myBoard: () => { const game = party.match && party.match.games[party.slot]; return game && game.board },
     attack,
     finished,
     layout,
@@ -112,6 +113,9 @@ socket.on('partyError', ({ message }) => {
     $('partyLobbyError').textContent = message
     hide('freeSearch')
 })
+
+// Someone else on the site might press FREE PLAY too: wait a moment for them
+socket.on('freePlaySearching', () => { $('freeSearchText').textContent = 'Looking for another player...' })
 
 socket.on('partyJoined', ({ code, slot, rejoined, state }) => {
     party.code = code
@@ -217,7 +221,7 @@ socket.on('partyKicked', () => {
 
 function startFreePlay() {
     party.freePlay = true
-    $('freeSearchText').textContent = 'Looking for another player...'
+    $('freeSearchText').textContent = 'Finding a match...'
     show('freeSearch')
     socket.emit('freePlay', { name: savedName() || nameFromInput(), clientId })
 }
@@ -421,20 +425,20 @@ function showTargets() {
 /* ---------- Attacks, outs and the result ---------- */
 
 /** Board.js: one of my boards cleared 4+ */
-function attack(slot, points) {
+function attack(slot, points, color) {
     const match = party.match
     if (!match || !match.alive.has(slot)) return
-    glog('attack', { from: slot, target: match.targets[slot], points })
-    socket.emit('partyAttack', { slot, points })
-    if (slot === party.slot) attackSent(slot, match.targets[slot])
+    glog('attack', { from: slot, target: match.targets[slot], points, color })
+    socket.emit('partyAttack', { slot, points, color })
+    if (slot === party.slot) attackSent(slot, match.targets[slot], color)
 }
 
-socket.on('partyJunk', ({ slot, from, points }) => {
+socket.on('partyJunk', ({ slot, from, points, color }) => {
     const game = party.match && party.match.games[slot]
     if (!game || !game.board) return
-    const counted = game.board.receiveDamage(points)
-    glog('junk-incoming-from', { p: slot, from, points, counted })
-    if (counted && slot === party.slot) attackReceived(slot, from)
+    const counted = game.board.receiveDamage(points, color)
+    glog('junk-incoming-from', { p: slot, from, points, color, counted })
+    if (counted && slot === party.slot) attackReceived(slot, from, color)
 })
 
 socket.on('partyFx', ({ from, to }) => {

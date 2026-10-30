@@ -86,13 +86,14 @@ const tv = window.tvHost = {
     layout,
     sendAttack,
     playerFinished,
-    startPhoneSolo: () => startTvRoom(true),
+    startPhoneSolo: (forFreePlay = false) => startTvRoom(true, forFreePlay),
 }
 
 /* ---------- Lobby ---------- */
 
-function startTvRoom(soloOnly = false) {
+function startTvRoom(soloOnly = false, forFreePlay = false) {
     tv.soloOnly = soloOnly
+    tv.forFreePlay = forFreePlay
     glog('tv-room-opening', { soloOnly })
     document.body.classList.remove('ai-mode')
     hideRoomCode()
@@ -100,7 +101,7 @@ function startTvRoom(soloOnly = false) {
     $('tvCancel').textContent = soloOnly ? 'BACK' : 'CANCEL'
     $('tvLobby').classList.toggle('solo-only', soloOnly)
     $('tvLobby').classList.remove('hidden')
-    socket.emit('tvCreateRoom', { solo: soloOnly })
+    socket.emit('tvCreateRoom', { solo: soloOnly, pairOnly: forFreePlay })
 }
 
 socket.on('tvRoomCreated', (data) => {
@@ -319,6 +320,13 @@ function useGameData(gameData) {
 
 socket.on('tvGameStarted', async (data) => {
     if (data.code !== tv.code) return
+    // Free Play with a phone: the phone is paired, now find a match (scripts/partyClient.js)
+    if (tv.forFreePlay) {
+        tv.phoneFor = data.roster[0]
+        $('tvLobby').classList.add('hidden')
+        window.party.startFreePlay()
+        return
+    }
     const first = !tv.started
     tv.started = true
     tv.finished = false
@@ -456,16 +464,16 @@ function assignTargets() {
 }
 
 /** A player cleared 4+: their target gets junk (called by Board.js) */
-function sendAttack(from, points) {
+function sendAttack(from, points, color) {
     if (!tv.started || tv.finished) return
     const target = tv.targets[from]
     const game = target && tv.alive.includes(target) && tv.games[target]
     if (!game || !game.board) return glog('attack-lost', { from, target, points, why: 'no target in the game' })
-    const counted = game.board.receiveDamage(points)
-    glog('attack', { from, target, points, counted })
+    const counted = game.board.receiveDamage(points, color)
+    glog('attack', { from, target, points, color, counted })
     if (counted) {
-        attackSent(from, target)
-        attackReceived(target, from)
+        attackSent(from, target, color)
+        attackReceived(target, from, color)
     }
 }
 
@@ -473,6 +481,7 @@ function sendAttack(from, points) {
 // Presses arrive over the direct Wi-Fi link when there is one, else through the server.
 socket.on('tvInput', (data) => handleInput(data, 'server'))
 function handleInput({ player, action, pressed }, via = '?') {
+    if (tv.forFreePlay) return phoneToFreePlay(action, pressed)
     const holds = tv.holds[player]
     const ignored = why => glog('input-ignored', { p: player, action, pressed, via, why })
     if (!holds) return ignored('no game for this player')
@@ -957,6 +966,7 @@ function sendToPhone(player, state) {
 }
 
 setInterval(() => {
+    if (tv.forFreePlay && tv.phoneFor) return sendFreePlayHold()
     if (!tv.started) return
     const now = Date.now()
     for (const n of tv.roster) {
@@ -974,6 +984,29 @@ setInterval(() => {
         sendToPhone(n, state)
     }
 }, STATE_MS)
+
+/** Free Play with a phone: its buttons are key presses on this page's board */
+function phoneToFreePlay(action, pressed) {
+    const send = (type, key) => document.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true, cancelable: true }))
+    if (action === 'all') return Object.values(TV_KEYS).forEach(key => send('keyup', key))
+    const key = TV_KEYS[action]
+    if (!key) return
+    if (['left', 'right', 'drop'].includes(action)) return send(pressed ? 'keydown' : 'keyup', key)
+    if (!pressed) return // a turn or a hold is once per press
+    send('keydown', key)
+    send('keyup', key)
+}
+
+/** ...and it still shows what's in HOLD */
+function sendFreePlayHold() {
+    const board = window.party && window.party.myBoard()
+    if (!board || !board.fields) return
+    const { h, hu } = board.snapshot()
+    const key = JSON.stringify([h, hu])
+    if (tv.sent.freePlay === key) return
+    tv.sent.freePlay = key
+    sendToPhone(tv.phoneFor, { h, hu })
+}
 
 /** Teams match: this player's team (an index into TEAMS), or null */
 function teamOf(n) {

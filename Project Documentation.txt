@@ -274,8 +274,14 @@ nobody plays with lag (`public/scripts/partyClient.js`; server: PARTIES in
 - **Dropping out**: a player who loses the connection mid-match has 8 s
   (PARTY_GRACE_MS) to come back - their page rejoins by itself
   (partyJoin with their clientId) - before they're out
+- **Phone screen** (MULTIPLAYER and FREE PLAY, `layoutPhone` in partyClient.js, `body.phone-play`): only the
+  bottle shows (a clip-path over the board), with the numbers beside it (#partyHud), the other players in a
+  strip above and six big buttons below (in landscape, either side). The buttons are real presses
+  (setupTouchControls in index.html): a tap is one step, held moves repeat, held DROP keeps dropping that pill
+- **FREE PLAY** first asks how you want to play, like Single Player (touch or keyboard, phone, Pro Controller).
+  A phone pairs through a one-phone TV room that only passes its presses on (`pairOnly`, `tv.forFreePlay`)
 - **FREE PLAY**: players looking for a game are paired (freePlay). Anyone
-  still waiting after 6 s (FREE_WAIT_MS) plays a CPU with an ordinary name
+  still waiting after 1.5 s (FREE_WAIT_MS; straight away if nobody else is free) plays a CPU with an ordinary name
   (CPU_NAMES: Maya, Jordan, Ethan...), labelled like any player, so the game
   never feels empty; its board runs on that player's screen. FIND ANOTHER
   MATCH from the results looks again
@@ -313,6 +319,11 @@ side is the TV ROOM section of `server.js`.
   for everyone and the switches are locked (`boardForced`). Pictures are sent
   only when they change, up to 20 a second, over the direct link when there
   is one (else `tvState`)
+- **Junk you can see coming** (every mode with attacks): an attack's virus shows at once, see-through and
+  blinking, in the top row where it will start (`Board.previewJunk`, `junkQueue`; on a phone's own board via
+  `j` in the snapshot). When the next pill is thrown the first one in the queue becomes real and drops, in
+  that column unless it has filled up. It has the colour of the pill that was cleared to send it, and so do
+  the ATTACK / INCOMING effects (attackFx.js `PILL_COLORS`)
 - **Big rooms (9 to 20 players)**: the lobby switches to small slots in a wider
   panel with a smaller QR code (`.tv-slots.crowded`), and from 9 boards the name
   tags grow and leave out the target, which the phones still show (`body.tv-many`,

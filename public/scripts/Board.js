@@ -33,6 +33,7 @@ import { getSpriteUrl, preloadGameplaySprites } from "./spriteCache.js"
 import { attackSent, attackReceived } from "./attackFx.js"
 
 const MAX_JUNK = 4 // attacks waiting to drop on a board (one comes with each new pill)
+const JUNK_ROW = 15 // the row junk starts falling from
 
 // Global game state variables
 var pillnum = 1;        // Current pill number
@@ -194,6 +195,7 @@ export class PlayingBoard extends Board {
         // DAMAGE SYSTEM VARIABLES
         this.localpoints = 0;              // Points accumulated for current clear
         this.realdamage = 0;               // Damage received from opponent
+        this.junkQueue = [];               // That junk, shown blinking at the top until it drops: { x, color, el }
         this.damageProcessed = false;      // Flag to track if damage has been processed
 
         // GAME STATE VARIABLES
@@ -289,16 +291,41 @@ export class PlayingBoard extends Board {
 
     /**
      * An opponent's clear: every 4 points = 1 virus, capped at 1 per clear.
-     * The virus drops in when the next pill is thrown. Returns true if it counted.
+     * It shows blinking at the top of the bottle (in the colour that was cleared, when
+     * we know it) and drops in when the next pill is thrown. Returns true if it counted.
      */
-    receiveDamage(points) {
+    receiveDamage(points, color) {
         const calculatedDamage = Math.floor((points || 0) / 4)
         if (calculatedDamage <= 0) return false
         // One junk per attack; two attacks before your next pill used to count as one.
         // Each new pill brings in one (ThrowingBoard frame 0), up to MAX_JUNK waiting.
         this.realdamage = Math.min((this.damageProcessed ? 0 : this.realdamage) + 1, MAX_JUNK)
         this.damageProcessed = false
+        if (this.junkQueue.length < this.realdamage) this.previewJunk(color)
         return true
+    }
+
+    /** Columns junk can drop down: full ones would put it on top of what's there */
+    junkColumns() {
+        return [0, 1, 2, 3, 4, 5, 6, 7].filter(x => !this.fields[x][JUNK_ROW].isTaken() && !this.fields[x][JUNK_ROW].locked && this.fields[x][JUNK_ROW].color === Color.NONE)
+    }
+
+    /** Junk on its way: where and what it will be, see-through and blinking until it drops */
+    previewJunk(color) {
+        const colors = ['yl', 'bl', 'br']
+        const open = this.junkColumns()
+        const unused = open.filter(x => !this.junkQueue.some(junk => junk.x === x))
+        const choices = unused.length ? unused : open.length ? open : [0, 1, 2, 3, 4, 5, 6, 7]
+        const x = choices[Math.floor(Math.random() * choices.length)]
+        const junkColor = colors.includes(color) ? color : colors[Math.floor(Math.random() * colors.length)]
+        const el = document.createElement('div')
+        el.className = 'junk-preview'
+        el.style.left = x * this.fieldSize + 'px'
+        el.style.top = this.fieldSize * (this.height - 1 - JUNK_ROW) + 'px'
+        el.style.width = el.style.height = this.fieldSize + 'px'
+        el.style.backgroundImage = "url('" + getSpriteUrl('./img/' + junkColor + '_covid.png') + "')"
+        this.appendChild(el)
+        this.junkQueue.push({ x, color: junkColor, el })
     }
 
     /**
@@ -370,6 +397,7 @@ export class PlayingBoard extends Board {
             s: this.score,
             v: this.virusCount,
             l: this.level,
+            j: this.junkQueue.length ? this.junkQueue.map(junk => [junk.x, junk.color]) : null,
         }
     }
 
@@ -728,7 +756,10 @@ export class PlayingBoard extends Board {
         let colors = ['yl', 'bl', 'br'];
         // A column with room at the top: dropping onto a full column put the junk on top of
         // what was already there (a virus vanished but still counted)
-        let availableX = [0, 1, 2, 3, 4, 5, 6, 7].filter(x => !this.fields[x][15].isTaken() && !this.fields[x][15].locked && this.fields[x][15].color === Color.NONE);
+        let availableX = this.junkColumns();
+        // The junk this player has been seeing at the top; if its column has filled up since, another one
+        const planned = this.junkQueue.shift();
+        if (planned) planned.el.remove();
         if (!availableX.length) {
             this.hurting1 = 0;
             return; // the bottle is full to the brim: no room for junk
@@ -758,8 +789,8 @@ export class PlayingBoard extends Board {
 		this.undery4 = 14;
 
 		// Spawn the first virus
-		this.randx = getRandomX();
-		this.randcolor = colors[Math.floor(Math.random() * colors.length)];
+		this.randx = planned && availableX.includes(planned.x) ? availableX.splice(availableX.indexOf(planned.x), 1)[0] : getRandomX();
+		this.randcolor = planned ? planned.color : colors[Math.floor(Math.random() * colors.length)];
 		this.fields[this.randx][this.randy].setColor(this.randcolor);
 
 		// Spawn additional viruses for multiple damage
@@ -1129,10 +1160,10 @@ class Field extends HTMLElement {
         // Send damage immediately when 4+ points are reached
         if (this.board.game.isTVControlled) {
             // TV Room: the TV page sends it to this player's current target
-            window.tvHost.sendAttack(this.board.playerNumber, this.board.localpoints);
+            window.tvHost.sendAttack(this.board.playerNumber, this.board.localpoints, color);
         } else if (this.board.game.party) {
             // Multiplayer / Free Play: the server sends it to this player's target
-            window.party.attack(this.board.playerNumber, this.board.localpoints);
+            window.party.attack(this.board.playerNumber, this.board.localpoints, color);
         } else if (!this.board.game.isAIOpponentView) {
             socket.emit(`updatePoints${this.board.playerNumber === 1 ? 2 : 1}`, { 
                 [`player${this.board.playerNumber === 1 ? 2 : 1}points`]: this.board.localpoints, 

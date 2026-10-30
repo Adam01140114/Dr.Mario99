@@ -18,6 +18,8 @@
 // TV Room player colours (index.html .tv-p1 ... .tv-p20, controller.html body.p1 ... body.p20)
 const PLAYER_COLORS = { 1: "#ff4d6d", 2: "#4dc3ff", 3: "#ffd60a", 4: "#00ff66", 5: "#c77dff", 6: "#ff9f1c", 7: "#2ee6d6", 8: "#ff70d9", 9: "#f1f5f9", 10: "#b4ff39", 11: "#8093ff", 12: "#ff8a6b", 13: "#d9a066", 14: "#8dffcf", 15: "#e040fb", 16: "#c9a227", 17: "#a8e6ff", 18: "#ffb3c7", 19: "#d7c4ff", 20: "#9aa93a" }
 const DEFAULT_COLOR = "#00ffff"
+// The pill colours: an attack looks like the pill that was cleared to send it
+const PILL_COLORS = { bl: "#6f9bff", br: "#e0642e", yl: "#ffe45c" }
 const FLIGHT_MS = 520
 
 let stylesAdded = false
@@ -36,7 +38,7 @@ function addStyles() {
             text-shadow: 0 0 8px var(--fx), 0 0 18px var(--fx), 3px 3px 0 #000;
             -webkit-text-stroke: 1px #000;
         }
-        .fx-flash { background: radial-gradient(ellipse at center, rgba(255, 40, 40, 0.15), rgba(255, 30, 30, 0.55)); border-radius: 6px; }
+        .fx-flash { background: radial-gradient(ellipse at center, transparent 30%, var(--fx)); border-radius: 6px; }
     `
     document.head.appendChild(style)
 }
@@ -136,12 +138,12 @@ function impact(target, color) {
     const r = target.rect
     const cx = r.left + r.width / 2
     const cy = r.top + r.height / 2
-    // Red flash over the bottle
+    // A flash over the bottle
     spawn("fx-flash", cx, cy, r.width, r.height, color, [
-        { opacity: 0 }, { opacity: 1, offset: 0.12 }, { opacity: 0 },
+        { opacity: 0 }, { opacity: 0.65, offset: 0.12 }, { opacity: 0 },
     ], { duration: 650, easing: "ease-out" })
     // Burst where it lands (top of the bottle)
-    spawn("fx-ring", cx, r.top + r.height * 0.08, r.width * 0.7, r.width * 0.7, "#ff3b3b", [
+    spawn("fx-ring", cx, r.top + r.height * 0.08, r.width * 0.7, r.width * 0.7, color, [
         { transform: "scale(0.2)", opacity: 1 },
         { transform: "scale(2.2)", opacity: 0 },
     ], { duration: 480, easing: "ease-out" })
@@ -156,23 +158,23 @@ function impact(target, color) {
             { transform: "translate(0, 0)" },
         ], { duration: 360, easing: "ease-out" })
     }
-    popText("INCOMING!", r, "#ff3b3b", Math.max(18, r.width * 0.16))
+    popText("INCOMING!", r, color, Math.max(18, r.width * 0.16))
 }
 
 /** Tell that player's phone (TV Room) */
-function notifyPhone(player, kind) {
+function notifyPhone(player, kind, pill) {
     if (window.tvHost && window.tvHost.started && typeof socket !== "undefined") {
-        socket.emit("tvFx", { player, kind })
+        socket.emit("tvFx", { player, kind, pill })
     }
 }
 
-export function attackSent(player, target) {
+export function attackSent(player, target, pill) {
     try {
         addStyles()
-        notifyPhone(player, "attack")
+        notifyPhone(player, "attack", pill)
         const me = bottleOf(player)
         if (!me) return
-        const color = playerColor(player)
+        const color = PILL_COLORS[pill] || playerColor(player)
         shockwave(me.rect, color)
         popText("ATTACK!", me.rect, color, Math.max(20, me.rect.width * 0.2))
         // Target on another screen: send the comet off the top
@@ -186,13 +188,13 @@ export function attackSent(player, target) {
     }
 }
 
-export function attackReceived(player, from) {
+export function attackReceived(player, from, pill) {
     try {
         addStyles()
         const target = bottleOf(player)
-        if (!target) return notifyPhone(player, "hit")
+        if (!target) return notifyPhone(player, "hit", pill)
         const source = bottleOf(from)
-        const color = source ? playerColor(from) : "#ff3b3b"
+        const color = PILL_COLORS[pill] || (source ? playerColor(from) : "#ff3b3b")
         const to = { x: target.rect.left + target.rect.width / 2, y: target.rect.top + target.rect.height * 0.08 }
         const start = source
             ? { x: source.rect.left + source.rect.width / 2, y: source.rect.top + source.rect.height * 0.35 }
@@ -200,7 +202,7 @@ export function attackReceived(player, from) {
         comet(start, to, color, () => {
             const now = bottleOf(player) // the screen may have been rescaled mid-flight
             if (now) impact(now, color)
-            notifyPhone(player, "hit") // the target's phone flashes as the junk lands
+            notifyPhone(player, "hit", pill) // the target's phone flashes as the junk lands
         }, target.rect.width / 192)
     } catch (err) {
         // Effects must never break the game - but say so, or a broken effect goes unnoticed

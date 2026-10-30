@@ -268,9 +268,9 @@ wrap(PlayingBoard.prototype, 'clearIfNeeded', function (original, args) {
     return original.apply(this, args)
 })
 
-wrap(PlayingBoard.prototype, 'receiveDamage', function (original, [points]) {
-    const result = original.call(this, points)
-    event('junk-incoming', { p: this.playerNumber, points, counted: !!result, damage: this.realdamage })
+wrap(PlayingBoard.prototype, 'receiveDamage', function (original, [points, color]) {
+    const result = original.call(this, points, color)
+    event('junk-incoming', { p: this.playerNumber, points, color, counted: !!result, damage: this.realdamage, shown: this.junkQueue.map(junk => [junk.x, junk.color]) })
     return result
 })
 

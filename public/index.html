@@ -2,7 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <script>
+        // Phones: a double tap or a pinch must never zoom the game. iOS ignores user-scalable=no,
+        // so stop it here too. Buttons and text boxes need their taps, and touch-action covers them.
+        (function () {
+            let lastTap = 0;
+            document.addEventListener('touchend', (e) => {
+                const now = Date.now();
+                const quick = now - lastTap < 350;
+                lastTap = now;
+                if (quick && e.cancelable && !e.target.closest('button, a, input, textarea, select, label')) e.preventDefault();
+            }, { passive: false });
+            document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+        })();
+    </script>
     <title>Dr. Mario 99</title>
     <script>
         // On the live site, debug logging (there's a lot of it) costs time every frame: keep
@@ -597,7 +611,16 @@
             align-items: center;
         }
 
+        /* No double-tap zoom anywhere (see the script at the top of this page) */
+        html, body, body * { touch-action: manipulation; }
+
+        /* Junk on its way (Board.previewJunk): see-through and blinking until it drops */
+        .junk-preview { position: absolute; z-index: 3; background-size: 100% 100%; image-rendering: pixelated; pointer-events: none; animation: junkBlink 0.45s ease-in-out infinite alternate; }
+        @keyframes junkBlink { from { opacity: 0.3; } to { opacity: 0.9; } }
+
         .control-btn {
+            touch-action: none;
+            -webkit-touch-callout: none;
             width: 60px;
             height: 60px;
             border: 3px solid #00ffff;
@@ -1436,7 +1459,7 @@
             margin: 0;
             grid-template-columns: repeat(4, minmax(0, 1fr));
             grid-template-rows: 84px 64px;
-            grid-template-areas: "left right turnl turnr" "drop drop hold hold";
+            grid-template-areas: "left turnl turnr right" "drop drop hold hold";
             gap: 8px;
             align-items: stretch;
             justify-content: stretch;
@@ -1447,7 +1470,7 @@
         /* Landscape: a thumb's worth either side of the bottle */
         body.party-mode.phone-landscape.phone-play .touch-controls:not(.hidden) {
             grid-template-columns: repeat(2, minmax(0, 1fr)) var(--party-center, 300px) repeat(2, minmax(0, 1fr));
-            grid-template-areas: "left right . turnl turnr" "drop drop . hold hold";
+            grid-template-areas: "left turnl . turnr right" "drop drop . hold hold";
             background: none;
             border: 0;
             pointer-events: none;
@@ -1679,7 +1702,7 @@
                 <button id="rulesBtn" class="menu-button secondary-button">
                     <span class="emoji">📜</span>RULES
                 </button>
-                <button id="replaysBtn" class="menu-button secondary-button">
+                <button id="replaysBtn" class="menu-button secondary-button hidden">
                     <span class="emoji">🎬</span>REPLAYS
                 </button>
             </div>
@@ -2162,7 +2185,10 @@
             controlPicker.classList.add('hidden');
         }
 
-        document.getElementById('single').onclick = showControlPicker;
+        document.getElementById('single').onclick = () => { playingFree = false; showControlPicker(); };
+        // Free Play asks the same question, then finds a match
+        let playingFree = false;
+        document.getElementById('freePlay').onclick = () => { playingFree = true; showControlPicker(); };
         document.getElementById('controlBack').onclick = hideControlPicker;
         controlPicker.addEventListener('click', function(e) {
             if (e.target === this) hideControlPicker();
@@ -2177,12 +2203,16 @@
             controlOptions[(at + step + controlOptions.length) % controlOptions.length].focus();
         });
 
-        document.getElementById('playKeyboard').onclick = () => startSinglePlayer('keyboard');
+        document.getElementById('playKeyboard').onclick = () => {
+            if (!playingFree) return startSinglePlayer('keyboard');
+            hideControlPicker();
+            window.party.startFreePlay();
+        };
 
         // Phone: a TV Room for one phone (scripts/tvHost.js) that starts as soon as the phone joins
         document.getElementById('playPhone').onclick = () => {
             hideControlPicker();
-            window.tvHost.startPhoneSolo();
+            window.tvHost.startPhoneSolo(playingFree);
         };
 
         // Pro Controller: wait for the controller to show up (scripts/gamepad.js), then START
@@ -2237,6 +2267,7 @@
         document.getElementById('padFind').onclick = () => window.padInput.connectHid();
         document.getElementById('padStart').onclick = () => {
             closePadConnect();
+            if (playingFree) return window.party.startFreePlay(); // a match always listens to the controller too
             startSinglePlayer('gamepad');
         };
         document.getElementById('padBack').onclick = () => {
@@ -2298,7 +2329,6 @@
         };
 
         // Free Play: matched with another player, or a CPU after a few seconds (scripts/partyClient.js)
-        document.getElementById('freePlay').onclick = () => window.party && window.party.startFreePlay();
 
         // Multiplayer: create a room or join one (scripts/partyClient.js)
         document.getElementById('multiplayer').onclick = () => window.party && window.party.openMenu();
@@ -2465,6 +2495,10 @@
 
         // Replays: watch the last 100 games back (replays.html)
         document.getElementById('replaysBtn').onclick = () => { location.href = '/replays.html'; };
+        // Only on this computer or its Wi-Fi: the game logs aren't open to anyone on the live site
+        if (/^(localhost|127\.|\[::1\]|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|.*\.local$)/.test(location.hostname)) {
+            document.getElementById('replaysBtn').classList.remove('hidden');
+        }
 
         // Rules button
         document.getElementById('rulesBtn').onclick = function() {
@@ -2664,6 +2698,7 @@
                     if (navigator.vibrate) navigator.vibrate(8);
                     sendKey('keydown', code);
                     if (mode === 'hold') {
+                        // Stays down until the thumb lifts: iOS must not treat it as a long press
                         keyDown = true;
                         return;
                     }
@@ -2675,6 +2710,7 @@
                 });
                 for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, release);
                 button.addEventListener('contextmenu', (e) => e.preventDefault());
+                button.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false }); // no long press, no double-tap zoom
             };
             bind('holdPill', 'KeyC', 'once');
             bind('moveLeft', 'KeyA', 'repeat');

@@ -14,7 +14,8 @@
  *   node tools/gamelog.js markers [count]           the latest 🐞 marks, across games
  *   node tools/gamelog.js audit <game>              look for glitches: floating pieces, wrong virus
  *                                                   counts, stuck or teleporting pills, junk that never
- *                                                   dropped, errors...
+ *                                                   dropped, broken pills, bad clears, wrong next pill,
+ *                                                   CPUs that ended their own game, errors...
  *
  * <game>  a log id (or the start of one), 'latest', or 'marked' (the latest game with a 🐞)
  * <when>  a time of day (15:42:07), 'marker' / 'marker:2' (that game's 1st / 2nd 🐞),
@@ -373,6 +374,81 @@ function audit(which) {
             if (shown) find(e.at, e.winner, 'result', `won by clearing, but its board still shows ${shown} virus(es)`);
             if (won && won.board.v !== 0) find(e.at, e.winner, 'virus-count', `won by clearing, but its virus counter says ${won.board.v}`);
         }
+    }
+
+    // 7b. A pill's turn should match the order of its halves; half a pill needs its other half
+    for (const e of events) {
+        if (e.type === 'move' && e.to && e.to.filter(Boolean).length === 2) {
+            const [a, b] = e.to;
+            const ok = { 0: a[1] < b[1], 1: a[0] < b[0], 2: a[1] > b[1], 3: a[0] > b[0] }[e.rot];
+            if (ok === false) find(e.at, e.p, 'rotation', `the pill's turn (${e.rot}) doesn't match its halves: ${JSON.stringify(e.to)}`);
+        }
+    }
+    const seenBroken = new Set();
+    for (const e of events) {
+        if (e.type !== 'board' || e.falling || e.blocked || e.waitSpawn || e.junk !== '0000') continue;
+        const cells = cellsOf(e.g);
+        const moving = new Set(((e.pill && !e.pill.placed && e.pill.cells) || []).filter(Boolean).map(([x, y]) => x + ',' + y));
+        const at = (x, y) => (cells[x] && cells[x][y]) || null;
+        for (let x = 0; x < 8; x++) {
+            for (let y = 0; y < 17; y++) {
+                const c = cells[x][y];
+                const other = c && { left: [x + 1, y, 'right'], right: [x - 1, y, 'left'], up: [x, y - 1, 'down'], down: [x, y + 1, 'up'] }[c.kind];
+                if (!other || moving.has(x + ',' + y)) continue;
+                const partner = at(other[0], other[1]);
+                const key = [e.p, x, y, c.kind].join();
+                if ((!partner || partner.kind !== other[2]) && !seenBroken.has(key)) {
+                    seenBroken.add(key);
+                    find(e.at, e.p, 'broken-pill', `half a pill (${c.kind}) at ${x},${y} has no other half`);
+                }
+            }
+        }
+    }
+
+    // 7c. Every cleared cell is in a line of 4+ of its colour; the next pill is the one shown
+    const shownNext = {};
+    for (const e of events) {
+        if (e.type === 'clear' && e.cells) {
+            const colorAt = new Map(e.cells.map(c => [c[0] + ',' + c[1], c[2]]));
+            const line = (x, y, color, dx, dy) => {
+                let n = 1;
+                for (const s of [1, -1]) for (let i = 1; colorAt.get((x + s * i * dx) + ',' + (y + s * i * dy)) === color; i++) n++;
+                return n;
+            };
+            const bad = e.cells.filter(([x, y, color]) => Math.max(line(x, y, color, 1, 0), line(x, y, color, 0, 1)) < 4);
+            if (bad.length) find(e.at, e.p, 'bad-clear', `cleared without a line of 4: ${JSON.stringify(bad)}`);
+        }
+        if (e.type === 'pill' && e.pill && e.pill.cells) {
+            const colors = e.pill.cells.map(c => c && c[2]);
+            if (shownNext[e.p] && shownNext[e.p].join() !== colors.join()) find(e.at, e.p, 'next-pill', `showed ${shownNext[e.p]} as next, got ${colors}`);
+            shownNext[e.p] = e.next || null;
+        }
+    }
+
+    // 7c-2. Junk drops in the colour it was shown in
+    const shownJunk = {};
+    for (const e of events) {
+        if (e.type === 'junk-incoming' && e.shown) shownJunk[e.p] = e.shown.slice();
+        if (e.type === 'junk-drop' && shownJunk[e.p] && shownJunk[e.p].length) {
+            const [, color] = shownJunk[e.p].shift();
+            if (color !== e.color) find(e.at, e.p, 'junk-color', `showed ${color} junk coming, ${e.color} dropped`);
+        }
+    }
+
+    // 7d. A CPU that ended its own game with room left on the top row
+    const lastPlan = {};
+    for (const e of events) {
+        if (e.type === 'cpu-plan') lastPlan[e.p] = e;
+        if (e.type !== 'topped-out' || !lastPlan[e.p] || (lastPlan[e.p].plan && lastPlan[e.p].plan.escape) || !e.board) continue;
+        const cells = cellsOf(e.board.g);
+        for (const cell of (e.board.pill && e.board.pill.cells) || []) if (cell) cells[cell[0]][cell[1]] = null;
+        const open = [];
+        for (const step of [-1, 1]) {
+            for (let x = 3 + step; x >= 0 && x <= 6 && !cells[x][15] && !cells[x + 1][15]; x += step) {
+                if (!cells[x][14] && !cells[x + 1][14]) open.push(x);
+            }
+        }
+        if (open.length) find(e.at, e.p, 'cpu-suicide', `topped out (plan ${JSON.stringify(lastPlan[e.p].plan)}) with room to slide to column ${open.join(', ')}`);
     }
 
     // 8. Errors, warnings, freezes, CPUs that gave up

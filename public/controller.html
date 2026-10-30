@@ -6,6 +6,20 @@
     <meta name="theme-color" content="#1a1a2e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Dr. Mario 99 - Controller</title>
+    <script>
+        // Phones: a double tap or a pinch must never zoom the game. iOS ignores user-scalable=no,
+        // so stop it here too. Buttons and text boxes need their taps, and touch-action covers them.
+        (function () {
+            let lastTap = 0;
+            document.addEventListener('touchend', (e) => {
+                const now = Date.now();
+                const quick = now - lastTap < 350;
+                lastTap = now;
+                if (quick && e.cancelable && !e.target.closest('button, a, input, textarea, select, label')) e.preventDefault();
+            }, { passive: false });
+            document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+        })();
+    </script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -23,6 +37,8 @@
             --accent: #00ffff;
             --accent-soft: rgba(0, 255, 255, 0.35);
         }
+        /* No double-tap zoom anywhere (see the script at the top of this page) */
+        html, body * { touch-action: manipulation; }
         /* Player colours: same list as the TV (index.html .tv-p1 ... and attackFx.js) */
         body.p1 { --accent: #ff4d6d; --accent-soft: rgba(255, 77, 109, 0.35); }
         body.p2 { --accent: #4dc3ff; --accent-soft: rgba(77, 195, 255, 0.35); }
@@ -253,6 +269,11 @@
         .phone-game .next { display: flex; margin-top: 6px; }
         .phone-game .next img { width: 20px; height: 20px; image-rendering: pixelated; }
         .phone-game .board-wrap { flex: none; height: 100%; display: flex; align-items: center; justify-content: center; }
+        .phone-game .board-wrap { position: relative; }
+        /* Junk on its way: where and what it will be, see-through and blinking until it drops */
+        .junk-layer { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+        .junk-layer img { position: absolute; top: calc(100% / 17); width: 12.5%; height: calc(100% / 17); image-rendering: pixelated; animation: junkBlink 0.45s ease-in-out infinite alternate; }
+        @keyframes junkBlink { from { opacity: 0.3; } to { opacity: 0.9; } }
         #boardCanvas {
             display: block;
             background: #000;
@@ -491,7 +512,7 @@
                 <div>VIRUS<b id="gameVirus">0</b></div>
                 <div>LEVEL<b id="gameLevel">00</b></div>
             </div>
-            <div class="board-wrap" id="boardWrap"><canvas id="boardCanvas" width="192" height="408"></canvas></div>
+            <div class="board-wrap" id="boardWrap"><canvas id="boardCanvas" width="192" height="408"></canvas><div class="junk-layer" id="junkLayer"></div></div>
             <div class="side right">
                 <div>NEXT<span class="next" id="gameNext"></span></div>
                 <div id="gameTargetBox" class="hidden">TARGET<b id="gameTarget"></b></div>
@@ -973,6 +994,8 @@
             }
             canvas.style.width = w + 'px';
             canvas.style.height = h + 'px';
+            $('junkLayer').style.width = w + 'px';
+            $('junkLayer').style.height = h + 'px';
         }
         window.addEventListener('resize', fitBoard);
 
@@ -988,6 +1011,7 @@
         }
 
         let lastHold = '';
+        let lastJunk = null;
         function applyState(state) {
             // HOLD: on the button, dimmed once it's been used for this pill
             const holdKey = JSON.stringify([state.h, state.hu]);
@@ -1027,6 +1051,18 @@
                 next.dataset.key = nextKey;
                 next.innerHTML = '';
                 if (state.n) next.appendChild(pillImages(state.n));
+            }
+            const junkKey = JSON.stringify(state.j || null);
+            if (state.g && junkKey !== lastJunk) {
+                lastJunk = junkKey;
+                $('junkLayer').innerHTML = '';
+                for (const [x, color] of state.j || []) {
+                    const img = document.createElement('img');
+                    img.src = 'img/' + color + '_covid.png';
+                    img.alt = '';
+                    img.style.left = (x * 100 / 8) + '%';
+                    $('junkLayer').appendChild(img);
+                }
             }
             if (state.g && state.g !== lastGrid) {
                 lastGrid = state.g;
@@ -1120,10 +1156,16 @@
         }
 
         // You sent junk, junk hit you, or you cleared a level: flash the screen (the pad keeps working underneath)
-        socket.on('tvFx', ({ kind }) => {
+        // An attack looks like the pill that was cleared to send it (same colours as scripts/attackFx.js)
+        const PILL_FX = { bl: ['#6f9bff', 'rgba(111, 155, 255, 0.65)'], br: ['#e0642e', 'rgba(224, 100, 46, 0.65)'], yl: ['#ffe45c', 'rgba(255, 228, 92, 0.6)'] };
+        socket.on('tvFx', ({ kind, pill }) => {
             if (screen !== 'controller') return;
             const el = document.createElement('div');
             el.className = 'fx-flash ' + kind;
+            if (PILL_FX[pill]) {
+                el.style.setProperty('--fx', PILL_FX[pill][0]);
+                el.style.setProperty('--fx-bg', PILL_FX[pill][1]);
+            }
             const label = document.createElement('span');
             label.textContent = kind === 'attack' ? 'ATTACK SENT!' : kind === 'level' ? 'LEVEL CLEAR!' : 'INCOMING!';
             el.appendChild(label);

@@ -11,7 +11,9 @@
  * as the keyboard (Board.movementFromKey).
  *
  * Each CPU gets its own speed and sometimes takes a worse move, so they don't
- * all play alike and can be beaten.
+ * all play alike and can be beaten. It never picks a place that ends its own game
+ * (Board.gameOver), and with the top nearly full it slides along the top row to
+ * whatever is still open.
  */
 
 "use strict"
@@ -95,13 +97,44 @@ function choosePlace(board, pill, sloppy) {
             const a = swapped ? second : first   // the bottom-left half
             const b = swapped ? first : second
             const cells = flat ? [{ x, y, color: a }, { x: x + 1, y, color: b }] : [{ x, y, color: a }, { x, y: y + 1, color: b }]
+            if (endsTheGame(cells)) continue
             options.push({ rotation, x, score: scorePlace(grid, cells, isVirus, width, height) + Math.random() * 2 })
         }
     }
-    if (!options.length) return null
+    if (!options.length) return escapeAlongTop(pill, grid, free, isVirus, width, height, first, second)
     options.sort((p, q) => q.score - p.score)
     const pick = Math.random() < sloppy ? Math.floor(Math.random() * Math.min(4, options.length)) : 0
     return { ...options[pick], score: Math.round(options[pick].score), rank: pick + 1, of: options.length }
+}
+
+/** Board.gameOver: a piece landing in the mouth of the bottle ends the game */
+function endsTheGame(cells) {
+    return cells.some(({ x, y }) => y >= SPAWN_Y && (x === 3 || x === 4))
+}
+
+/**
+ * The usual path needs the second row open too, for a pill that falls while it
+ * moves. With no place left that way, a flat pill can still slide along the top
+ * row: the nearest place it can get to, before it lands where it is.
+ */
+function escapeAlongTop(pill, grid, free, isVirus, width, height, first, second) {
+    const swapped = pill.rotation === Rotation.HORIZONTAL_REVERSED
+    if (!swapped && pill.rotation !== Rotation.HORIZONTAL) return null
+    const options = []
+    for (let x = 0; x < width - 1; x++) {
+        let open = true
+        for (let col = Math.min(3, x); col <= Math.max(4, x + 1); col++) {
+            if (!free(col, SPAWN_Y)) open = false
+        }
+        if (!open) continue
+        let y = SPAWN_Y
+        while (free(x, y - 1) && free(x + 1, y - 1)) y--
+        const cells = [{ x, y, color: swapped ? second : first }, { x: x + 1, y, color: swapped ? first : second }]
+        if (!endsTheGame(cells)) options.push({ x, distance: Math.abs(x - 3), score: scorePlace(grid, cells, isVirus, width, height) })
+    }
+    if (!options.length) return null
+    options.sort((p, q) => p.distance - q.distance || q.score - p.score)
+    return { rotation: pill.rotation, x: options[0].x, score: Math.round(options[0].score), rank: 1, of: options.length, escape: true }
 }
 
 function scorePlace(grid, cells, isVirus, width, height) {

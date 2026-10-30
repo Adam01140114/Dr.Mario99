@@ -759,6 +759,7 @@ function registerTvRoomHandlers(socket) {
         const soloOnly = !!(payload && payload.solo);
         tvRooms[code] = {
             hostId: socket.id, state: 'lobby', players: {}, ready: new Set(), solo: soloOnly, soloOnly,
+            pairOnly: soloOnly && !!payload.pairOnly, // Free Play with a phone: this room only pairs the phone; the match has its own log
             roster: [], winner: null, places: {}, rematch: new Set(), settings: { virusCount: 5, teams: 0 },
             controllers: { list: [], bindings: {} },
             logId: null, preLog: (socket.data.preLog || []).map(e => ({ ...e, src: 'tv' })), rounds: 0, // game log: one per round; lobby events wait for the first
@@ -1021,7 +1022,8 @@ function registerTvRoomHandlers(socket) {
     socket.on('tvFx', (payload = {}) => {
         const { room } = tvHostRoom(socket);
         const kind = ['attack', 'hit', 'level'].includes(payload.kind) ? payload.kind : 'hit';
-        if (room) tvToPlayer(room, parseInt(payload.player, 10), 'tvFx', { kind });
+        const pill = ['bl', 'br', 'yl'].includes(payload.pill) ? payload.pill : null;
+        if (room) tvToPlayer(room, parseInt(payload.player, 10), 'tvFx', { kind, pill });
     });
 
     // Host: play again with the same players (no new QR code)
@@ -1114,7 +1116,7 @@ function startTvRound(code) {
     const cpus = roster.filter(n => room.players[n].cpu);
     // Each round gets its own game log; what happened in the lobby before goes at its top
     room.rounds++;
-    room.logId = gameLogs.start(room.soloOnly ? 'phone' : 'tv', {
+    room.logId = room.pairOnly ? null : gameLogs.start(room.soloOnly ? 'phone' : 'tv', {
         code, round: room.rounds, roster, names: tvNames(room, roster), cpus,
         inputs: Object.fromEntries(roster.map(n => [n, room.players[n].input])),
         showGame: Object.fromEntries(roster.map(n => [n, !!room.players[n].showGame])),
@@ -1290,7 +1292,8 @@ function tvResultFor(room, player) {
  */
 const parties = {};
 const PARTY_MAX = 8;
-const FREE_WAIT_MS = 6000;
+const FREE_WAIT_MS = 1500; // only when someone else is around who could press FREE PLAY too
+const FREE_START_MS = 300; // from a match being made to it starting, when it's a CPU
 const PARTY_GRACE_MS = 8000; // a player who drops mid-match has this long to come back before they're out
 const freeQueue = []; // { socketId, name, timer }
 // Free Play CPUs get names like these, so the game feels full
@@ -1573,7 +1576,8 @@ function registerPartyHandlers(socket) {
         const target = party.targets[from];
         const owner = target && partyOwner(party, target);
         if (!owner) return;
-        io.to(owner).emit('partyJunk', { slot: target, from, points: Math.min(parseInt(payload.points, 10) || 4, 40) });
+        const color = ['bl', 'br', 'yl'].includes(payload.color) ? payload.color : null;
+        io.to(owner).emit('partyJunk', { slot: target, from, points: Math.min(parseInt(payload.points, 10) || 4, 40), color });
         io.to('party:' + party.code).emit('partyFx', { from, to: target });
     });
 
@@ -1607,16 +1611,20 @@ function registerPartyHandlers(socket) {
             setTimeout(() => { if (parties[party.code] && party.state === 'lobby') startPartyMatch(party); }, 1500);
             return;
         }
-        const entry = { socketId: socket.id, name, clientId, timer: null };
-        entry.timer = setTimeout(() => {
+        const playCpu = () => {
             leaveFreeQueue(socket);
             if (!socket.connected) return;
             const party = createParty(socket, name, clientId, { freePlay: true });
             addPartyCpu(party, party.hostSlot, true);
             socket.emit('partyJoined', { code: party.code, slot: party.hostSlot });
             sendPartyLobby(party);
-            setTimeout(() => { if (parties[party.code] && party.state === 'lobby') startPartyMatch(party); }, 1200);
-        }, FREE_WAIT_MS);
+            setTimeout(() => { if (parties[party.code] && party.state === 'lobby') startPartyMatch(party); }, FREE_START_MS);
+        };
+        // Everyone else is already in a game (or nobody's here): no point waiting
+        const someoneFree = [...io.sockets.sockets.values()].some(s => s.id !== socket.id && !s.data.tvHostOf && !s.data.tvPlayer && !s.data.party);
+        if (!someoneFree) return playCpu();
+        const entry = { socketId: socket.id, name, clientId, timer: null };
+        entry.timer = setTimeout(playCpu, FREE_WAIT_MS);
         freeQueue.push(entry);
         socket.emit('freePlaySearching', { waitMs: FREE_WAIT_MS });
     });
