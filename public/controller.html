@@ -276,6 +276,10 @@
         .junk-layer { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; }
         .junk-layer img { position: absolute; top: calc(100% / 17); width: 12.5%; height: calc(100% / 17); image-rendering: pixelated; animation: junkBlink 0.45s ease-in-out infinite alternate; }
         @keyframes junkBlink { from { opacity: 0.3; } to { opacity: 0.9; } }
+        /* Where the pill lands if it's dropped now */
+        #landingLayer img { visibility: hidden; animation: landingBlink 0.6s ease-in-out infinite alternate; }
+        @keyframes landingBlink { from { opacity: 0.2; } to { opacity: 0.6; } }
+        @media (prefers-reduced-motion: reduce) { #landingLayer img { animation: none; opacity: 0.4; } }
         #boardCanvas {
             display: block;
             background: #000;
@@ -514,7 +518,7 @@
                 <div>VIRUS<b id="gameVirus">0</b></div>
                 <div>LEVEL<b id="gameLevel">00</b></div>
             </div>
-            <div class="board-wrap" id="boardWrap"><canvas id="boardCanvas" width="192" height="408"></canvas><div class="junk-layer" id="junkLayer"></div></div>
+            <div class="board-wrap" id="boardWrap"><canvas id="boardCanvas" width="192" height="408"></canvas><div class="junk-layer" id="junkLayer"></div><div class="junk-layer" id="landingLayer"><img alt=""><img alt=""></div></div>
             <div class="side right">
                 <div>NEXT<span class="next" id="gameNext"></span></div>
                 <div id="gameTargetBox" class="hidden">TARGET<b id="gameTarget"></b></div>
@@ -999,6 +1003,8 @@
             canvas.style.height = h + 'px';
             $('junkLayer').style.width = w + 'px';
             $('junkLayer').style.height = h + 'px';
+            $('landingLayer').style.width = w + 'px';
+            $('landingLayer').style.height = h + 'px';
         }
         window.addEventListener('resize', fitBoard);
 
@@ -1066,6 +1072,18 @@
                     img.style.left = (x * 100 / 8) + '%';
                     $('junkLayer').appendChild(img);
                 }
+            }
+            // These stay in place and just move, so the blink doesn't start over at each step
+            if (state.g) {
+                [...$('landingLayer').children].forEach((img, i) => {
+                    const cell = state.p && state.p[i];
+                    img.style.visibility = cell ? 'visible' : 'hidden';
+                    if (!cell) return;
+                    img.style.left = (cell[0] * 100 / 8) + '%';
+                    img.style.top = ((16 - cell[1]) * 100 / 17) + '%';
+                    const src = '/img/' + SPRITES[cell[2].charCodeAt(0) - 97] + '.png';
+                    if (img.getAttribute('src') !== src) img.src = src;
+                });
             }
             if (state.g && state.g !== lastGrid) {
                 lastGrid = state.g;

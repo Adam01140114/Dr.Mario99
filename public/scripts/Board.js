@@ -145,6 +145,9 @@ class Board extends HTMLElement {
         else if (y < 0 || y >= this.height) return true
         else return false
     }
+
+    /** Only the bottle shows where a pill will land (PlayingBoard) */
+    showLanding() {}
 }
 
 /**
@@ -333,6 +336,39 @@ export class PlayingBoard extends Board {
     }
 
     /**
+     * Where this pill lands if it's dropped now: see-through and blinking at the bottom, so
+     * you can see before you commit. Called whenever it moves; `null` takes it away.
+     */
+    showLanding(pill) {
+        if (this.game.isAIOpponentView || this.game.cpuPlayer) return // nobody's deciding on these boards
+        this.landing = null
+        if (pill && !pill.placed) {
+            let drop = 0
+            while (pill.pieces.every(({ field }) => field.y - drop > 0 && !this.fields[field.x][field.y - drop - 1].locked)) drop++
+            if (drop > 0) this.landing = pill.pieces.map(({ field }) => ({ x: field.x, y: field.y - drop, field }))
+                .filter(({ x, y }) => !pill.pieces.some(({ field }) => field.x === x && field.y === y)) // the pill itself is there
+        }
+        if (!this.landingEls) {
+            this.landingEls = [0, 1].map(() => {
+                const el = document.createElement('div')
+                el.className = 'landing-preview'
+                el.style.width = el.style.height = this.fieldSize + 'px'
+                this.appendChild(el)
+                return el
+            })
+        }
+        // These stay on the board and just move, so the blink doesn't start over at each step
+        this.landingEls.forEach((el, i) => {
+            const cell = this.landing && this.landing[i]
+            el.style.visibility = cell ? 'visible' : 'hidden'
+            if (!cell) return
+            el.style.left = cell.x * this.fieldSize + 'px'
+            el.style.top = this.fieldSize * (this.height - 1 - cell.y) + 'px'
+            el.style.backgroundImage = cell.field.style.backgroundImage
+        })
+    }
+
+    /**
      * HOLD (like Tetris): put the falling pill in the hold box and play the next
      * pill - or swap it with the one already held. Once per pill: it comes back
      * when the next pill is thrown in.
@@ -402,6 +438,7 @@ export class PlayingBoard extends Board {
             v: this.virusCount,
             l: this.level,
             j: this.junkQueue.length ? this.junkQueue.map(junk => [junk.x, junk.color]) : null,
+            p: this.landing && this.landing.length ? this.landing.map(cell => [cell.x, cell.y, cell.field.spriteCode]) : null,
         }
     }
 

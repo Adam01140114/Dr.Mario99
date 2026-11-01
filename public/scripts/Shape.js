@@ -303,6 +303,7 @@ export class Pill extends Shape {
         // Set the visual colors on the board
         this.pieces[0].field.setColor(this.pieces[0].color)
         this.pieces[1].field.setColor(this.pieces[1].color)
+        this.board.showLanding(this)
     }
 
     /**
@@ -325,6 +326,7 @@ export class Pill extends Shape {
         this.placed = true
         for (let piece of this.pieces)
             piece.place()
+        this.board.showLanding(null)
     }
 
     canRotate(direction) {
@@ -451,6 +453,7 @@ export class Pill extends Shape {
         for (let field of previousFields) {
             if (field && !field.shapePiece) field.setColor(Color.NONE)
         }
+        this.board.showLanding(this)
     }
 
     moveUntilStopped(direction) {

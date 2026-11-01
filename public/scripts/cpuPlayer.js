@@ -27,6 +27,7 @@ const TURNS = [Rotation.HORIZONTAL, Rotation.VERTICAL, Rotation.HORIZONTAL_REVER
 
 /** Play this TV Room game until it leaves the page; returns a function that stops it */
 export function startCpu(game, seed = Math.random()) {
+    game.cpuPlayer = true
     const stepMs = 140 + Math.round(seed * 90)  // time between moves
     const sloppy = 0.12 + seed * 0.2            // how often it settles for a worse place
     let pill = null

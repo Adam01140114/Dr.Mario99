@@ -238,6 +238,7 @@ export default class Game extends HTMLElement {
         if (!board) return
         board.blockInput = true
         board.currentPill = null
+        board.showLanding(null)
         for (const name of ['gravitationInterval', 'throwingBoardInterval', 'fastDamageDropInterval']) {
             if (board[name]) {
                 clearInterval(board[name])

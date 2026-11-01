@@ -630,6 +630,11 @@
         .junk-preview { position: absolute; z-index: 3; background-size: 100% 100%; image-rendering: pixelated; pointer-events: none; animation: junkBlink 0.45s ease-in-out infinite alternate; }
         @keyframes junkBlink { from { opacity: 0.3; } to { opacity: 0.9; } }
 
+        /* Where the pill lands if it's dropped now (Board.showLanding) */
+        .landing-preview { position: absolute; z-index: 2; visibility: hidden; background-size: 100% 100%; image-rendering: pixelated; pointer-events: none; animation: landingBlink 0.6s ease-in-out infinite alternate; }
+        @keyframes landingBlink { from { opacity: 0.2; } to { opacity: 0.6; } }
+        @media (prefers-reduced-motion: reduce) { .landing-preview { animation: none; opacity: 0.4; } }
+
         .control-btn {
             touch-action: none;
             -webkit-touch-callout: none;

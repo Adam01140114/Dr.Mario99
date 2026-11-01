@@ -327,6 +327,9 @@ side is the TV ROOM section of `server.js`.
   `j` in the snapshot). When the next pill is thrown the first one in the queue becomes real and drops, in
   that column unless it has filled up. It has the colour of the pill that was cleared to send it, and so do
   the ATTACK / INCOMING effects (attackFx.js `PILL_COLORS`)
+- **Where the pill lands** (every mode, not on CPU boards): a see-through, blinking copy of the falling pill
+  sits where it would land if dropped now, and follows each move and turn (`Board.showLanding`; on a phone's
+  own board via `p` in the snapshot). It's only drawn over the board, so logs and replays don't see it
 - **Big rooms (9 to 20 players)**: the lobby switches to small slots in a wider
   panel with a smaller QR code (`.tv-slots.crowded`), and from 9 boards the name
   tags grow and leave out the target, which the phones still show (`body.tv-many`,
