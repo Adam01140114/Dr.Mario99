@@ -542,6 +542,19 @@
             display: block;
         }
 
+        /* A window too narrow for the whole game: centered in it and scaled down (applyMobileGameZoom) */
+        .game-container.fit-window {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            margin: 0;
+        }
+        @supports (height: 100dvh) {
+            .game-container.fit-window {
+                top: 50dvh;
+            }
+        }
+
         /* Wrapper for game boards - side-by-side on desktop in AI mode, stacked on mobile */
         .ai-boards-row {
             display: flex;
@@ -2166,6 +2179,7 @@
         // Scale gameplay UI down when viewport is narrower than the fixed 960px game canvas.
         const GAME_CANVAS_WIDTH = 960;
         const GAME_CANVAS_HEIGHT = 720; // approximate height of one game container (board + throwing + header)
+        const GAME_BOARD_HEIGHT = 576; // exact height of one game on the page
         function snapPixelScale(rawScale) {
             if (rawScale >= 1) return 1;
             // 24px cell grid: snap scale to 1/24 steps to reduce sub-pixel shimmer/flicker.
@@ -2191,6 +2205,17 @@
             if (game1 && !game1.classList.contains('hidden')) containers.push(game1);
             if (game2 && !game2.classList.contains('hidden')) containers.push(game2);
             return containers;
+        }
+        const FULL_LOGO_HEIGHT = 250;
+        const MIN_LOGO_HEIGHT = 60;
+        const LOGO_GAPS = 45; // between the top of the page and the board, besides the logo
+        /** The logo above a game: as tall as there's room for, or gone if that's too small to look like anything */
+        function setLogoHeight(height) {
+            const logo = document.getElementById('logoClick');
+            const shrink = height < FULL_LOGO_HEIGHT && height >= MIN_LOGO_HEIGHT;
+            logo.style.display = height < MIN_LOGO_HEIGHT ? 'none' : '';
+            logo.style.height = shrink ? `${height}px` : '';
+            logo.style.width = shrink ? `${height * 2}px` : '';
         }
         function applyMobileGameZoom() {
             // TV Room: every player's board, laid out by scripts/tvHost.js
@@ -2267,8 +2292,11 @@
                 return;
             }
 
-            // Desktop: keep normal flow under logo, centered horizontally.
-            if (scale >= 1) {
+            // Desktop: keep normal flow under logo, centered horizontally. A short window gets a smaller logo.
+            const logoRoom = window.innerHeight - GAME_BOARD_HEIGHT - LOGO_GAPS - viewportPadding;
+            if (scale >= 1 && logoRoom >= MIN_LOGO_HEIGHT) {
+                setLogoHeight(logoRoom);
+                activeGame.classList.remove('fit-window');
                 activeGame.style.transform = '';
                 activeGame.style.transformOrigin = '';
                 activeGame.style.width = '';
@@ -2276,22 +2304,29 @@
             }
 
             // Narrow/mobile: keep viewport centering and scale down to fit width.
-            activeGame.style.transform = `translate3d(-50%, -50%, 0) scale(${scale})`;
+            // Centered, the page can't scroll to the rest of a short window, so wider windows (no touch buttons) fit its height too.
+            const fitted = isDesktop ? Math.min(scale, (window.innerHeight - viewportPadding) / GAME_BOARD_HEIGHT) : scale;
+            setLogoHeight(isDesktop ? (window.innerHeight - GAME_BOARD_HEIGHT * fitted) / 2 - viewportPadding / 2 : FULL_LOGO_HEIGHT);
+            activeGame.classList.add('fit-window');
+            activeGame.style.transform = `translate3d(-50%, -50%, 0) scale(${fitted})`;
             activeGame.style.transformOrigin = 'center center';
             activeGame.style.width = '';
         }
         function restoreViewport() {
             document.body.classList.remove('in-game');
+            setLogoHeight(FULL_LOGO_HEIGHT);
             const game1 = document.getElementById('game1');
             const game2 = document.getElementById('game2');
             const row = document.querySelector('.ai-boards-row');
 
             if (game1) {
+                game1.classList.remove('fit-window');
                 game1.style.transform = '';
                 game1.style.transformOrigin = '';
                 game1.style.width = '';
             }
             if (game2) {
+                game2.classList.remove('fit-window');
                 game2.style.transform = '';
                 game2.style.transformOrigin = '';
                 game2.style.width = '';
