@@ -320,11 +320,11 @@ function useGameData(gameData) {
 
 socket.on('tvGameStarted', async (data) => {
     if (data.code !== tv.code) return
-    // Free Play with a phone: the phone is paired, now find a match (scripts/partyClient.js)
+    // Free Play with a phone: the phone is paired, now on with Free Play (scripts/partyClient.js)
     if (tv.forFreePlay) {
         tv.phoneFor = data.roster[0]
         $('tvLobby').classList.add('hidden')
-        window.party.startFreePlay()
+        window.party.askFreeMode(() => { location.href = location.pathname })
         return
     }
     const first = !tv.started

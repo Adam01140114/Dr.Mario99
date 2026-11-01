@@ -279,8 +279,23 @@ nobody plays with lag (`public/scripts/partyClient.js`; server: PARTIES in
   strip above and six big buttons below (in landscape, either side). The buttons are real presses
   (setupTouchControls in index.html): a tap is one step, held moves repeat, held DROP keeps dropping that pill
 - **FREE PLAY** first asks how you want to play, like Single Player (touch or keyboard, phone, Pro Controller).
-  A phone pairs through a one-phone TV room that only passes its presses on (`pairOnly`, `tv.forFreePlay`)
-- **FREE PLAY**: a 100-player match, last one standing. Everyone pressing it within 1.5 s (FREE_WAIT_MS;
+  A phone pairs through a one-phone TV room that only passes its presses on (`pairOnly`, `tv.forFreePlay`).
+  Then WHO'S PLAYING? (`#freeMode`, `askFreeMode`): SOLO finds a match; WITH A FRIEND opens the same create / join
+  screen as MULTIPLAYER (`openMenu(code, true)`). A controller works on these screens (`data-pad-menu` in
+  gamepad.js: D-pad to move, A to press)
+- **Free Play rooms** (`party.arena`): CREATE ROOM there makes a room of up to 100 with the same lobby (code, QR
+  code, invite link, who's in), no CPUs or virus setting. Join with the code from either menu, or with the link.
+  START (the host alone is enough) takes everyone into the 100-player match: anyone waiting for a Free Play match
+  comes too (`pullInWaiting`; they don't stay in the room afterwards), and opponents fill the other seats.
+  When the last friend is out or someone wins, the opponents go (`arenaBackToRoom`) and everyone gets BACK TO THE ROOM
+- **Your number**: PLAYER n above the virus count (`.my-number`, `#hudYou` on a phone). It's your place in the
+  roster: in Free Play, your square in the panel, 1 to 100
+- **Your target in trouble**: a target whose stack reaches 12 of 16 rows (DANGER_ON; the falling pill doesn't count)
+  glows red until it's under 11 (DANGER_OFF). A real board sends its height in `h` of partyBoard; an opponent's
+  is its `stack`
+- **Your target or attacker out**: their board flashes, shakes and falls away under 💀 OUT and their name
+  (`knockedOut`), with a message at the top
+- **FREE PLAY SOLO**: a 100-player match, last one standing. Everyone pressing it within 1.5 s (FREE_WAIT_MS;
   straight away if nobody else is free) shares one, and opponents with ordinary names fill the other seats.
   They aren't boards: royale.js keeps a few numbers for each on the server, ticked once a second (royaleTick), so
   a phone only runs its own board. Each attacks the next one still in, round the circle, as usual; real players'

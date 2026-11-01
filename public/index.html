@@ -1398,6 +1398,8 @@
         .party-code { color: #ffd60a; letter-spacing: 6px; font-size: inherit; }
         .party-invite { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 18px; }
         .party-link { color: #9fb3ff; font-size: 0.96rem; word-break: break-all; }
+        .party-qr { width: 180px; height: 180px; padding: 8px; box-sizing: border-box; background: #fff; border-radius: 12px; image-rendering: pixelated; }
+        .party-players { max-height: 26vh; overflow-y: auto; }
         .party-count { color: #9fb3ff; font-size: 1.12rem; margin-bottom: 12px; }
         .party-players { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; text-align: left; }
         .party-player {
@@ -1446,6 +1448,57 @@
         .royale-tiles i.me { background: #fff; box-shadow: 0 0 6px #fff; }
         .royale-tiles i.me.out { background: #ff4d6d; }
         .op-card.attacker canvas { border-color: #ff9f1c; }
+        .royale-panel .op-card .op-name { width: 0; min-width: 100%; justify-content: center; } /* a long name never widens the panel */
+        /* My target is nearly out (setDanger in scripts/partyClient.js) */
+        .op-card.danger canvas { border-color: #ff2d2d; animation: opDanger 0.7s ease-in-out infinite alternate; }
+        @keyframes opDanger {
+            from { box-shadow: 0 0 8px 2px rgba(255, 45, 45, 0.7); }
+            to { box-shadow: 0 0 26px 10px rgba(255, 45, 45, 0.95); }
+        }
+        /* My target or attacker is out (knockedOut in scripts/partyClient.js) */
+        .op-ghost { position: absolute; z-index: 2; pointer-events: none; image-rendering: pixelated; animation: opGhost 1.5s ease-in forwards; }
+        @keyframes opGhost {
+            0% { filter: brightness(4) saturate(0); transform: none; opacity: 1; }
+            10% { filter: brightness(1.5) sepia(1) hue-rotate(-50deg) saturate(6); transform: translateX(-7px); }
+            20% { transform: translateX(7px); }
+            30% { transform: translateX(-5px); }
+            40% { filter: brightness(0.9) sepia(1) hue-rotate(-50deg) saturate(6); transform: translateX(4px); opacity: 1; }
+            100% { filter: grayscale(1) brightness(0.5); transform: translateY(14%) rotate(7deg) scale(0.88); opacity: 0; }
+        }
+        .op-ko {
+            position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; pointer-events: none; overflow: hidden;
+            background: radial-gradient(circle, rgba(255, 30, 30, 0.6), transparent 72%);
+            color: #fff; text-align: center; text-shadow: 0 0 12px #ff2d2d, 2px 2px 0 #000;
+            animation: opKo 1.5s ease-out forwards;
+        }
+        @keyframes opKo {
+            0% { transform: scale(0.2); opacity: 0; }
+            14% { transform: scale(1.25); opacity: 1; }
+            24% { transform: scale(1); }
+            78% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .op-card.danger canvas { animation: none; box-shadow: 0 0 22px 8px rgba(255, 45, 45, 0.9); }
+            .op-ghost { animation: none; opacity: 0.5; filter: grayscale(1); }
+            .op-ko { animation: none; }
+        }
+        .op-ko b { font-weight: normal; font-size: 15px; white-space: nowrap; }
+        .op-ko span { max-width: 100%; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        body.party-mode.phone-play .op-ko { gap: 2px; background: rgba(190, 0, 0, 0.9); border-radius: 8px; }
+        body.party-mode.phone-play .op-ko b { font-size: 12px; }
+        body.party-mode.phone-play .op-ko span { font-size: 8px; }
+        @keyframes opDangerSmall {
+            from { box-shadow: 0 0 4px 1px rgba(255, 45, 45, 0.7); }
+            to { box-shadow: 0 0 10px 4px rgba(255, 45, 45, 0.95); }
+        }
+        body.party-mode.phone-play .op-card.danger canvas { animation-name: opDangerSmall; }
+        /* Which player I am (showMyNumber in scripts/partyClient.js) */
+        .party-board #holdBox .hold-pill { top: 8px; } /* next to HOLD: my number gets the line under it */
+        .my-number { position: absolute; left: 700px; top: 434px; width: 188px; z-index: 11; display: flex; align-items: center; justify-content: space-between; }
+        .my-number span { font-size: 18px; color: #a5a5ff; }
+        .my-number i { display: flex; }
+        .my-number img { width: 24px; height: 24px; }
         body.party-mode.phone-play .royale-status { gap: 2px; }
         body.party-mode.phone-play .royale-left b { font-size: 18px; }
         body.party-mode.phone-play .royale-left span, body.party-mode.phone-play .royale-kos { font-size: 8px; }
@@ -1480,6 +1533,9 @@
         .hud-stat { padding: 9px 4px; border: 2px solid rgba(255, 255, 255, 0.16); border-radius: 12px; background: rgba(8, 12, 34, 0.85); text-align: center; }
         .hud-stat span { display: block; margin-bottom: 7px; font-size: 9px; color: #9fb3ff; }
         .hud-stat b { font-weight: normal; font-size: 12px; color: #fff; }
+        .hud-stat.hud-you { padding: 6px 4px; border-color: #ffd60a; }
+        .hud-stat.hud-you span { margin-bottom: 4px; font-size: 8px; }
+        .hud-stat.hud-you b { font-size: 16px; color: #ffd60a; }
         .hud-stat.hud-virus { border-color: #00ff66; }
         .hud-stat.hud-virus b { font-size: 22px; color: #00ff66; text-shadow: 0 0 10px rgba(0, 255, 102, 0.6); }
         .hud-pill { display: flex; justify-content: center; min-height: 24px; }
@@ -1592,6 +1648,7 @@
             color: #ffd60a; font-size: 1.2rem; line-height: 1.6; transition: opacity 0.25s, transform 0.25s; pointer-events: none;
         }
         .party-notice.show { opacity: 1; transform: translate(-50%, 0); }
+        body.party-mode.phone-play .party-notice { top: calc(min(92px, 13vh) + 6px); width: max-content; max-width: 90vw; padding: 8px 12px; font-size: 0.8rem; text-align: center; } /* under the other players */
 
         /* 🐞: mark a glitch in the game log, while a game is on */
         .bug-button {
@@ -1769,7 +1826,7 @@
             <div class="rules-modal">
                 <h2 class="rules-title">How to Play</h2>
                 <ol class="rules-list">
-                    <li><span class="rules-emoji">🎮</span> Press <strong>Free Play</strong> to jump into a 100-player match where the last one standing wins. Computer players fill any seats that real people don't.</li>
+                    <li><span class="rules-emoji">🎮</span> Press <strong>Free Play</strong> to jump into a 100-player match where the last one standing wins, alone or from a room with your friends. Computer players fill any seats that real people don't.</li>
                     <li><span class="rules-emoji">🤝</span> Or press <strong>Multiplayer</strong> and make a room for up to 8 friends.</li>
                     <li><span class="rules-emoji">🦠</span> Every time your opponent kills a germ, it sends a germ your way!</li>
                     <li><span class="rules-emoji">🏆</span> In a room, the person who gets rid of all their germs first wins. In Free Play, clearing your bottle sends a big attack and starts the next level, and the last one standing wins.</li>
@@ -1833,13 +1890,13 @@
 
         <!-- MULTIPLAYER: create a room or join one (scripts/partyClient.js) -->
         <div id="mpMenu" class="rules-overlay hidden">
-            <div class="rules-modal control-modal mp-modal">
-                <h2 class="control-title">👥 MULTIPLAYER</h2>
+            <div class="rules-modal control-modal mp-modal" data-pad-menu>
+                <h2 class="control-title" id="mpTitle">👥 MULTIPLAYER</h2>
                 <label class="mp-label">YOUR NAME <input id="mpName" class="mp-input" maxlength="16" placeholder="NAME" autocomplete="off"></label>
                 <div class="control-options">
                     <button id="mpCreate" class="control-option" type="button">
                         <span class="control-emoji">🏠</span><span class="control-name">CREATE ROOM</span>
-                        <span class="control-detail">You're the host: invite up to 7 friends, start when you're ready</span>
+                        <span class="control-detail" id="mpCreateDetail">You're the host: invite up to 7 friends, start when you're ready</span>
                     </button>
                     <button id="mpJoin" class="control-option mp-join" type="button">
                         <span class="control-emoji">🚪</span><span class="control-name">JOIN ROOM</span>
@@ -1857,16 +1914,17 @@
 
         <!-- A MULTIPLAYER room: the host starts the match -->
         <div id="partyLobby" class="rules-overlay hidden">
-            <div class="rules-modal control-modal mp-modal">
-                <h2 class="control-title">👥 ROOM <span id="partyCode" class="party-code"></span></h2>
+            <div class="rules-modal control-modal mp-modal" data-pad-menu>
+                <h2 class="control-title"><span id="partyRoomTitle">👥 ROOM</span> <span id="partyCode" class="party-code"></span></h2>
                 <div class="party-invite">
+                    <img id="partyQr" class="party-qr" alt="QR code to join this room">
                     <span id="partyLink" class="party-link"></span>
                     <button id="partyCopy" class="tv-copy-button" type="button">📋 COPY INVITE LINK</button>
                 </div>
                 <div class="party-count" id="partyCount"></div>
                 <div class="party-players" id="partyPlayers"></div>
                 <div class="party-host" id="partyHostControls">
-                    <label class="mp-label">VIRUSES <input type="number" id="partyViruses" class="mp-input mp-small" min="1" max="30" value="5"></label>
+                    <label class="mp-label" id="partyVirusRow">VIRUSES <input type="number" id="partyViruses" class="mp-input mp-small" min="1" max="30" value="5"></label>
                     <div class="control-buttons">
                         <button id="partyAddCpu" class="rules-close-btn secondary" type="button">🤖 ADD CPU</button>
                         <button id="partyStart" class="rules-close-btn" type="button">▶ START MATCH</button>
@@ -1876,6 +1934,24 @@
                 <div class="mp-hint party-waiting hidden" id="partyWaiting"></div>
                 <div class="mp-error" id="partyLobbyError"></div>
                 <button id="partyLeave" class="rules-close-btn secondary" type="button">LEAVE ROOM</button>
+            </div>
+        </div>
+
+        <!-- FREE PLAY, after choosing how to play: alone or with friends -->
+        <div id="freeMode" class="rules-overlay hidden">
+            <div class="rules-modal control-modal mp-modal" data-pad-menu>
+                <h2 class="control-title">WHO'S PLAYING?</h2>
+                <div class="control-options">
+                    <button id="freeSolo" class="control-option" type="button">
+                        <span class="control-emoji">👤</span><span class="control-name">SOLO</span>
+                        <span class="control-detail">Jump straight into a 100-player match</span>
+                    </button>
+                    <button id="freeFriend" class="control-option mp-join" type="button">
+                        <span class="control-emoji">👥</span><span class="control-name">WITH A FRIEND</span>
+                        <span class="control-detail">Make a room or join one, then go in together</span>
+                    </button>
+                </div>
+                <button id="freeModeBack" class="rules-close-btn secondary" type="button">BACK</button>
             </div>
         </div>
 
@@ -1894,6 +1970,7 @@
         <!-- On a phone: what the side panels of the board show, next to the bottle (scripts/partyClient.js) -->
         <div id="partyHud" class="party-hud" aria-hidden="true">
             <div class="hud-col" id="hudLeft">
+                <div class="hud-stat hud-you"><span>PLAYER</span><b id="hudYou">-</b></div>
                 <div class="hud-stat hud-virus"><span>VIRUS</span><b id="hudVirus">00</b></div>
                 <div class="hud-stat"><span>SCORE</span><b id="hudScore">0</b></div>
                 <div class="hud-stat"><span>LEVEL</span><b id="hudLevel">0</b></div>
@@ -2263,7 +2340,7 @@
         document.getElementById('playKeyboard').onclick = () => {
             if (!playingFree) return startSinglePlayer('keyboard');
             hideControlPicker();
-            window.party.startFreePlay();
+            window.party.askFreeMode(showControlPicker);
         };
 
         // Phone: a TV Room for one phone (scripts/tvHost.js) that starts as soon as the phone joins
@@ -2324,7 +2401,10 @@
         document.getElementById('padFind').onclick = () => window.padInput.connectHid();
         document.getElementById('padStart').onclick = () => {
             closePadConnect();
-            if (playingFree) return window.party.startFreePlay(); // a match always listens to the controller too
+            if (playingFree) {
+                window.padInput.start(); // the next screens work with the controller too, and so does a match
+                return window.party.askFreeMode(() => document.getElementById('playGamepad').click());
+            }
             startSinglePlayer('gamepad');
         };
         document.getElementById('padBack').onclick = () => {

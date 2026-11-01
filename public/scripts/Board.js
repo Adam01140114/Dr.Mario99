@@ -832,25 +832,25 @@ export class PlayingBoard extends Board {
 		// Spawn the first virus
 		this.randx = planned && availableX.includes(planned.x) ? availableX.splice(availableX.indexOf(planned.x), 1)[0] : getRandomX();
 		this.randcolor = planned ? planned.color : colors[Math.floor(Math.random() * colors.length)];
-		this.fields[this.randx][this.randy].setColor(this.randcolor);
+		this.fields[this.randx][this.randy].setJunkColor(this.randcolor);
 
 		// Spawn additional viruses for multiple damage
 		if(this.hurting2 == 1){
 			this.randx2 = getRandomX();
 			this.randcolor2 = colors[Math.floor(Math.random() * colors.length)];
-			this.fields[this.randx2][this.randy2].setColor(this.randcolor2);
+			this.fields[this.randx2][this.randy2].setJunkColor(this.randcolor2);
 		}
 
 		if(this.hurting3 == 1){
 			this.randx3 = getRandomX();
 			this.randcolor3 = colors[Math.floor(Math.random() * colors.length)];
-			this.fields[this.randx3][this.randy3].setColor(this.randcolor3);
+			this.fields[this.randx3][this.randy3].setJunkColor(this.randcolor3);
 		}
 
 		if(this.hurting4 == 1){
 			this.randx4 = getRandomX();
 			this.randcolor4 = colors[Math.floor(Math.random() * colors.length)];
-			this.fields[this.randx4][this.randy4].setColor(this.randcolor4);
+			this.fields[this.randx4][this.randy4].setJunkColor(this.randcolor4);
 		}
 
 }
@@ -881,7 +881,7 @@ export class PlayingBoard extends Board {
 			//this.virusList.push(new Virus(this, this.randx, this.randy-1, this.randcolor))
 			//this.virusList.pop(new Virus(this, this.randx, this.randy-1, this.randcolor))
 
-			this.fields[this.randx][(this.randy-1)].setColor(this.randcolor);	
+			this.fields[this.randx][(this.randy-1)].setJunkColor(this.randcolor);	
 
 			this.randy = this.randy - 1;
 			this.undery = this.randy - 1;
@@ -905,7 +905,7 @@ export class PlayingBoard extends Board {
 		if (this.randy2 != 0 && this.hurting2 == 1) {
 			if((this.fields[this.randx2][(this.undery2)].color) == Color.NONE){
 			this.fields[this.randx2][(this.randy2)].setColor(Color.NONE);
-			this.fields[this.randx2][(this.randy2-1)].setColor(this.randcolor2);	
+			this.fields[this.randx2][(this.randy2-1)].setJunkColor(this.randcolor2);	
 			this.randy2 = this.randy2 - 1;
 			this.undery2 = this.randy2 - 1;
 			}
@@ -926,7 +926,7 @@ export class PlayingBoard extends Board {
 		if (this.randy3 != 0 && this.hurting3 == 1) {
     if((this.fields[this.randx3][(this.undery3)].color) == Color.NONE){
         this.fields[this.randx3][(this.randy3)].setColor(Color.NONE);
-        this.fields[this.randx3][(this.randy3-1)].setColor(this.randcolor3);    
+        this.fields[this.randx3][(this.randy3-1)].setJunkColor(this.randcolor3);    
         this.randy3 = this.randy3 - 1;
         this.undery3 = this.randy3 - 1;
     }
@@ -945,7 +945,7 @@ export class PlayingBoard extends Board {
 if (this.randy4 != 0 && this.hurting4 == 1) {
     if((this.fields[this.randx4][(this.undery4)].color) == Color.NONE){
         this.fields[this.randx4][(this.randy4)].setColor(Color.NONE);
-        this.fields[this.randx4][(this.randy4-1)].setColor(this.randcolor4);    
+        this.fields[this.randx4][(this.randy4-1)].setJunkColor(this.randcolor4);    
         this.randy4 = this.randy4 - 1;
         this.undery4 = this.randy4 - 1;
     }
@@ -1314,6 +1314,12 @@ setColor(color = this.color) {
 
     this.applyBackgroundImage("url('" + finalSprite + "')");
 }
+
+    /** Junk on its way down: it has no shape yet, but it's a virus and looks like one */
+    setJunkColor(color) {
+        this.color = color
+        this.applyBackgroundImage("url('" + getSpriteUrl("./img/" + color + "_covid.png") + "')")
+    }
 
     setPillElement(element) {
 

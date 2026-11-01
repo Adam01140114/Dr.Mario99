@@ -308,7 +308,7 @@ function audit(which) {
             }
             // 2. The virus counter disagrees with the viruses on the board
             const shown = (s.g.match(/[bjr]/g) || []).length; // 'covid' sprites: index 1, 9, 17 -> b, j, r
-            countRun = shown !== s.v ? countRun + 1 : 0;
+            countRun = shown !== s.v && s.junk === '0000' ? countRun + 1 : 0; // junk still falling looks like a virus but isn't counted yet
             if (countRun === 3) find(s.at, p, 'virus-count', `the counter says ${s.v} viruses, the board shows ${shown}`);
             // 3. A pill that doesn't move down for 3 seconds
             const prev = states[i - 1];

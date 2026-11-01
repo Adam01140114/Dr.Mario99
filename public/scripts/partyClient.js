@@ -10,13 +10,14 @@
  * - MULTIPLAYER: CREATE ROOM (you're the host) or JOIN ROOM with a code or a
  *   link (/?party=CODE). The host adds CPUs, removes players, sets the
  *   viruses and starts the match - and the next one, from the results.
- * - FREE PLAY: matched with another player, or after a few seconds with a CPU
- *   that has an ordinary name (its board runs here, hidden).
+ * - FREE PLAY: a 100-player match, alone (SOLO) or from a room of up to 100
+ *   friends (WITH A FRIEND: create one or join with a code, here or from
+ *   MULTIPLAYER); opponents fill the empty seats.
  * - In a match: a clear of 4+ sends junk to your target, the next player
  *   still in round the circle; a full bottle is out; clearing your board or
  *   being the last one left wins.
  *
- * window.party: openMenu(), startFreePlay(); attack() / finished() (from
+ * window.party: openMenu(), askFreeMode(), startFreePlay(); attack() / finished() (from
  * Board.js and Game.js); layout().
  * Uses the page's globals: socket.
  */
@@ -36,6 +37,9 @@ const BOARD_H = 576 + 14
 const BOTTLE = { x: 383, y: 48, w: 258, h: 505 } // what shows of the board on a phone (index.html: the clip-path)
 const HUD_W = 80         // the columns of numbers either side of the bottle on a phone
 const HUD_MS = 120
+const DANGER_ON = 12     // a target's stack this high (of 16) glows red...
+const DANGER_OFF = 11    // ...until it's back under this
+const KO_MS = 1500       // how long a target's or attacker's knockout shows
 
 const party = window.party = {
     code: null,
@@ -44,9 +48,12 @@ const party = window.party = {
     players: [],
     state: null,
     freePlay: false,
+    arena: false,    // a Free Play room: a lobby like MULTIPLAYER's, then the 100-player match
+    max: 8,
     settings: {},
     match: null,     // the match on now: { roster, names, cpus, disguised, targets, alive, games, ... }
     openMenu,
+    askFreeMode,
     startFreePlay,
     myBoard: () => { const game = party.match && party.match.games[party.slot]; return game && game.board },
     attack,
@@ -80,8 +87,12 @@ function nameFromInput() {
 
 /* ---------- MULTIPLAYER: create or join ---------- */
 
-function openMenu(code) {
+function openMenu(code, arena = false) {
+    party.menuArena = arena
+    party.freePlay = false
     hide('partyLobby')
+    $('mpTitle').textContent = arena ? '🎮 FREE PLAY WITH FRIENDS' : '👥 MULTIPLAYER'
+    $('mpCreateDetail').textContent = arena ? "You're the host: invite up to 99 friends, start when you're ready" : "You're the host: invite up to 7 friends, start when you're ready"
     $('mpError').textContent = ''
     $('mpName').value = savedName()
     $('mpJoinRow').classList.toggle('hidden', !code)
@@ -92,7 +103,7 @@ function openMenu(code) {
 
 $('mpCreate').onclick = () => {
     $('mpError').textContent = ''
-    socket.emit('partyCreate', { name: nameFromInput(), clientId, virusCount: 5 })
+    socket.emit('partyCreate', { name: nameFromInput(), clientId, virusCount: 5, arena: party.menuArena })
 }
 $('mpJoin').onclick = () => {
     $('mpJoinRow').classList.remove('hidden')
@@ -106,7 +117,10 @@ $('mpJoinGo').onclick = () => {
 }
 $('mpCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('mpJoinGo').click() })
 $('mpName').addEventListener('keydown', (e) => { if (e.key === 'Enter') ($('mpJoinRow').classList.contains('hidden') ? $('mpCreate') : $('mpJoinGo')).click() })
-$('mpBack').onclick = () => hide('mpMenu')
+$('mpBack').onclick = () => {
+    hide('mpMenu')
+    if (party.menuArena) showFreeMode()
+}
 
 socket.on('partyError', ({ message }) => {
     $('mpError').textContent = message
@@ -129,16 +143,15 @@ socket.on('partyJoined', ({ code, slot, rejoined, state }) => {
 /* ---------- The room ---------- */
 
 socket.on('partyLobby', (data) => {
-    if (data.code !== party.code) return
+    if (data.code !== party.code || (party.match && party.match.royale && !party.match.arena)) return // pulled into someone's room for one match: not in it
     party.players = data.players
     party.hostSlot = data.hostSlot
     party.state = data.state
     party.freePlay = data.freePlay
+    party.arena = data.arena
+    party.max = data.max
+    party.lanOrigin = data.lanOrigin
     party.settings = data.settings
-    if (party.freePlay) {
-        $('freeSearchText').textContent = 'Match found! Get ready...'
-        return
-    }
     renderLobby()
     renderResultButtons()
 })
@@ -149,8 +162,12 @@ function isHost() {
 
 function renderLobby() {
     $('partyCode').textContent = party.code
-    const link = location.origin + '/?party=' + party.code
+    // On this computer's own server, a phone needs its address on the Wi-Fi
+    const origin = /^(localhost|127\.|\[::1\])/.test(location.hostname) && party.lanOrigin ? party.lanOrigin : location.origin
+    const link = origin + '/?party=' + party.code
+    if ($('partyLink').textContent !== link) $('partyQr').src = '/tv/qr.svg?text=' + encodeURIComponent(link)
     $('partyLink').textContent = link
+    $('partyRoomTitle').textContent = party.arena ? '🎮 ROOM' : '👥 ROOM'
     const list = $('partyPlayers')
     list.innerHTML = ''
     for (const p of party.players) {
@@ -171,16 +188,21 @@ function renderLobby() {
         }
         list.appendChild(row)
     }
-    $('partyCount').textContent = `${party.players.length} / 8 PLAYERS`
+    $('partyCount').textContent = `${party.players.length} / ${party.max} PLAYERS`
     const host = isHost()
     $('partyHostControls').classList.toggle('hidden', !host)
     $('partyWaiting').classList.toggle('hidden', host)
     const hostName = (party.players.find(p => p.host) || {}).name || 'the host'
     $('partyWaiting').textContent = 'Waiting for ' + hostName + ' to start the match...'
     if (host && document.activeElement !== $('partyViruses')) $('partyViruses').value = party.settings.virusCount || 5
-    $('partyStart').disabled = party.players.length < 2
-    $('partyAddCpu').disabled = party.players.length >= 8
-    $('partyStartHint').textContent = party.players.length < 2 ? 'Share the code, or add a CPU to play now.' : ''
+    // A Free Play room needs nothing but its host: the match fills up with opponents
+    $('partyVirusRow').classList.toggle('hidden', party.arena)
+    $('partyAddCpu').classList.toggle('hidden', party.arena)
+    $('partyStart').textContent = party.arena ? '▶ START' : '▶ START MATCH'
+    $('partyStart').disabled = !party.arena && party.players.length < 2
+    $('partyAddCpu').disabled = party.players.length >= party.max
+    $('partyStartHint').textContent = party.arena ? `Everyone drops into a ${party.max}-player match. Empty seats are filled with other players or CPUs.`
+        : party.players.length < 2 ? 'Share the code, or add a CPU to play now.' : ''
 }
 
 $('partyStart').onclick = () => {
@@ -219,6 +241,35 @@ socket.on('partyKicked', () => {
 
 /* ---------- FREE PLAY ---------- */
 
+/** After choosing how to play: alone, or with friends? onBack: where BACK goes */
+function askFreeMode(onBack) {
+    party.freeBack = onBack
+    showFreeMode()
+}
+function showFreeMode() {
+    show('freeMode')
+    setTimeout(() => $('freeSolo').focus(), 50)
+}
+$('freeSolo').onclick = () => {
+    hide('freeMode')
+    startFreePlay()
+}
+$('freeFriend').onclick = () => {
+    hide('freeMode')
+    openMenu(null, true)
+}
+$('freeModeBack').onclick = () => {
+    hide('freeMode')
+    if (window.padInput) window.padInput.stop()
+    if (party.freeBack) party.freeBack()
+}
+$('freeMode').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') return $('freeModeBack').click()
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+    e.preventDefault()
+    ;(document.activeElement === $('freeSolo') ? $('freeFriend') : $('freeSolo')).focus()
+})
+
 function startFreePlay() {
     party.freePlay = true
     $('freeSearchText').textContent = 'Finding a match...'
@@ -246,6 +297,8 @@ async function startMatch(data) {
     party.code = data.code
     party.slot = data.slot
     party.freePlay = !!data.freePlay
+    party.arena = !!data.arena
+    party.state = 'playing'
 
     // Everyone gets the same viruses and the same pills; each board here walks the pill list itself
     window.sharedGameData = data.gameData
@@ -258,7 +311,8 @@ async function startMatch(data) {
     const match = party.match = {
         round: data.round, roster: data.roster, names: data.names, cpus: data.cpus, disguised: new Set(data.disguised || []),
         targets: data.targets, alive: new Set(data.roster), local, games: {}, cpuStops: {}, sent: {}, views: {}, places: {},
-        royale: !!data.royale, humans: data.humans || 0, kos: 0, startedAt: Date.now(),
+        royale: !!data.royale, arena: !!data.arena, humans: data.humans || 0, kos: 0, startedAt: Date.now(),
+        number: data.roster.indexOf(data.slot) + 1,
     }
     window.gameInstances = match.games
 
@@ -276,6 +330,7 @@ async function startMatch(data) {
         if (n !== data.slot) match.cpuStops[n] = startCpu(game, Math.random())
     }
     window.currentGame = match.games[data.slot]
+    showMyNumber()
 
     makeOpponents(data)
     $('touchControls').classList.remove('hidden')
@@ -342,7 +397,7 @@ function sendBoards() {
         const board = game && game.board
         if (!board || !board.fields) continue
         const grid = gridOf(board)
-        const hud = board.virusCount + ',' + board.score
+        const hud = board.virusCount + ',' + board.score + ',' + stackHeight(board)
         const last = match.sent[n]
         let payload = null
         if (!last || now - last.at >= KEYFRAME_MS) payload = { slot: n, g: grid, h: hud }
@@ -359,6 +414,24 @@ function sendBoards() {
 }
 
 socket.on('partyBoard', (payload) => showBoard(payload))
+
+/** How high what has landed goes: the pill still falling doesn't count */
+function stackHeight(board) {
+    for (let y = board.height - 2; y >= 0; y--) {
+        for (let x = 0; x < board.width; x++) {
+            const piece = board.fields[x][y].shapePiece
+            if (piece && (piece.shape !== board.currentPill || board.currentPill.placed)) return y + 1
+        }
+    }
+    return 0
+}
+
+/** My target's stack is nearly at the top: its board glows red until it recovers */
+function setDanger(view, height) {
+    view.height = height
+    view.danger = height >= (view.danger ? DANGER_OFF : DANGER_ON)
+    view.card.classList.toggle('danger', view.danger && view.card.classList.contains('target'))
+}
 
 const sprites = SPRITE_CODES.map((name) => {
     const img = new Image()
@@ -401,7 +474,11 @@ function showBoard({ slot, g, d, h }) {
         }
         view.grid = cells.join('')
     }
-    if (h) view.card.querySelector('.op-virus').textContent = 'VIRUS ' + String(h.split(',')[0]).padStart(2, '0')
+    if (h) {
+        const [virus, , height] = h.split(',')
+        view.card.querySelector('.op-virus').textContent = 'VIRUS ' + String(virus).padStart(2, '0')
+        setDanger(view, +height || 0)
+    }
     if (!view.grid) return
     drawGrid(view.ctx, view.grid)
 }
@@ -427,7 +504,28 @@ function showTargets() {
         const mine = match.targets[party.slot] === +n && match.alive.has(party.slot)
         view.card.classList.toggle('target', mine)
         view.card.querySelector('.op-target').textContent = mine ? '▸ YOUR TARGET' : attacksMe ? '⚔ ATTACKING YOU' : ''
+        setDanger(view, view.height || 0)
     }
+}
+
+/** My target or attacker just went out: their board flashes and falls away, so nobody misses it */
+function knockedOut(view, role, name) {
+    const match = party.match
+    const canvas = view.ctx.canvas
+    const ghost = document.createElement('canvas')
+    ghost.width = canvas.width
+    ghost.height = canvas.height
+    ghost.getContext('2d').drawImage(canvas, 0, 0)
+    ghost.className = 'op-ghost'
+    ghost.style.cssText = `left:${canvas.offsetLeft}px;top:${canvas.offsetTop}px;width:${canvas.offsetWidth}px;height:${canvas.offsetHeight}px`
+    const label = document.createElement('div')
+    label.className = 'op-ko'
+    label.innerHTML = '<b>💀 OUT</b><span></span>'
+    label.lastChild.textContent = name // the card above it already shows who's next
+    view.card.append(ghost, label)
+    setTimeout(() => { ghost.remove(); label.remove() }, KO_MS)
+    glog('op-ko-shown', { role, name })
+    if (match.lastKo !== name) showNotice(`💀 ${role === 'target' ? 'Your target' : 'Your attacker'} ${name} is out!`, 2200)
 }
 
 /* ---------- Attacks, outs and the result ---------- */
@@ -474,6 +572,8 @@ socket.on('partyEliminated', ({ slot, place, targets, royale, left, kos, target,
     const match = party.match
     if (!match) return
     if (royale) return royaleEliminated({ slot, place, left, kos, target, attacker })
+    const wasTarget = match.targets[party.slot] === slot
+    const wasAttacker = match.targets[slot] === party.slot
     match.alive.delete(slot)
     match.targets = targets
     match.places[slot] = place
@@ -487,6 +587,7 @@ socket.on('partyEliminated', ({ slot, place, targets, royale, left, kos, target,
         const status = view.card.querySelector('.op-status')
         status.textContent = 'OUT #' + place
         status.classList.remove('hidden')
+        if ((wasTarget || wasAttacker) && match.alive.has(party.slot)) knockedOut(view, wasTarget ? 'target' : 'attacker', match.names[slot])
     }
     if (slot === party.slot) showNotice(`You're out! #${place}. Watch the rest...`, 3000)
     showTargets()
@@ -564,7 +665,24 @@ function renderResultButtons() {
         buttons.appendChild(b)
         return b
     }
-    if (party.freePlay) {
+    if (party.arena) {
+        // Everyone goes back to the room together, once the last of them is out
+        if (party.state === 'lobby') {
+            button('◀ BACK TO THE ROOM', () => {
+                teardownMatch()
+                removeResults()
+                document.body.classList.remove('party-mode', 'in-game', 'royale')
+                $('touchControls').classList.add('hidden')
+                renderLobby()
+                show('partyLobby')
+            })
+        } else {
+            const wait = document.createElement('div')
+            wait.className = 'alert-message party-wait'
+            wait.textContent = 'Your friends are still playing...'
+            buttons.appendChild(wait)
+        }
+    } else if (party.freePlay) {
         button('🔍 FIND ANOTHER MATCH', () => {
             socket.emit('partyLeave')
             teardownMatch()
@@ -663,6 +781,8 @@ function showSpots(target, attacker) {
             view.slot = info.slot
             view.grid = null
             view.stack = null
+            view.danger = false
+            setDanger(view, 0)
             view.card.querySelector('.op-label').textContent = info.name
             drawGrid(view.ctx, '.'.repeat(136))
         }
@@ -674,6 +794,7 @@ function showSpots(target, attacker) {
                 view.stack = info.stack
                 drawGrid(view.ctx, fakeStack(info.slot, info.stack))
             }
+            setDanger(view, info.stack)
         }
     }
 }
@@ -688,6 +809,7 @@ socket.on('partyKO', ({ kos, name }) => {
     const match = party.match
     if (!match || !match.royale) return
     match.kos = kos
+    match.lastKo = name
     setText('royaleKos', kos + ' KO')
     glog('royale-ko', { kos, name })
     showNotice('💥 You knocked out ' + name + '!', 1800)
@@ -707,6 +829,8 @@ function royaleEliminated({ slot, place, left, kos, target, attacker }) {
         $('royaleLeft').textContent = left
         return showRoyaleResult(place, match.roster.length)
     }
+    const spot = Object.entries(match.spots).find(([, view]) => view.slot === slot)
+    if (spot) knockedOut(spot[1], spot[0], match.names[slot])
     setLeft(left)
     showSpots(target, attacker)
 }
@@ -879,6 +1003,21 @@ function layoutPhone(container, panel, count) {
     $('hudLeft').style.cssText = `left:${left - HUD_W - 6}px;top:${top}px;width:${HUD_W}px`
     $('hudRight').style.cssText = `left:${left + BOTTLE.w * scale + 6}px;top:${top}px;width:${HUD_W}px`
     updateHud()
+}
+
+/** Which player I am, above the virus count (a square in the Free Play panel has the same number) */
+function showMyNumber() {
+    const match = party.match
+    const game = match && match.games[party.slot]
+    if (!game) return
+    let tag = game.querySelector('.my-number')
+    if (!tag) {
+        tag = document.createElement('div')
+        tag.className = 'my-number'
+        game.appendChild(tag)
+    }
+    tag.innerHTML = '<span>PLAYER</span><i>' + [...String(match.number)].map(digit => `<img alt="${digit}" src="./img/cyfry/${digit}.png">`).join('') + '</i>'
+    setText('hudYou', String(match.number))
 }
 
 /** On a phone: what the board's side panels would show */

@@ -203,9 +203,25 @@ function showPlayer(key, player) {
     }
 }
 
-/** The button A / + should press now: a message's button, or a visible START on the connect screen */
+/** A screen with choices the D-pad moves between (data-pad-menu), if one is showing */
+function menuOnScreen() {
+    return [...document.querySelectorAll('[data-pad-menu]')].find(el => el.getClientRects().length) || null
+}
+
+/** The D-pad moves between a menu's buttons */
+function moveInMenu(menu, gamepad) {
+    const actions = actionsOf(gamepad)
+    const step = actions.has('left') ? -1 : actions.has('right') ? 1 : 0
+    const pressed = step && !pad.menuHeld
+    pad.menuHeld = !!step
+    if (!pressed) return
+    const buttons = [...menu.querySelectorAll('button:not(:disabled)')].filter(b => b.getClientRects().length)
+    buttons[(buttons.indexOf(document.activeElement) + step + buttons.length) % buttons.length].focus()
+}
+
+/** The button A / + should press now: a message's button, a menu's, or a visible START on the connect screen */
 function confirmTarget() {
-    const message = document.querySelector('.alert-overlay')
+    const message = document.querySelector('.alert-overlay') || menuOnScreen()
     if (message) {
         const active = document.activeElement
         return message.contains(active) && active.tagName === 'BUTTON' ? active : message.querySelector('button:not(:disabled)')
@@ -263,10 +279,12 @@ function readOne(list) {
         pad.targetSince = performance.now()
     }
     const onMessage = !!(target && target.closest('.alert-overlay'))
+    const menu = menuOnScreen()
+    if (menu && gamepad) moveInMenu(menu, gamepad)
     if (target && confirmPressed && performance.now() - pad.targetSince >= (onMessage ? MESSAGE_DELAY : 0)) target.click()
 
     // While a message is up the controller answers it instead of moving pills
-    const now = pad.playing && gamepad && !onMessage ? actionsOf(gamepad) : new Set()
+    const now = pad.playing && gamepad && !onMessage && !menu ? actionsOf(gamepad) : new Set()
     for (const action of now) {
         if (pad.held.has(action)) continue
         sendKey('keydown', action)

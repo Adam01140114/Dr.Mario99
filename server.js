@@ -1373,17 +1373,17 @@ function newCode() {
 }
 
 function partyList(party) {
-    return partySlots().filter(n => party.players[n]).map(n => {
+    return partySlots().filter(n => party.players[n] && !party.players[n].bot).map(n => {
         const p = party.players[n];
         return { slot: n, name: p.name, connected: p.connected, cpu: p.cpu && !p.disguised, host: n === party.hostSlot };
     });
 }
 
 function sendPartyLobby(party) {
-    if (party.freePlay) return; // no lobby: it starts by itself
+    if (party.freePlay && !party.arena) return; // no lobby: it starts by itself
     io.to('party:' + party.code).emit('partyLobby', {
         code: party.code, state: party.state, hostSlot: party.hostSlot, players: partyList(party),
-        settings: party.settings, freePlay: party.freePlay, max: PARTY_MAX,
+        settings: party.settings, freePlay: party.freePlay, arena: !!party.arena, max: partyCap(party), lanOrigin: lanOrigins(PORT)[0],
     });
 }
 
@@ -1432,7 +1432,7 @@ function createParty(socket, name, clientId, options = {}) {
     leaveParty(socket);
     const code = newCode();
     const party = parties[code] = {
-        code, hostSlot: 1, state: 'lobby', players: {}, freePlay: !!options.freePlay,
+        code, hostSlot: 1, state: 'lobby', players: {}, freePlay: !!options.freePlay, arena: !!options.arena,
         settings: { virusCount: Math.min(Math.max(parseInt(options.virusCount, 10) || 5, 1), 30) },
         roster: [], alive: [], places: {}, targets: {}, round: 0,
     };
@@ -1507,7 +1507,7 @@ function endPartyMatch(party, winner, how) {
     if (winner) party.places[winner] = 1;
     if (party.royale) {
         io.to('party:' + party.code).emit('partyOver', { winner, how, royale: true, kos: party.kos[winner] || 0, size: party.roster.length });
-        return closeParty(party);
+        return party.arena ? arenaBackToRoom(party) : closeParty(party);
     }
     io.to('party:' + party.code).emit('partyOver', { winner, how, places: party.places, names: Object.fromEntries(party.roster.map(n => [n, party.players[n] ? party.players[n].name : '?'])) });
     sendPartyLobby(party);
@@ -1577,9 +1577,44 @@ function joinFreePlay(socket, name, clientId) {
     setTimeout(() => startRoyaleMatch(party), someoneFree ? FREE_WAIT_MS : FREE_START_MS);
 }
 
+/** A Free Play room is starting: anyone waiting for a Free Play match comes along */
+function pullInWaiting(party) {
+    const waiting = formingMatch;
+    if (!waiting || waiting === party || parties[waiting.code] !== waiting || waiting.state !== 'lobby') return;
+    for (const n of partySlots()) {
+        const p = waiting.players[n];
+        const sock = p && io.sockets.sockets.get(p.socketId);
+        if (!sock || !partySlots().some(slot => !party.players[slot])) continue;
+        removeFromParty(waiting, n, 'left');
+        const slot = addToParty(party, sock, p.name, p.clientId);
+        party.players[slot].pulledIn = true; // not one of the room's own: they don't come back to it afterwards
+        sock.emit('partyJoined', { code: party.code, slot });
+    }
+}
+
+/** A Free Play room's match is over: the opponents go, the friends are back in the room */
+function arenaBackToRoom(party) {
+    clearInterval(party.ticker);
+    party.royale = false;
+    party.state = 'lobby';
+    for (const n of partySlots()) {
+        const p = party.players[n];
+        if (!p) continue;
+        if (p.bot) delete party.players[n];
+        else if (p.pulledIn || !p.connected) {
+            clearTimeout(p.dropTimer);
+            removeFromParty(party, n, 'left');
+            if (parties[party.code] !== party) return;
+        }
+    }
+    if (!partySlots().some(n => party.players[n])) return closeParty(party);
+    sendPartyLobby(party);
+}
+
 function startRoyaleMatch(party) {
     if (formingMatch === party) formingMatch = null;
     if (parties[party.code] !== party || party.state !== 'lobby') return;
+    if (party.arena) pullInWaiting(party);
     const humans = partySlots().filter(n => party.players[n] && !party.players[n].cpu && party.players[n].connected);
     if (!humans.length) return closeParty(party);
     const taken = new Set(humans.map(n => party.players[n].name));
@@ -1608,6 +1643,7 @@ function startRoyaleMatch(party) {
         io.to(party.players[n].socketId).emit('partyStarted', {
             code: party.code, round: party.round, slot: n, roster: seats, names: names100, cpus: {}, disguised: [],
             targets: { [n]: party.targets[n] }, gameData, freePlay: true, royale: true, humans: humans.length,
+            arena: !!party.arena && !party.players[n].pulledIn,
             target: royaleInfo(party, party.targets[n]), attacker: royaleInfo(party, party.attackers[n]),
         });
     }
@@ -1676,14 +1712,18 @@ function royaleEliminated(party, slot, place) {
             target: royaleInfo(party, party.targets[n]), attacker: royaleInfo(party, party.attackers[n]),
         });
     }
-    if (!party.alive.some(n => !isSim(party, n))) return closeParty(party); // only opponents left: nobody to play for
+    if (!party.alive.some(n => !isSim(party, n))) { // only opponents left: nobody to play for
+        party.state = 'over';
+        return party.arena ? arenaBackToRoom(party) : closeParty(party);
+    }
     if (party.alive.length <= 1) endPartyMatch(party, party.alive[0], 'last');
 }
 
 function registerPartyHandlers(socket) {
     // MULTIPLAYER: make a room; you're the host
     socket.on('partyCreate', (payload = {}) => {
-        const party = createParty(socket, cleanName(payload.name, 'Player'), String(payload.clientId || '').slice(0, 64), { virusCount: payload.virusCount });
+        const arena = !!payload.arena; // Free Play WITH A FRIEND: everyone in the room goes into a 100-player match together
+        const party = createParty(socket, cleanName(payload.name, 'Player'), String(payload.clientId || '').slice(0, 64), { virusCount: payload.virusCount, arena, freePlay: arena });
         socket.emit('partyJoined', { code: party.code, slot: party.hostSlot });
         sendPartyLobby(party);
     });
@@ -1707,10 +1747,10 @@ function registerPartyHandlers(socket) {
             return sendPartyLobby(party);
         }
         if (party.state !== 'lobby') return socket.emit('partyError', { message: 'That match has already started. Ask the host to let you in next round.' });
-        if (party.freePlay) return socket.emit('partyError', { message: "That's a Free Play match. Create your own room instead." });
+        if (party.freePlay && !party.arena) return socket.emit('partyError', { message: "That's a Free Play match. Create your own room instead." });
         leaveParty(socket);
         const slot = addToParty(party, socket, cleanName(payload.name, 'Player'), clientId);
-        if (!slot) return socket.emit('partyError', { message: `That room is full (${PARTY_MAX} players).` });
+        if (!slot) return socket.emit('partyError', { message: `That room is full (${partyCap(party)} players).` });
         socket.emit('partyJoined', { code, slot });
         sendPartyLobby(party);
     });
@@ -1721,14 +1761,14 @@ function registerPartyHandlers(socket) {
     socket.on('partyKick', (payload = {}) => {
         const { party, slot } = partyOf(socket);
         const target = parseInt(payload.slot, 10);
-        if (!party || slot !== party.hostSlot || target === slot || !party.players[target]) return;
+        if (!party || slot !== party.hostSlot || target === slot || !party.players[target] || party.players[target].bot) return;
         removeFromParty(party, target, 'kicked');
     });
 
     // Host only: add a CPU (its board runs on the host's screen), and the number of viruses
     socket.on('partyAddCpu', () => {
         const { party, slot } = partyOf(socket);
-        if (!party || slot !== party.hostSlot || party.state === 'playing') return;
+        if (!party || slot !== party.hostSlot || party.state === 'playing' || party.arena) return; // a Free Play room fills up with opponents when it starts
         if (addPartyCpu(party, slot, false)) sendPartyLobby(party);
     });
     socket.on('partySettings', (payload = {}) => {
@@ -1742,6 +1782,7 @@ function registerPartyHandlers(socket) {
     socket.on('partyStart', () => {
         const { party, slot } = partyOf(socket);
         if (!party || slot !== party.hostSlot || party.state === 'playing') return;
+        if (party.arena) return startRoyaleMatch(party);
         if (!startPartyMatch(party)) socket.emit('partyError', { message: 'You need at least 2 players (add a CPU to play now).' });
     });
 
