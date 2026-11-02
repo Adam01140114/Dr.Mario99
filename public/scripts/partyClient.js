@@ -530,13 +530,21 @@ function knockedOut(view, role, name) {
 
 /* ---------- Attacks, outs and the result ---------- */
 
-/** Board.js: one of my boards cleared 4+ */
-function attack(slot, points, color) {
+/** The board on screen that shows this player (their card), if any */
+function boardOf(slot) {
+    const match = party.match
+    const view = match && (match.spots ? Object.values(match.spots).find(spot => spot.slot === slot) : match.views[slot])
+    return view && !view.card.classList.contains('hidden') ? view.ctx.canvas : null
+}
+
+/** Board.js: one of my boards cleared 4+ (cells: the ones that scored it) */
+function attack(slot, points, color, cells) {
     const match = party.match
     if (!match || !match.alive.has(slot)) return
-    glog('attack', { from: slot, target: match.targets[slot], points, color })
+    const target = match.spots ? match.spots.target.slot : match.targets[slot]
+    glog('attack', { from: slot, target, points, color })
     socket.emit('partyAttack', { slot, points, color })
-    if (slot === party.slot) attackSent(slot, match.targets[slot], color)
+    if (slot === party.slot) attackSent(slot, target, color, { cells, to: boardOf(target) })
 }
 
 socket.on('partyJunk', ({ slot, from, points, color }) => {
@@ -544,11 +552,12 @@ socket.on('partyJunk', ({ slot, from, points, color }) => {
     if (!game || !game.board) return
     const counted = game.board.receiveDamage(points, color)
     glog('junk-incoming-from', { p: slot, from, points, color, counted })
-    if (counted && slot === party.slot) attackReceived(slot, from, color)
+    if (counted && slot === party.slot) attackReceived(slot, from, color, { from: boardOf(from) })
 })
 
 socket.on('partyFx', ({ from, to }) => {
     for (const [n, kind] of [[from, 'attacking'], [to, 'hit']]) {
+        if (kind === 'hit' && from === party.slot) continue // my own attack: its comets shake that card when they land
         const view = party.match && party.match.views[n]
         if (!view || !view.card.animate) continue
         view.card.animate(kind === 'hit'

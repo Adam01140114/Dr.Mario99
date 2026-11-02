@@ -197,6 +197,7 @@ export class PlayingBoard extends Board {
         // Initialize instance variables to avoid conflicts between players
         // DAMAGE SYSTEM VARIABLES
         this.localpoints = 0;              // Points accumulated for current clear
+        this.pointCells = [];              // The cells that scored them: the attack effect starts there
         this.realdamage = 0;               // Damage received from opponent
         this.junkQueue = [];               // That junk, shown blinking at the top until it drops: { x, color, el }
         this.damageProcessed = false;      // Flag to track if damage has been processed
@@ -1194,9 +1195,11 @@ class Field extends HTMLElement {
         this.board.localpoints += 1;
         this.applyBackgroundImage("url('" + getSpriteUrl("./img/" + color + "_o.png") + "')");
     }
+    if (x || o) this.board.pointCells.push(this);
 
     // DAMAGE THRESHOLD: Send damage when 4+ points are reached
     if (this.board.localpoints >= 4) {
+        const cells = this.board.pointCells.slice(-this.board.localpoints);
 
         // Send damage immediately when 4+ points are reached
         if (this.board.game.isTVControlled) {
@@ -1204,18 +1207,19 @@ class Field extends HTMLElement {
             window.tvHost.sendAttack(this.board.playerNumber, this.board.localpoints, color);
         } else if (this.board.game.party) {
             // Multiplayer / Free Play: the server sends it to this player's target
-            window.party.attack(this.board.playerNumber, this.board.localpoints, color);
+            window.party.attack(this.board.playerNumber, this.board.localpoints, color, cells);
         } else if (!this.board.game.isAIOpponentView) {
             socket.emit(`updatePoints${this.board.playerNumber === 1 ? 2 : 1}`, { 
                 [`player${this.board.playerNumber === 1 ? 2 : 1}points`]: this.board.localpoints, 
                 roomCode: roomCode 
             });
             // Single player has nobody to attack
-            if (typeof roomCode !== 'undefined' && roomCode) attackSent(this.board.playerNumber, this.board.playerNumber === 1 ? 2 : 1);
+            if (typeof roomCode !== 'undefined' && roomCode) attackSent(this.board.playerNumber, this.board.playerNumber === 1 ? 2 : 1, undefined, { cells });
         }
 
         // Reset points after sending damage
         this.board.localpoints = 0;
+        this.board.pointCells = [];
     }
 
     // The pop shows for a moment, then the cell goes blank - unless a piece has

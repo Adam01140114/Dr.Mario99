@@ -3,11 +3,15 @@
  * =============================
  *
  * The junk a clear sends is easy to miss, so it gets a show, Tetris 99 style:
- * - attackSent(player, target): a shockwave and "ATTACK!" over the attacker's bottle
- *   (and, when the opponent is on another screen, a comet flying off the top)
- * - attackReceived(player, from): a comet flies into the target's bottle - from the
- *   attacker's bottle when both are on this screen (TV Room, AI mode), from the
- *   top otherwise - then the bottle flashes red, shakes and says "INCOMING!"
+ * - attackSent(player, target, pill, { cells, to }): "ATTACK!" over the attacker's bottle.
+ *   The cleared cells that made the attack light up and each sends a comet to the
+ *   target's board (`to`, e.g. its card in Multiplayer / Free Play), which flashes
+ *   and shakes as they land - off the top when the target isn't on this screen.
+ *   Without cells, a shockwave from the bottle instead.
+ * - attackReceived(player, from, pill, { from: element }): a comet flies into the
+ *   target's bottle - from the attacker's bottle when both are on this screen (TV
+ *   Room, AI mode), from the attacker's card when it shows, from the top otherwise -
+ *   then the bottle flashes red, shakes and says "INCOMING!"
  *
  * Everything is a short-lived element in <body> animated with transform and
  * opacity only, so the browser never has to repaint the boards for it.
@@ -21,6 +25,9 @@ const DEFAULT_COLOR = "#00ffff"
 // The pill colours: an attack looks like the pill that was cleared to send it
 const PILL_COLORS = { bl: "#6f9bff", br: "#e0642e", yl: "#ffe45c" }
 const FLIGHT_MS = 520
+const CHARGE_MS = 200 // the cleared cells glow this long before their comets leave
+const STAGGER_MS = 70 // and leave one after another
+const CELL_FLIGHT_MS = 700
 
 let stylesAdded = false
 function addStyles() {
@@ -56,6 +63,15 @@ function bottleOf(player) {
     const r = board.getBoundingClientRect()
     return r.width ? { el: board, game: container.querySelector("game-element"), rect: r } : null
 }
+
+/** Where an element is on screen, or null when it isn't showing */
+function boxOf(el) {
+    if (!el || !el.isConnected) return null
+    const r = el.getBoundingClientRect()
+    return r.width && r.height && r.bottom > 0 && r.top < innerHeight ? r : null
+}
+
+const centre = r => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 })
 
 /** A fixed element centred on (x, y), removed when its animation ends */
 function spawn(className, x, y, w, h, color, keyframes, options, text) {
@@ -108,7 +124,7 @@ function shockwave(rect, color) {
 }
 
 /** A comet: one bright orb and a few trailing ones, flying from -> to in an arc */
-function comet(from, to, color, onArrive, scale = 1) {
+function comet(from, to, color, onArrive, scale = 1, duration = FLIGHT_MS) {
     const dx = to.x - from.x
     const dy = to.y - from.y
     const lift = -Math.max(120, Math.abs(dx) * 0.25)
@@ -129,7 +145,7 @@ function comet(from, to, color, onArrive, scale = 1) {
                 transform: `translate(${p.x}px, ${p.y}px) scale(${k === 0 ? 0.4 : 1})`,
                 opacity: k === path.length - 1 && i > 0 ? 0 : orb.opacity,
             })),
-            { duration: FLIGHT_MS, delay: orb.delay, easing: "cubic-bezier(.45,.05,.55,.95)" })
+            { duration, delay: orb.delay, easing: "cubic-bezier(.45,.05,.55,.95)" })
         if (i === 0 && onArrive) anim.finished.then(onArrive, () => {})
     })
 }
@@ -161,6 +177,58 @@ function impact(target, color) {
     popText("INCOMING!", r, color, Math.max(18, r.width * 0.16))
 }
 
+/**
+ * The cells just cleared light up, then each sends its own comet to `to` (a point,
+ * or a function giving it at launch, as the screen may move): the junk visibly
+ * comes from them. onLand(last) runs as each comet lands.
+ */
+function launchFromCells(cells, to, color, onLand) {
+    let landed = 0
+    cells.forEach((r, i) => {
+        const at = centre(r)
+        const size = r.width * 2.4
+        spawn("fx-ring", at.x, at.y, r.width * 1.5, r.width * 1.5, color, [
+            { transform: "scale(0.3)", opacity: 1 },
+            { transform: "scale(1.9)", opacity: 0 },
+        ], { duration: 420, easing: "ease-out" })
+        // Glows on the cell until its comet takes over
+        spawn("fx-orb", at.x, at.y, size, size, color, [
+            { transform: "scale(0.2)", opacity: 0 },
+            { transform: "scale(1.15)", opacity: 1, offset: 0.5 },
+            { transform: "scale(0.9)", opacity: 1 },
+        ], { duration: CHARGE_MS + i * STAGGER_MS, easing: "ease-out" })
+        setTimeout(() => {
+            const end = typeof to === "function" ? to() : to
+            comet(at, end, color, () => onLand && onLand(++landed === cells.length), r.width / 40, CELL_FLIGHT_MS)
+        }, CHARGE_MS + i * STAGGER_MS)
+    })
+}
+
+/** The comets reached the target's board (a card): it flashes and shakes */
+function boardHit(el, color, last) {
+    const r = boxOf(el)
+    if (!r) return
+    const c = centre(r)
+    spawn("fx-ring", c.x, r.top + r.height * 0.15, r.width * 0.8, r.width * 0.8, color, [
+        { transform: "scale(0.2)", opacity: 1 },
+        { transform: "scale(1.8)", opacity: 0 },
+    ], { duration: 420, easing: "ease-out" })
+    if (!last) return
+    spawn("fx-flash", c.x, c.y, r.width, r.height, color, [
+        { opacity: 0 }, { opacity: 0.8, offset: 0.15 }, { opacity: 0 },
+    ], { duration: 650, easing: "ease-out" })
+    const card = el.closest(".op-card") || el
+    if (card.animate) {
+        card.animate([
+            { transform: "translate(0, 0)" },
+            { transform: "translate(-7px, 3px)" },
+            { transform: "translate(6px, -2px)" },
+            { transform: "translate(-4px, 1px)" },
+            { transform: "translate(0, 0)" },
+        ], { duration: 360, easing: "ease-out" })
+    }
+}
+
 /** Tell that player's phone (TV Room) */
 function notifyPhone(player, kind, pill) {
     if (window.tvHost && window.tvHost.started && typeof socket !== "undefined") {
@@ -168,15 +236,25 @@ function notifyPhone(player, kind, pill) {
     }
 }
 
-export function attackSent(player, target, pill) {
+export function attackSent(player, target, pill, { cells, to } = {}) {
     try {
         addStyles()
         notifyPhone(player, "attack", pill)
         const me = bottleOf(player)
         if (!me) return
         const color = PILL_COLORS[pill] || playerColor(player)
-        shockwave(me.rect, color)
         popText("ATTACK!", me.rect, color, Math.max(20, me.rect.width * 0.2))
+        const from = (cells || []).map(boxOf).filter(Boolean)
+        if (from.length && !bottleOf(target)) {
+            // Into the target's board when it shows here, off the top otherwise
+            const aim = () => {
+                const r = boxOf(to)
+                return r ? { x: r.left + r.width / 2, y: r.top + r.height * 0.15 } : { x: me.rect.right, y: -120 }
+            }
+            launchFromCells(from, aim, color, last => boardHit(to, color, last))
+            return
+        }
+        shockwave(me.rect, color)
         // Target on another screen: send the comet off the top
         if (!bottleOf(target)) {
             const from = { x: me.rect.left + me.rect.width / 2, y: me.rect.top + me.rect.height * 0.2 }
@@ -188,17 +266,18 @@ export function attackSent(player, target, pill) {
     }
 }
 
-export function attackReceived(player, from, pill) {
+export function attackReceived(player, from, pill, { from: fromEl } = {}) {
     try {
         addStyles()
         const target = bottleOf(player)
         if (!target) return notifyPhone(player, "hit", pill)
         const source = bottleOf(from)
+        const card = !source && boxOf(fromEl)
         const color = PILL_COLORS[pill] || (source ? playerColor(from) : "#ff3b3b")
         const to = { x: target.rect.left + target.rect.width / 2, y: target.rect.top + target.rect.height * 0.08 }
         const start = source
             ? { x: source.rect.left + source.rect.width / 2, y: source.rect.top + source.rect.height * 0.35 }
-            : { x: to.x - target.rect.width * 0.6, y: -120 }
+            : card ? centre(card) : { x: to.x - target.rect.width * 0.6, y: -120 }
         comet(start, to, color, () => {
             const now = bottleOf(player) // the screen may have been rescaled mid-flight
             if (now) impact(now, color)

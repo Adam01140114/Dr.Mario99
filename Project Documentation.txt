@@ -472,7 +472,11 @@ side is the TV ROOM section of `server.js`.
   `attackReceived(player, from)`), a red flash, shake and "INCOMING!" when it
   lands; the phones flash too (`tvFx`). Also used by AI mode and online rooms.
   A failure inside an effect is caught (it must never stop the game) and logged
-  with console.warn - once, a broken effect hid silently behind that catch
+  with console.warn - once, a broken effect hid silently behind that catch.
+  In Multiplayer / Free Play the cells that scored the attack (Board
+  `pointCells`) light up and each sends a comet to the target's card (`cells`,
+  `to`), which flashes and shakes as they land; junk coming in starts from the
+  attacker's card when it shows
 - **Phones that sleep**: a phone keeps an id in localStorage and gets its slot
   back when it reconnects. In the lobby a disconnected slot can be taken
 - **Server events**: tvCreateRoom, tvJoin, tvReady, tvStartGame, tvInput,
