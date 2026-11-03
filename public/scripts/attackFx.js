@@ -5,13 +5,17 @@
  * The junk a clear sends is easy to miss, so it gets a show, Tetris 99 style:
  * - attackSent(player, target, pill, { cells, to }): "ATTACK!" over the attacker's bottle.
  *   The cleared cells that made the attack light up and each sends a comet to the
- *   target's board (`to`, e.g. its card in Multiplayer / Free Play), which flashes
- *   and shakes as they land - off the top when the target isn't on this screen.
+ *   target: into its bottle when it's on this screen (TV Room - then the bottle is
+ *   hit as below, and attackSent returns true), else to its board (`to`, e.g. its
+ *   card in Multiplayer / Free Play), which flashes and shakes as they land - off
+ *   the top when the target isn't on this screen at all.
  *   Without cells, a shockwave from the bottle instead.
  * - attackReceived(player, from, pill, { from: element }): a comet flies into the
  *   target's bottle - from the attacker's bottle when both are on this screen (TV
  *   Room, AI mode), from the attacker's card when it shows, from the top otherwise -
  *   then the bottle flashes red, shakes and says "INCOMING!"
+ * - knockout(el, text, shake): a board is out - a white flash, red rings, its pieces
+ *   flying apart and a big "OUT", so nobody misses it
  *
  * Everything is a short-lived element in <body> animated with transform and
  * opacity only, so the browser never has to repaint the boards for it.
@@ -46,6 +50,8 @@ function addStyles() {
             -webkit-text-stroke: 1px #000;
         }
         .fx-flash { background: radial-gradient(ellipse at center, transparent 30%, var(--fx)); border-radius: 6px; }
+        .fx-white { background: #fff; border-radius: 6px; }
+        .fx-shard { background: var(--fx); border: 2px solid rgba(0, 0, 0, 0.45); border-radius: 40%; box-shadow: 0 0 8px var(--fx); }
     `
     document.head.appendChild(style)
 }
@@ -54,14 +60,15 @@ function playerColor(player) {
     return document.body.classList.contains("tv-mode") ? PLAYER_COLORS[player] || DEFAULT_COLOR : DEFAULT_COLOR
 }
 
-/** The bottle (game-board) of a player, if it is on screen */
+/** The bottle (game-board) of a player, if it is on screen (the CPUs a Multiplayer page runs are parked off it) */
 function bottleOf(player) {
     const container = document.getElementById("game" + player)
     if (!container || container.classList.contains("hidden")) return null
     const board = container.querySelector("game-board")
     if (!board) return null
     const r = board.getBoundingClientRect()
-    return r.width ? { el: board, game: container.querySelector("game-element"), rect: r } : null
+    const onScreen = r.width && r.right > 0 && r.left < innerWidth && r.bottom > 0 && r.top < innerHeight
+    return onScreen ? { el: board, game: container.querySelector("game-element"), rect: r } : null
 }
 
 /** Where an element is on screen, or null when it isn't showing */
@@ -89,6 +96,8 @@ function spawn(className, x, y, w, h, color, keyframes, options, text) {
     anim.oncancel = () => el.remove()
     return anim
 }
+
+const reducedMotion = () => window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches
 
 function popText(text, rect, color, size, delay = 0) {
     const cx = rect.left + rect.width / 2
@@ -229,6 +238,60 @@ function boardHit(el, color, last) {
     }
 }
 
+/** A board is out (el: its bottle or card): impossible to miss */
+export function knockout(el, text, shake) {
+    try {
+        addStyles()
+        const r = boxOf(el)
+        if (!r) return
+        const c = centre(r)
+        spawn("fx-white", c.x, c.y, r.width, r.height, "#fff", [
+            { opacity: 0 }, { opacity: 0.9, offset: 0.06 }, { opacity: 0 },
+        ], { duration: 380, easing: "ease-out" })
+        spawn("fx-flash", c.x, c.y, r.width, r.height, "#ff2d2d", [
+            { opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 0.6, offset: 0.6 }, { opacity: 0 },
+        ], { duration: 1100, easing: "ease-out" })
+        if (text) popText(text, r, "#ff2d2d", Math.max(16, Math.min(r.width * 0.22, 64)))
+        if (reducedMotion()) return
+        const size = Math.max(r.width, 60)
+        for (const [delay, scaleTo, color] of [[0, 2.6, "#fff"], [90, 3.4, "#ff2d2d"], [220, 2.4, "#ff9f1c"]]) {
+            spawn("fx-ring", c.x, c.y, size, size, color, [
+                { transform: "scale(0.15)", opacity: 1 },
+                { transform: `scale(${scaleTo})`, opacity: 0 },
+            ], { duration: 700, delay, easing: "cubic-bezier(.2,.7,.3,1)" })
+        }
+        // Its pieces burst out and fall away
+        const colors = Object.values(PILL_COLORS)
+        const piece = Math.max(7, Math.min(r.width / 7, 26))
+        for (let i = 0; i < 16; i++) {
+            const angle = (i / 16) * Math.PI * 2 + Math.random() * 0.4
+            const reach = Math.max(r.width, 70) * (0.7 + Math.random() * 0.8)
+            const dx = Math.cos(angle) * reach
+            const dy = Math.sin(angle) * reach * 0.8
+            const spin = (Math.random() < 0.5 ? -1 : 1) * (240 + Math.random() * 360)
+            spawn("fx-shard", c.x + (Math.random() - 0.5) * r.width * 0.6, c.y + (Math.random() - 0.5) * r.height * 0.6,
+                piece, piece, colors[i % colors.length], [
+                    { transform: "translate(0, 0) rotate(0deg) scale(0.4)", opacity: 1 },
+                    { transform: `translate(${dx * 0.6}px, ${dy * 0.6 - reach * 0.25}px) rotate(${spin * 0.5}deg) scale(1)`, opacity: 1, offset: 0.4 },
+                    { transform: `translate(${dx}px, ${dy + reach * 0.9}px) rotate(${spin}deg) scale(0.7)`, opacity: 0 },
+                ], { duration: 1000 + Math.random() * 400, easing: "cubic-bezier(.25,.6,.45,1)" })
+        }
+        if (shake && shake.animate) {
+            shake.animate([
+                { transform: "translate(0, 0)" },
+                { transform: "translate(-12px, 5px) rotate(-1deg)" },
+                { transform: "translate(11px, -4px) rotate(1deg)" },
+                { transform: "translate(-8px, 3px)" },
+                { transform: "translate(5px, -2px)" },
+                { transform: "translate(0, 0)" },
+            ], { duration: 450, easing: "ease-out", composite: "add" })
+        }
+    } catch (err) {
+        // Effects must never break the game - but say so, or a broken effect goes unnoticed
+        console.warn("Knockout effect failed:", err)
+    }
+}
+
 /** Tell that player's phone (TV Room) */
 function notifyPhone(player, kind, pill) {
     if (window.tvHost && window.tvHost.started && typeof socket !== "undefined") {
@@ -245,7 +308,23 @@ export function attackSent(player, target, pill, { cells, to } = {}) {
         const color = PILL_COLORS[pill] || playerColor(player)
         popText("ATTACK!", me.rect, color, Math.max(20, me.rect.width * 0.2))
         const from = (cells || []).map(boxOf).filter(Boolean)
-        if (from.length && !bottleOf(target)) {
+        const other = bottleOf(target)
+        if (from.length && other) {
+            // Both bottles on this screen (TV Room): the cleared pills fly into the target's bottle
+            const top = () => {
+                const now = bottleOf(target) || other // the screen may have been rescaled meanwhile
+                return { x: now.rect.left + now.rect.width / 2, y: now.rect.top + now.rect.height * 0.08 }
+            }
+            launchFromCells(from, top, color, (last) => {
+                const now = bottleOf(target)
+                if (!now) return
+                if (!last) return boardHit(now.el, color, false)
+                impact(now, color)
+                notifyPhone(target, "hit", pill) // the target's phone flashes as the junk lands
+            })
+            return true
+        }
+        if (from.length) {
             // Into the target's board when it shows here, off the top otherwise
             const aim = () => {
                 const r = boxOf(to)

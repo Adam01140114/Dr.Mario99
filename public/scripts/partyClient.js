@@ -23,7 +23,7 @@
  */
 
 "use strict"
-import { attackSent, attackReceived } from "./attackFx.js"
+import { attackSent, attackReceived, knockout } from "./attackFx.js"
 import { startCpu } from "./cpuPlayer.js"
 import { SPRITE_CODES } from "./components.js"
 
@@ -37,7 +37,7 @@ const BOARD_H = 576 + 14
 const BOTTLE = { x: 383, y: 48, w: 258, h: 505 } // what shows of the board on a phone (index.html: the clip-path)
 const HUD_W = 80         // the columns of numbers either side of the bottle on a phone
 const HUD_MS = 120
-const DANGER_ON = 12     // a target's stack this high (of 16) glows red...
+const DANGER_ON = 12     // a target's or attacker's stack this high (of 16) glows red...
 const DANGER_OFF = 11    // ...until it's back under this
 const KO_MS = 1500       // how long a target's or attacker's knockout shows
 
@@ -397,7 +397,7 @@ function sendBoards() {
         const board = game && game.board
         if (!board || !board.fields) continue
         const grid = gridOf(board)
-        const hud = board.virusCount + ',' + board.score + ',' + stackHeight(board)
+        const hud = board.virusCount + ',' + board.score + ',' + board.stackHeight()
         const last = match.sent[n]
         let payload = null
         if (!last || now - last.at >= KEYFRAME_MS) payload = { slot: n, g: grid, h: hud }
@@ -415,22 +415,12 @@ function sendBoards() {
 
 socket.on('partyBoard', (payload) => showBoard(payload))
 
-/** How high what has landed goes: the pill still falling doesn't count */
-function stackHeight(board) {
-    for (let y = board.height - 2; y >= 0; y--) {
-        for (let x = 0; x < board.width; x++) {
-            const piece = board.fields[x][y].shapePiece
-            if (piece && (piece.shape !== board.currentPill || board.currentPill.placed)) return y + 1
-        }
-    }
-    return 0
-}
-
-/** My target's stack is nearly at the top: its board glows red until it recovers */
+/** My target's or attacker's stack is nearly at the top: its board glows red until it recovers */
 function setDanger(view, height) {
     view.height = height
     view.danger = height >= (view.danger ? DANGER_OFF : DANGER_ON)
-    view.card.classList.toggle('danger', view.danger && view.card.classList.contains('target'))
+    const watched = view.card.classList.contains('target') || view.card.classList.contains('attacker')
+    view.card.classList.toggle('danger', view.danger && watched)
 }
 
 const sprites = SPRITE_CODES.map((name) => {
@@ -503,6 +493,7 @@ function showTargets() {
         const attacksMe = match.targets[n] === party.slot && match.alive.has(+n)
         const mine = match.targets[party.slot] === +n && match.alive.has(party.slot)
         view.card.classList.toggle('target', mine)
+        view.card.classList.toggle('attacker', attacksMe && !mine)
         view.card.querySelector('.op-target').textContent = mine ? '▸ YOUR TARGET' : attacksMe ? '⚔ ATTACKING YOU' : ''
         setDanger(view, view.height || 0)
     }
@@ -523,6 +514,7 @@ function knockedOut(view, role, name) {
     label.innerHTML = '<b>💀 OUT</b><span></span>'
     label.lastChild.textContent = name // the card above it already shows who's next
     view.card.append(ghost, label)
+    knockout(canvas, null, view.card)
     setTimeout(() => { ghost.remove(); label.remove() }, KO_MS)
     glog('op-ko-shown', { role, name })
     if (match.lastKo !== name) showNotice(`💀 ${role === 'target' ? 'Your target' : 'Your attacker'} ${name} is out!`, 2200)
@@ -596,7 +588,9 @@ socket.on('partyEliminated', ({ slot, place, targets, royale, left, kos, target,
         const status = view.card.querySelector('.op-status')
         status.textContent = 'OUT #' + place
         status.classList.remove('hidden')
+        view.card.classList.remove('danger')
         if ((wasTarget || wasAttacker) && match.alive.has(party.slot)) knockedOut(view, wasTarget ? 'target' : 'attacker', match.names[slot])
+        else knockout(view.ctx.canvas, null, view.card) // anyone else going out still gets a burst
     }
     if (slot === party.slot) showNotice(`You're out! #${place}. Watch the rest...`, 3000)
     showTargets()

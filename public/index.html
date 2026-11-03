@@ -1353,6 +1353,15 @@
             100% { opacity: 0; transform: scale(0.6) translateY(80px); }
         }
         body.tv-mode .game-container.out game-element { filter: grayscale(1) brightness(0.5); }
+        /* A bottle nearly full to the top (showDanger in scripts/tvHost.js) */
+        body.tv-mode .game-container.danger game-board { animation: tvDanger 0.7s ease-in-out infinite alternate; }
+        @keyframes tvDanger {
+            from { box-shadow: 0 0 10px 3px rgba(255, 45, 45, 0.7), inset 0 0 14px rgba(255, 45, 45, 0.5); }
+            to { box-shadow: 0 0 34px 14px rgba(255, 45, 45, 0.95), inset 0 0 30px rgba(255, 45, 45, 0.8); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            body.tv-mode .game-container.danger game-board { animation: none; box-shadow: 0 0 26px 10px rgba(255, 45, 45, 0.9); }
+        }
         .tv-name-tag .tv-target { font-size: 1.7rem; color: #fff; opacity: 0.85; }
         .tv-name-tag .tv-target:empty { display: none; }
         .tv-name-tag .tv-out { font-size: 1.6rem; color: #ff3b3b; text-shadow: 0 0 12px #ff3b3b; }
@@ -1522,8 +1531,10 @@
         body.party-mode.phone-landscape.phone-play .party-opponents.royale-panel { flex-wrap: wrap; align-content: center; }
 
         /* The result of a Free Play match */
-        .royale-place { font-size: 56px; color: #fff; text-shadow: 0 0 18px #00ffff; margin: 14px 0 6px; }
-        .royale-place small { font-size: 16px; color: #9fb3ff; text-shadow: none; }
+        .royale-place { font-size: min(56px, 10vw); color: #fff; text-shadow: 0 0 18px #00ffff; margin: 14px 0 6px; white-space: nowrap; }
+        .royale-place small { font-size: min(16px, 3vw); color: #9fb3ff; text-shadow: none; }
+        .royale-out .alert-title { color: #ff4d6d; text-shadow: 0 0 14px #ff2d2d, 3px 3px 0 #000; animation: royalePop 0.6s cubic-bezier(.2, 1.6, .4, 1); }
+        .royale-out .alert-modal { border-color: #ff4d6d; box-shadow: 0 0 40px rgba(255, 45, 45, 0.55); }
         .royale-tag { font-size: 13px; color: #ffd60a; margin-bottom: 8px; }
         .royale-stats { display: flex; justify-content: center; gap: 22px; margin: 12px 0 18px; font-size: 9px; color: #9fb3ff; }
         .royale-stats span { display: flex; flex-direction: column; gap: 6px; font-size: inherit; }

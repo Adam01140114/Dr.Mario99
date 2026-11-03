@@ -148,6 +148,17 @@ class Board extends HTMLElement {
 
     /** Only the bottle shows where a pill will land (PlayingBoard) */
     showLanding() {}
+
+    /** How high what has landed goes: the pill still falling doesn't count */
+    stackHeight() {
+        for (let y = this.height - 2; y >= 0; y--) {
+            for (let x = 0; x < this.width; x++) {
+                const piece = this.fields[x][y].shapePiece
+                if (piece && (piece.shape !== this.currentPill || this.currentPill.placed)) return y + 1
+            }
+        }
+        return 0
+    }
 }
 
 /**
@@ -1204,7 +1215,7 @@ class Field extends HTMLElement {
         // Send damage immediately when 4+ points are reached
         if (this.board.game.isTVControlled) {
             // TV Room: the TV page sends it to this player's current target
-            window.tvHost.sendAttack(this.board.playerNumber, this.board.localpoints, color);
+            window.tvHost.sendAttack(this.board.playerNumber, this.board.localpoints, color, cells);
         } else if (this.board.game.party) {
             // Multiplayer / Free Play: the server sends it to this player's target
             window.party.attack(this.board.playerNumber, this.board.localpoints, color, cells);

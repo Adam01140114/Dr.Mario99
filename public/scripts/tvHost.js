@@ -32,7 +32,7 @@
  */
 
 "use strict"
-import { attackSent, attackReceived } from "./attackFx.js"
+import { attackSent, attackReceived, knockout } from "./attackFx.js"
 import { startCpu } from "./cpuPlayer.js"
 
 const MAX_PLAYERS = 20
@@ -50,6 +50,8 @@ const GAP = 24                 // between boards (index.html: body.tv-mode .ai-b
 const EDGE = 16                // room left around the edge of the screen
 const STACK_BIAS = 0.04        // stack in more rows when that's at most this much smaller
 const STATE_MS = 50            // board pictures to phones, at most 20 a second
+const DANGER_ON = 12           // a stack this high (of 16) makes its bottle glow red...
+const DANGER_OFF = 11          // ...until it's back under this
 const STATE_REFRESH_MS = 1500  // ...and resent now and then, for a phone that just came back
 
 const $ = id => document.getElementById(id)
@@ -463,18 +465,16 @@ function assignTargets() {
     }
 }
 
-/** A player cleared 4+: their target gets junk (called by Board.js) */
-function sendAttack(from, points, color) {
+/** A player cleared 4+: their target gets junk (called by Board.js; cells: the ones that scored it) */
+function sendAttack(from, points, color, cells) {
     if (!tv.started || tv.finished) return
     const target = tv.targets[from]
     const game = target && tv.alive.includes(target) && tv.games[target]
     if (!game || !game.board) return glog('attack-lost', { from, target, points, why: 'no target in the game' })
     const counted = game.board.receiveDamage(points, color)
     glog('attack', { from, target, points, color, counted })
-    if (counted) {
-        attackSent(from, target, color)
-        attackReceived(target, from, color)
-    }
+    // The cleared pills fly into the target's bottle; without them, a comet from bottle to bottle
+    if (counted && !attackSent(from, target, color, { cells })) attackReceived(target, from, color)
 }
 
 // A phone button went down or up: move that player's pill, repeating while held.
@@ -579,7 +579,11 @@ function eliminate(player) {
         out.textContent = 'OUT #' + place
         tag.appendChild(out)
     }
-    if (container) container.classList.add('out')
+    if (container) {
+        container.classList.add('out')
+        container.classList.remove('danger')
+        knockout(container.querySelector('game-board'), '💀 OUT', container.querySelector('game-element'))
+    }
     assignTargets()
     setTimeout(() => {
         if (!container || !tv.started) return
@@ -589,7 +593,7 @@ function eliminate(player) {
             if (tv.games[player] === game) removeGame(player)
             layout()
         }, 600)
-    }, 900)
+    }, 1500)
 }
 
 function endMatch(winner, how, lastOut) {
@@ -597,6 +601,7 @@ function endMatch(winner, how, lastOut) {
     setPaused(false)
     document.body.classList.remove('tv-playing')
     for (const n of tv.roster) {
+        if ($('game' + n)) $('game' + n).classList.remove('danger')
         releaseHolds(n)
         if (tv.games[n]) tv.games[n].freeze()
     }
@@ -954,6 +959,18 @@ $('tvPadConnect').onclick = () => window.padInput && window.padInput.connectHid(
 
 /* ---------- Pictures of each board for the phones ---------- */
 
+/** A bottle filled nearly to the top glows red until it's back down (same heights as Free Play's cards) */
+function showDanger() {
+    for (const n of tv.roster) {
+        const game = tv.games[n]
+        const container = game && game.board && !tv.finished && tv.alive.includes(n) && $('game' + n)
+        if (!container) continue
+        const height = game.board.stackHeight()
+        const danger = height >= (container.classList.contains('danger') ? DANGER_OFF : DANGER_ON)
+        if (danger !== container.classList.contains('danger')) container.classList.toggle('danger', danger)
+    }
+}
+
 function sendToPhone(player, state) {
     const peer = tv.peers[player]
     if (peer && peer.channel && peer.channel.readyState === 'open') {
@@ -968,6 +985,7 @@ function sendToPhone(player, state) {
 setInterval(() => {
     if (tv.forFreePlay && tv.phoneFor) return sendFreePlayHold()
     if (!tv.started) return
+    showDanger()
     const now = Date.now()
     for (const n of tv.roster) {
         const game = tv.games[n]

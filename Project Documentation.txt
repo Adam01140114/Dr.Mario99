@@ -290,11 +290,13 @@ nobody plays with lag (`public/scripts/partyClient.js`; server: PARTIES in
   When the last friend is out or someone wins, the opponents go (`arenaBackToRoom`) and everyone gets BACK TO THE ROOM
 - **Your number**: PLAYER n above the virus count (`.my-number`, `#hudYou` on a phone). It's your place in the
   roster: in Free Play, your square in the panel, 1 to 100
-- **Your target in trouble**: a target whose stack reaches 12 of 16 rows (DANGER_ON; the falling pill doesn't count)
-  glows red until it's under 11 (DANGER_OFF). A real board sends its height in `h` of partyBoard; an opponent's
-  is its `stack`
+- **Your target or attacker in trouble**: either one's stack reaching 12 of 16 rows (DANGER_ON; the falling pill
+  doesn't count, `board.stackHeight()`) glows red until it's under 11 (DANGER_OFF). A real board sends its height
+  in `h` of partyBoard; an opponent's is its `stack`
 - **Your target or attacker out**: their board flashes, shakes and falls away under 💀 OUT and their name
-  (`knockedOut`), with a message at the top
+  (`knockedOut`), with a message at the top, and bursts apart (attackFx `knockout`: white flash, red rings, pieces
+  flying off). In a Multiplayer room anyone else going out gets the burst too
+- **OUT screen** (`royale-out`): red title and border; the place stays on one line on a phone
 - **FREE PLAY SOLO**: a 100-player match, last one standing. Everyone pressing it within 1.5 s (FREE_WAIT_MS;
   straight away if nobody else is free) shares one, and opponents with ordinary names fill the other seats.
   They aren't boards: royale.js keeps a few numbers for each on the server, ticked once a second (royaleTick), so
@@ -389,8 +391,8 @@ side is the TV ROOM section of `server.js`.
   team / myTeam). Boards get a frame and name-tag chip in their team colour.
   Events: tvSetTeams, tvPickTeam, tvSetCpuTeam
 - **Out**: a bottle that fills up is out (`tvEliminated`): the board greys,
-  shows "OUT #place", then leaves the TV and the rest re-flow to fill the
-  screen. That phone shows YOU'RE OUT and its place. Targets are reassigned;
+  bursts apart under a big 💀 OUT (attackFx `knockout`), shows "OUT #place",
+  then leaves the TV and the rest re-flow to fill the screen. That phone shows YOU'RE OUT and its place. Targets are reassigned;
   with two left they attack each other
 - **Layout**: `tvHost.layout()` tries every split into rows and picks the one
   with the biggest boards - but a split with more rows wins when it's within
@@ -476,7 +478,10 @@ side is the TV ROOM section of `server.js`.
   In Multiplayer / Free Play the cells that scored the attack (Board
   `pointCells`) light up and each sends a comet to the target's card (`cells`,
   `to`), which flashes and shakes as they land; junk coming in starts from the
-  attacker's card when it shows
+  attacker's card when it shows. In the TV Room the cleared pills fly into the
+  target's bottle (attackSent returns true, so no bottle-to-bottle comet)
+- **Danger**: a bottle filled to 12 of 16 rows glows red until it's under 11
+  (`showDanger`, same heights as Free Play)
 - **Phones that sleep**: a phone keeps an id in localStorage and gets its slot
   back when it reconnects. In the lobby a disconnected slot can be taken
 - **Server events**: tvCreateRoom, tvJoin, tvReady, tvStartGame, tvInput,
